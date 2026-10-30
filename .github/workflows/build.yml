@@ -1,0 +1,72 @@
+name: Build desktop app
+
+on:
+  workflow_dispatch:          # manual: GitHub > Actions > Build desktop app > Run workflow
+  push:
+    tags: ["v*"]              # tag like v1.0.0 -> also creates a Release with the files
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q tests
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: Windows
+          - os: macos-latest          # Apple Silicon (M1/M2/M3/M4)
+            label: Mac-AppleSilicon
+          - os: macos-15-intel        # Intel Mac
+            label: Mac-Intel
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Install
+        run: pip install -r requirements-dev.txt
+      - name: Check tkinter
+        run: python -c "import tkinter; print('tk', tkinter.TkVersion)"
+
+      - name: Build (Windows .exe)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --onefile --windowed --name VerifyReportBuilder --paths src run_app.py
+          Compress-Archive -Path dist\VerifyReportBuilder.exe -DestinationPath "VerifyReportBuilder-${{ matrix.label }}.zip"
+
+      - name: Build (Mac .app)
+        if: runner.os == 'macOS'
+        run: |
+          pyinstaller --noconfirm --clean --windowed --name VerifyReportBuilder --paths src \
+            --osx-bundle-identifier com.example.verifyreportbuilder run_app.py
+          ditto -c -k --sequesterRsrc --keepParent dist/VerifyReportBuilder.app "VerifyReportBuilder-${{ matrix.label }}.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VerifyReportBuilder-${{ matrix.label }}
+          path: VerifyReportBuilder-${{ matrix.label }}.zip
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: out, merge-multiple: true }
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: out/*.zip
