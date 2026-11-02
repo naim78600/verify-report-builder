@@ -40,6 +40,14 @@ def _appointment(raw: dict) -> dict:
     }
 
 
+def _coord(v: Any) -> float | None:
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if f else None
+
+
 def _trip(raw: dict, agent_names: dict[int, str]) -> dict:
     code = raw.get("status")
     ttype = _s(raw.get("type"))
@@ -74,6 +82,11 @@ def _trip(raw: dict, agent_names: dict[int, str]) -> dict:
         "comment": _s(raw.get("comment")),
         "is_verified": bool(raw.get("is_verified")),
         "re_cpv": bool(raw.get("is_for_recpv")),
+        "type_code": ttype,
+        "lat": _coord(raw.get("latitude")),
+        "lon": _coord(raw.get("longitude")),
+        "end_lat": _coord(raw.get("end_latitude")),
+        "end_lon": _coord(raw.get("end_longitude")),
         "appointments": appts,
     }
 
@@ -106,6 +119,7 @@ def normalize_file(list_item: dict, detail: dict, agent_names: dict[int, str] | 
             }
         )
     return {
+        "created_at": parse_dt(app.get("created_at")),
         "id": app.get("id", list_item.get("id")),
         "file_no": _s(app.get("application_id") or list_item.get("application_id")),
         "type": config.APPLICATION_TYPE.get(atype, _s(atype)),

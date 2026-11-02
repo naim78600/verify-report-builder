@@ -45,11 +45,11 @@ def _clean(v):
     return v
 
 
-def put(ws, row, col, value, *, fmt=None, fill=None, font=None, align=None):
+def put(ws, row, col, value, *, fmt=None, fill=None, font=None, align=None, formula=False):
     cell = ws.cell(row=row, column=col)
     value = _clean(value)
     cell.value = value
-    if isinstance(value, str):
+    if isinstance(value, str) and not formula:
         cell.data_type = "s"            # never treat user text such as "=..." as a formula
     if fmt:
         cell.number_format = fmt
@@ -137,6 +137,18 @@ def _file_report(wb, res: CollectResult):
             put(ws, r, C[k], v, fill=FILE_FILL, font=white_bold)
         ws.row_dimensions[r].outlineLevel = 0
         r += 1
+        for ev in getattr(res, "recpv_events", {}).get(f["id"], []):      # v2: Re-CPV / Extra under the file
+            ev_fill = PatternFill("solid", fgColor="FCE4D6" if ev["kind"] == "Re-CPV" else "E4DFEC")
+            for col in range(1, len(FR_COLS) + 1):
+                put(ws, r, col, None, fill=ev_fill)
+            put(ws, r, C["Level"], "  " + ev["kind"].upper(), fill=ev_fill, font=Font(bold=True))
+            put(ws, r, C["File No"], f["file_no"], fill=ev_fill)
+            put(ws, r, C["ID / Task Id"], ev["trip_id"], fill=ev_fill)
+            put(ws, r, C["Name / Type"], ev.get("trip_type") or ev["kind"], fill=ev_fill, font=Font(bold=True))
+            put(ws, r, C["Created"], ev["at"], fill=ev_fill)
+            put(ws, r, C["Comment / Reason"], ev["reason"], fill=ev_fill, align=Alignment(wrap_text=True, vertical="top"))
+            ws.row_dimensions[r].outlineLevel = 1
+            r += 1
         for c in f["concerns"]:
             for col in range(1, len(FR_COLS) + 1):
                 put(ws, r, col, None, fill=CONCERN_FILL)
@@ -152,7 +164,9 @@ def _file_report(wb, res: CollectResult):
             r += 1
             for t in c["trips"]:
                 tfill = _status_cell_fill(TRIP_STATUS_COLOR, t["status"])
-                put(ws, r, C["Level"], "    TRIP", align=top)
+                tag = getattr(res, "trip_tags", {}).get(t["id"])
+                put(ws, r, C["Level"], "    TRIP" + (f" · {tag}" if tag else ""), align=top,
+                    fill=PatternFill("solid", fgColor="FFF2E5") if tag else None)
                 put(ws, r, C["File No"], f["file_no"], align=top)
                 put(ws, r, C["ID / Task Id"], t["id"], align=top)
                 put(ws, r, C["Name / Type"], t["type"], align=top)
@@ -225,7 +239,7 @@ def _status_sheet(wb, title, order, counts: Counter, colors):
         put(ws, r, 3, counts.get(k, 0) / total, fmt="0.0%")
         r += 1
     put(ws, r, 1, "Total", font=Font(bold=True))
-    put(ws, r, 2, f"=SUM(B2:B{r - 1})", font=Font(bold=True))
+    put(ws, r, 2, f"=SUM(B2:B{r - 1})", font=Font(bold=True), formula=True)
     _widths(ws, [26, 10, 10])
     return r - 2  # number of status rows (excludes header and total)
 
@@ -261,7 +275,7 @@ def _data_sheets(wb, res: CollectResult):
     ws = wb.create_sheet("Trips")
     cols = ["File No", "Concern ID", "Concern", "Concern Role", "Trip ID", "Trip Type", "Status", "Verifier",
             "Assigned By", "Address Check", "Address", "Exact Address", "Place Name", "Area", "Created", "Start",
-            "End", "Verified", "Re-CPV", "Short Remarks", "Full Remarks", "Comment", "Appointments"]
+            "End", "Verified", "Re-CPV / Extra", "Short Remarks", "Full Remarks", "Comment", "Appointments"]
     _header(ws, 1, cols)
     i = 2
     for f in res.files:
@@ -270,7 +284,7 @@ def _data_sheets(wb, res: CollectResult):
             row = [f["file_no"], c["id"], c["name"], c["role"], t["id"], t["type"], t["status"], t["verifier"],
                    t["assigned_by"], chk, t["address"], t["exact_address"], t["place_name"], t["area"],
                    t["created_at"], t["start_time"], t["end_time"], "Yes" if t["is_verified"] else "No",
-                   "Yes" if t["re_cpv"] else "No", t["short_remarks"], t["remarks"], t["comment"],
+                   getattr(res, "trip_tags", {}).get(t["id"]) or ("Re-CPV" if t["re_cpv"] else "No"), t["short_remarks"], t["remarks"], t["comment"],
                    len(t["appointments"])]
             for j, v in enumerate(row, 1):
                 put(ws, i, j, v)
@@ -382,7 +396,7 @@ def _failed_sheet(wb, res: CollectResult):
 
 
 # ----------------------------------------------------------------------------- entry
-def build_workbook(res: CollectResult, path: Path) -> Path:
+def build_workbook(res: CollectResult, path: Path, extra_sheets=None) -> Path:
     wb = Workbook()
     wb.active.title = "Executive Summary"
     totals = _file_report(wb, res)
@@ -398,9 +412,11 @@ def build_workbook(res: CollectResult, path: Path) -> Path:
         _failed_sheet(wb, res)
     _summary(wb, res, totals, n_fs, n_ts, max(n_tt, 1))
 
+    if extra_sheets:
+        extra_sheets(wb)
     # sheet order
     order = ["Executive Summary", "File Report", "File Status", "Trip Status", "Trip Types", "Files", "Concerns",
-             "Trips", "Appointments", "Failed Files"]
+             "Trips", "Appointments", "Failed Files", "Billing Rows", "Calculation"]
     wb._sheets = [wb[n] for n in order if n in wb.sheetnames]
     path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(path)

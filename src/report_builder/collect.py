@@ -38,6 +38,8 @@ class CollectResult:
     server_label: str = ""
     generated_at: datetime | None = None
     notes: list = field(default_factory=list)
+    recpv_events: dict = field(default_factory=dict)   # file id -> [event dict]   (v2)
+    trip_tags: dict = field(default_factory=dict)      # trip id -> "Re-CPV" / "Extra"   (v2)
 
 
 def _noop(*_a, **_k):

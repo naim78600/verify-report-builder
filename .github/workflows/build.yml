@@ -25,16 +25,26 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            label: Windows
+            label: Windows-64bit
+            arch: x64
+          - os: windows-latest
+            label: Windows-32bit
+            arch: x86
           - os: macos-latest          # Apple Silicon (M1/M2/M3/M4)
             label: Mac-AppleSilicon
-          - os: macos-15-intel        # Intel Mac
+            arch: arm64
+          - os: macos-15-intel        # Intel Mac (built to run on macOS 13 Ventura and newer)
             label: Mac-Intel
+            arch: x64
     runs-on: ${{ matrix.os }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "13.0"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
+        with:
+          python-version: "3.12"
+          architecture: ${{ matrix.arch == 'x86' && 'x86' || (matrix.arch == 'x64' && 'x64' || 'arm64') }}
       - name: Install
         run: pip install -r requirements-dev.txt
       - name: Check tkinter
@@ -44,13 +54,13 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --onefile --windowed --name VerifyReportBuilder --paths src run_app.py
+          pyinstaller --noconfirm --clean --onefile --windowed --name VerifyReportBuilder --paths src --collect-data reportlab run_app.py
           Compress-Archive -Path dist\VerifyReportBuilder.exe -DestinationPath "VerifyReportBuilder-${{ matrix.label }}.zip"
 
       - name: Build (Mac .app)
         if: runner.os == 'macOS'
         run: |
-          pyinstaller --noconfirm --clean --windowed --name VerifyReportBuilder --paths src \
+          pyinstaller --noconfirm --clean --windowed --name VerifyReportBuilder --paths src --collect-data reportlab \
             --osx-bundle-identifier com.example.verifyreportbuilder run_app.py
           ditto -c -k --sequesterRsrc --keepParent dist/VerifyReportBuilder.app "VerifyReportBuilder-${{ matrix.label }}.zip"
 
