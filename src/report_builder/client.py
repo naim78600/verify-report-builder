@@ -3,8 +3,9 @@
 Safety design:
   * Only GET requests to an explicit allow-list of paths are possible.
   * The single POST that exists is the site's own login call (NextAuth credentials).
-  * No Delete / Edit / Cancel / Activity-log / OCR / NID endpoints are reachable,
-    because they are simply not in the allow-list.
+  * No Delete / Edit / Cancel / OCR / NID endpoints are reachable, because they are
+    simply not in the allow-list. (v2 adds two read-only GETs: the Re-CPV tracker list
+    and the activity-log list of one file, used only to read the submission time.)
 """
 from __future__ import annotations
 
@@ -27,6 +28,9 @@ _ALLOWED_GET = [
         r"^/api/v2/auth/user$",
         r"^/api/v2/manager/applications$",
         r"^/api/v2/manager/applications/\d+$",
+        # v2 (read-only): Re-CPV tracker list and one file's activity log (submission time).
+        r"^/api/v2/re-cpv/tracker$",
+        r"^/api/v2/applications/activity-logs$",
     )
 ]
 _LOGIN_PATH = "/api/auth/callback/credentials"

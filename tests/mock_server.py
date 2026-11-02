@@ -83,7 +83,7 @@ def make_data(n):
     return files
 
 
-STATE = {"files": [], "log": [], "flaky": set(), "lock": threading.Lock(), "bad": None}
+STATE = {"files": [], "log": [], "flaky": set(), "lock": threading.Lock(), "bad": None, "scenario": False}
 
 
 def list_item(f):
@@ -136,6 +136,11 @@ class H(BaseHTTPRequestHandler):
             return self._send(200, {"data": {"organizations": [
                 {"id": 40, "name": "Prime Bank PLC", "uuid": ORG_UUID},
                 {"id": 22, "name": "LankaBangla Finance Limited", "uuid": OTHER_ORG}]}})
+        if STATE["scenario"]:
+            import prime_scenario
+            self.server_files = STATE["files"]
+            if prime_scenario.handle(self, p, q):
+                return
         if p == "/api/v2/manager/applications":
             assert q.get("org_id[]") == [ORG_UUID], q
             assert sorted(q.get("status[]")) == [str(i) for i in range(1, 9)], q
@@ -178,7 +183,22 @@ class H(BaseHTTPRequestHandler):
         self._send(405, {})
 
 
+def start_scenario(port=0):
+    """Controlled v2 scenario (see prime_scenario.py)."""
+    import prime_scenario
+    global ORG_UUID
+    ORG_UUID = prime_scenario.ORG
+    STATE["files"] = prime_scenario.build()
+    STATE["scenario"], STATE["bad"] = True, None
+    STATE["log"].clear()
+    STATE["flaky"].clear()
+    srv = Srv(("127.0.0.1", port), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
 def start(port=0, n=120, bad_index=None):
+    STATE["scenario"] = False
     STATE["files"] = make_data(n)
     STATE["bad"] = STATE["files"][bad_index]["id"] if bad_index is not None else None
     STATE["log"].clear()
