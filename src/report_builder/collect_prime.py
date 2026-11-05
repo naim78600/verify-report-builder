@@ -108,13 +108,21 @@ def _pool_map(workers, cancel, fn, keys, progress=None, label=""):
     return results, errors
 
 
+NO_STATUS = "no-status"        # _list_files(statuses=NO_STATUS): send no status[] at all
+
+
 def _list_files(client, org_uuid, d_from: date, d_till: date, workers, cancel, progress_cb,
                 statuses=None) -> tuple[dict, int]:
     """All list items for a date window. Paging with sort ties can drop rows, so if the unique count is
     short of the server total we sweep again with another sort and merge.
-    `statuses` = file status codes (default: all).  With only Submitted (6) the dashboard's Reports page
-    returns the files SUBMITTED inside the window - the same list the person sees after pressing "Submit"."""
-    codes = list(statuses) if statuses else config.ALL_FILE_STATUS_CODES
+
+    What the date window means depends on the status filter (checked on the live Reports page, 2026-11-05):
+      * NO status[]        -> files whose Start Date (received) is inside the window, whatever their status now.
+      * any status[] given -> files whose CURRENT status was entered inside the window: Submitted = the day it was
+                              submitted, Hold = the day it went on hold, On Going / Created = the day it started.
+                              This is also true when all eight codes are sent.
+    `statuses` = file status codes (default: all eight); NO_STATUS = no filter."""
+    codes = [] if statuses == NO_STATUS else (list(statuses) if statuses else config.ALL_FILE_STATUS_CODES)
     found: dict = {}
     total = 0
     sweeps = [("application_id", "ASC"), ("start_date", "DESC"), ("end_date", "ASC")]
@@ -179,19 +187,31 @@ def collect_prime(cfg: PrimeConfig, progress: Progress = _noop, cancel: threadin
     org_uuid = match[0]["uuid"]
     progress("login", 1, 1, "লগইন সম্পন্ন।")
 
-    # 2. files created inside the window --------------------------------------------
+    # 2. files of the window ---------------------------------------------------------
+    # Two lists are merged.  (a) NO status filter = files that were RECEIVED (Start Date) inside the window,
+    # whatever their status is today - this keeps files that were pending at the end of a past window but were
+    # submitted / put on hold later.  (b) all statuses = files whose CURRENT status began inside the window
+    # (re-opened old files, Hold, Finished ...), which is what the Reports page shows when statuses are picked.
     progress("list", 0, 1, "ফাইলের তালিকা সংগ্রহ হচ্ছে…")
     items, site_total = _list_files(client, org_uuid, d.w_from, d.w_till, workers, cancel,
-                                    lambda a, b: progress("list", a, b, f"তালিকা: পেজ {a}/{b}"))
-    d.site_total = site_total
+                                    lambda a, b: progress("list", a, b, f"তালিকা (গ্রহণের তারিখ): পেজ {a}/{b}"),
+                                    statuses=NO_STATUS)
     if len(items) != site_total:
         d.notes.append(f"সতর্কতা: সাইটের মোট ফাইল {site_total}, তালিকায় পাওয়া গেছে {len(items)}।")
-    progress("list", 1, 1, f"মোট {len(items)} টি ফাইল (সাইটের মোট: {site_total})")
+    by_status, total_b = _list_files(client, org_uuid, d.w_from, d.w_till, workers, cancel,
+                                     lambda a, b: progress("list", a, b, f"তালিকা (স্ট্যাটাস অনুযায়ী): পেজ {a}/{b}"))
+    if len(by_status) != total_b:
+        d.notes.append(f"সতর্কতা: স্ট্যাটাস-তালিকায় সাইটের মোট {total_b}, পাওয়া গেছে {len(by_status)}।")
+    for fid, it in by_status.items():
+        items.setdefault(fid, it)
+    d.site_total = len(items)
+    progress("list", 1, 1, f"মোট {len(items)} টি ফাইল (সাইটের মোট: {site_total}; স্ট্যাটাস-তালিকা: {total_b})")
 
     # 2b. the dashboard's own "Submitted" list for the same dates ------------------------------------
-    # Files are listed above by their START date, but a file is Submitted days after it started. The Reports
-    # page (status = Submitted + the same dates + "Submit") lists files by when they were submitted, so the
-    # same list is read here, the files are added, and the result is compared with the report at the end.
+    # The Reports page (status = Submitted + the same dates + "Submit") lists files by the day they were
+    # submitted - confirmed on the live page: it sends dateFrom/dateTill/org_id[]/status[]=6 and shows files whose
+    # Start/End dates are days earlier.  The same request is made here, the files are added, and the finished
+    # report is compared with that list at the end ("Dashboard check").
     dash_from, dash_till = (d.report_date, d.report_date) if d.mode == "tracker" else (d.w_from, d.w_till)
     d.dash = {"from": dash_from, "till": dash_till, "ok": False, "submitted": {}, "partial": {}}
     progress("list", 0, 1, "ড্যাশবোর্ডের Submitted তালিকা পড়া হচ্ছে…")

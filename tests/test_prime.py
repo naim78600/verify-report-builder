@@ -287,6 +287,14 @@ def test_range_mode_lists_what_the_dashboard_lists(tmp_path):
         d3 = collect_prime(cfg3, lambda *a: None, threading.Event())
         later = [r for r in d3.incomplete if r.file_no == "PL-20261026000001" and r.kind == "ReCpv"]
         assert later and later[0].status_note.startswith("Submitted later (02/11/2026)") and d3.recon["submitted_later"] >= 1
+        # live-site rule: WITH a status filter the dates mean "the day the current status began", WITHOUT one they mean
+        # the Start Date.  F2 started 01-Nov and was submitted 02-Nov, so a report for 01-Nov only finds it through the
+        # Start-Date list - and must show it as still waiting on that day.
+        cfg4 = PrimeConfig(web=base, api=base, server_label="mock", email="test@example.com", password="secret", days=30,
+                           mode="range", date_from=date(2026, 11, 1), date_till=date(2026, 11, 1))
+        d4 = collect_prime(cfg4, lambda *a: None, threading.Event())
+        assert any(r.file_no == "CC-20261101000002" for r in d4.incomplete)
+        assert not any(r.file_no == "CC-20261101000002" for r in d4.complete)
     finally:
         mock_server.STATE["files"].remove(f7)
         ps.LOGS.pop(500007, None)

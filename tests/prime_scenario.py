@@ -129,13 +129,19 @@ def handle(h, p, q):
     if p == "/api/v2/manager/applications":
         a, b = q["dateFrom"][0], q["dateTill"][0]
         st = {int(x) for x in q.get("status[]", [])}
-        if st and st <= {6, 7}:
-            # like the dashboard's Reports page: status = Submitted / Partially Submitted + dates -> files SUBMITTED in the dates
-            def submitted_days(f):
-                return {(datetime.strptime(g["created_at"][:19], "%Y-%m-%dT%H:%M:%S") + timedelta(hours=6)).strftime("%Y-%m-%d")
-                        for g in LOGS.get(f["id"], []) if g.get("current_data") in ("SUBMITTED", "PARTIALLY_SUBMITTED")}
-            sel = [f for f in files if f["status"] in st and any(a <= day <= b for day in submitted_days(f))]
+        if st:
+            # like the live Reports page: WITH status[] the dates mean "the day the file's CURRENT status began"
+            # (Submitted / Partially Submitted = the latest such event in the activity log, anything else = start day)
+            def entered_day(f):
+                if f["status"] in (6, 7):
+                    days = sorted((datetime.strptime(g["created_at"][:19], "%Y-%m-%dT%H:%M:%S") + timedelta(hours=6)).strftime("%Y-%m-%d")
+                                  for g in LOGS.get(f["id"], []) if g.get("current_data") in ("SUBMITTED", "PARTIALLY_SUBMITTED"))
+                    if days:
+                        return days[-1]
+                return f["start_date"][:10]
+            sel = [f for f in files if f["status"] in st and a <= entered_day(f) <= b]
         else:
+            # WITHOUT status[] the dates are the file's Start Date, whatever its status is now
             sel = [f for f in files if a <= f["start_date"][:10] <= b]
         sel.sort(key=lambda f: f["id"])
         page = int(q.get("page", ["1"])[0])

@@ -29,7 +29,7 @@ from .activity import parse_logs
 from .billing import BASE_TYPE, BillRow, FileLogs, build_rows, compute_tat, concern_info, file_type_of, fill_history
 from .client import ApiError, AuthError, Cancelled, ReadOnlyClient
 from .collect import Progress, RunConfig, _noop
-from .collect_prime import _list_files, _pool_map
+from .collect_prime import NO_STATUS, _list_files, _pool_map
 from .model import normalize_file
 from .summary import TripView, analyze
 from .recpv import fetch_tracker, index as recpv_index
@@ -412,8 +412,10 @@ def _sweep(client, org_uuid: str, idx: FileIndex, workers: int, cancel, progress
 def _narrow(client, org_uuid: str, idx: FileIndex, e: IdEntry, workers: int, cancel) -> None:
     """Full file number: look only around the date written in the number."""
     for span in (NARROW_DAYS, WIDE_DAYS):
+        # no status filter: the window then means the file's Start Date (with a status it would mean "the day the
+        # file's current status began", which for an old Submitted file is weeks after the date in its number)
         got, _t = _list_files(client, org_uuid, e.day - timedelta(days=span), e.day + timedelta(days=span),
-                              workers, cancel, lambda *_a: None)
+                              workers, cancel, lambda *_a: None, statuses=NO_STATUS)
         for it in got.values():
             idx.add(it)
         if match_entry(idx.table(), e):
