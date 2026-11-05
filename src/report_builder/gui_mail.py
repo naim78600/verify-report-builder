@@ -75,7 +75,7 @@ class _Base(tk.Toplevel):
             self.canvas.configure(width=cols.winfo_reqwidth(), height=min(need, room), scrollregion=(0, 0, cols.winfo_reqwidth(), need))
             if need > room:
                 self.vbar.pack(side="right", fill="y")
-                self.canvas.bind_all("<MouseWheel>", lambda e: self.canvas.yview_scroll(-1 * (e.delta if sys.platform == "darwin" else e.delta // 120), "units"))
+                self.bind("<MouseWheel>", lambda e: self.canvas.yview_scroll(-1 * (e.delta if sys.platform == "darwin" else e.delta // 120), "units"))
             else:
                 self.vbar.pack_forget()
             self.update_idletasks()
