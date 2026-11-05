@@ -19,7 +19,7 @@ from datetime import date, datetime, timedelta
 
 from . import config, holidays as hol
 from .activity import parse_logs
-from .billing import BillRow, FileLogs, build_rows, compute_tat, reconcile, select_rows
+from .billing import BillRow, FileLogs, build_rows, compute_tat, fill_history, reconcile, select_rows
 from .client import ApiError, AuthError, Cancelled, ReadOnlyClient
 from .collect import Progress, RunConfig, _noop
 from .model import normalize_file
@@ -27,14 +27,14 @@ from .recpv import fetch_tracker, index
 
 HISTORY_DAYS = 365
 TRIP_ID_MARGIN = 2500          # safety margin when guessing which older files may hold new trips
-LOG_STATUSES = {2, 3, 4, 6, 7}  # file statuses whose activity log can hold a Submitted event
+LOG_STATUSES = {1, 2, 3, 4, 5, 6, 7, 8}  # every file: the log gives Submitted time AND the Last Update column
 
 
 @dataclass
 class PrimeConfig(RunConfig):
-    mode: str = "tracker"                  # "tracker" (daily 3pm/7pm) | "billing" (date range)
+    mode: str = "tracker"                  # "tracker" (daily 3pm/7pm) | "range" (all files of a period; "billing" = old name)
     report_date: date | None = None        # tracker: the date in the title (default today)
-    date_from: date | None = None          # billing window
+    date_from: date | None = None          # period start / end (None = use `days`)
     date_till: date | None = None
     slot: str = "3pm"                      # "3pm" | "7pm"
     find_old_extras: bool = True
@@ -74,7 +74,7 @@ def title_for(d: PrimeData) -> str:
     if d.mode == "tracker":
         return f"Prime Bank PLC {d.report_date.day}-{d.report_date.month}-{d.report_date.year} {d.slot} Submission Tracker"
     a, b = d.w_from, d.w_till
-    return f"Prime Bank PLC {a.day}-{a.month}-{a.year} to {b.day}-{b.month}-{b.year} Bill Report"
+    return f"Prime Bank PLC {a.day}-{a.month}-{a.year} to {b.day}-{b.month}-{b.year} Report"
 
 
 # ---------------------------------------------------------------------------------------
@@ -151,13 +151,14 @@ def collect_prime(cfg: PrimeConfig, progress: Progress = _noop, cancel: threadin
     if cfg.mode == "tracker":
         d.report_date = cfg.report_date or today
         d.w_till = d.report_date
-        d.w_from = d.report_date - timedelta(days=int(cfg.days))
+        d.w_from = cfg.date_from or (d.report_date - timedelta(days=int(cfg.days)))
     else:
-        d.w_from = cfg.date_from or (today - timedelta(days=int(cfg.days)))
         d.w_till = cfg.date_till or today
+        d.w_from = cfg.date_from or (d.w_till - timedelta(days=int(cfg.days)))
         d.report_date = d.w_till
-        if d.w_from > d.w_till:
-            raise ApiError("শুরুর তারিখ শেষ তারিখের পরে হতে পারে না।")
+    if d.w_from > d.w_till:
+        raise ApiError("শুরুর তারিখ শেষ তারিখের পরে হতে পারে না।")
+    d.mode = "tracker" if cfg.mode == "tracker" else "range"
     hist_from = d.w_from - timedelta(days=HISTORY_DAYS)
 
     # 1. login ----------------------------------------------------------------------
@@ -264,9 +265,9 @@ def collect_prime(cfg: PrimeConfig, progress: Progress = _noop, cancel: threadin
     def fetch_log(fid):
         return parse_logs(client.get("/api/v2/applications/activity-logs", [("application_id", fid)]))
 
-    progress("log", 0, max(len(want), 1), f"সাবমিশন সময় (অ্যাক্টিভিটি লগ) 0/{len(want)}")
+    progress("log", 0, max(len(want), 1), f"অ্যাক্টিভিটি লগ (সাবমিশন ও Last Update) 0/{len(want)}")
     logs, log_errs = _pool_map(workers, cancel, fetch_log, want,
-                               lambda a, b: progress("log", a, b, f"সাবমিশন সময় (অ্যাক্টিভিটি লগ) {a}/{b}"))
+                               lambda a, b: progress("log", a, b, f"অ্যাক্টিভিটি লগ (সাবমিশন ও Last Update) {a}/{b}"))
     d.log_failed = len(log_errs)
     if log_errs:
         d.notes.append(f"{len(log_errs)} টি ফাইলের অ্যাক্টিভিটি লগ পড়া যায়নি; সেগুলো Incomplete ধরা হয়েছে।")
@@ -283,8 +284,9 @@ def collect_prime(cfg: PrimeConfig, progress: Progress = _noop, cancel: threadin
     report_date = d.report_date
     for r in rows:
         compute_tat(r, report_date, hset)
+    fill_history(rows)
     d.all_rows = rows
-    d.complete, d.incomplete = select_rows(rows, cfg.mode, d.report_date, d.w_from, d.w_till)
+    d.complete, d.incomplete = select_rows(rows, d.mode, d.report_date, d.w_from, d.w_till)
     d.recon = reconcile(rows, d.files)
     if hol.needs_update(today):
         d.notes.append(f"ছুটির তালিকা {hol.last_date():%d-%m-%Y} পর্যন্ত আছে; নতুন ছুটি যোগ করুন।")

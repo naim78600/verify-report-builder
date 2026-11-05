@@ -2,11 +2,14 @@
 
 Rules (agreed with the user)
   * Trips created on the file-creation date, in creation order: the first 5 = ONE Package
-    (any trip type counts). The 6th, 7th ... same-day trips = separate Single rows.
+    (any trip type counts). The 6th, 7th, 8th ... same-day trips = separate single rows
+    labelled Extra Trip 1, 2, 3 ... (billed In or Out by their own address).
   * Every trip created after the creation date is a single bill: in the Re-CPV tracker -> ReCpv,
     otherwise Extra Document / Extra Trip.
   * Inactive trips are billable; Canceled trips are highlighted yellow.
-  * Package is Out if ANY of its trips is outside Dhaka; a single row is judged on its own trip.
+  * In = inside Dhaka city, Gazipur city or Narayanganj city (lat/long); everything else = Out.
+  * Package is Out if ANY of its trips is Out; a single row is judged on its own trip.
+  * SLA (working days from Receive Date): In = 2, Out = 4. Extra TAT = TAT - SLA (never below 0).
   * The number of trips never changes because of Re-CPV - Re-CPV only labels a trip.
   * Each row has its own Receive Date, Submission, TAT and Extra TAT.
 """
@@ -21,10 +24,12 @@ from .summary import Summary, TripView, analyze
 
 PACKAGE_MAX = 5
 CUTOFF_HOUR = 15          # "before / after 3 PM"
+SLA_IN = 2                # working days allowed, In area (Dhaka / Gazipur / Narayanganj city)
+SLA_OUT = 4               # working days allowed, Out area
 
 BASE_TYPE = {
     "HOUSE": "House", "GUARANTOR_HOUSE": "House", "OFFICE": "Office", "GUARANTOR_OFFICE": "Office",
-    "BANK": "Bank", "DOCUMENT": "Document", "RENTAL": "Rental", "CAR_QUATATION": "Car Quotation",
+    "BANK": "BS", "DOCUMENT": "Document", "RENTAL": "Rental", "CAR_QUATATION": "Car Quotation",
     "PROPERTY": "Property", "DOC_SERVICE": "Document", "DOC_DRCHAMBER": "Chamber", "DOC_TUITION": "Tuition",
 }
 SLAB_DOC = "Single Document(Salary Certificate/Pay Slip/LOI/Signature) Verification"
@@ -40,7 +45,7 @@ def slab_for(trip: dict, role: str) -> str:
     if code == "OFFICE":
         return "Single Office"
     if code == "BANK":
-        return "Bank"
+        return "BS"
     return SLAB_DOC
 
 
@@ -52,6 +57,16 @@ class FileLogs:
     submitted: list = field(default_factory=list)     # ascending
     partial: list = field(default_factory=list)
     trip_finished: dict = field(default_factory=dict)
+    events: list = field(default_factory=list)       # LogEvent, newest first
+
+
+@dataclass
+class LogEvent:
+    when: datetime
+    etype: str                # APPLICATION | TRIP | CONCERN
+    entity_id: int | None
+    text: str                 # short, human words ("Finished", "On Hold", "Allocated to X" ...)
+    user: str = ""
 
 
 @dataclass
@@ -88,6 +103,15 @@ class BillRow:
     tat: int | None = None
     extra_tat: int | None = None
     canceled: bool = False
+    sla_days: int = 2
+    sla_breach: bool = False
+    bill_note: str = ""                                # "Out bill" / "In bill" (single-trip rows)
+    file_history: list = field(default_factory=list)   # every billing event of this file, first to last
+    history_pos: int = 0                               # index of this row inside file_history (0-based)
+    last_file: tuple | None = None                     # (when, text, user) newest log entry of the file
+    last_trips: list = field(default_factory=list)     # [(trip_id, type label, when, text, user)]
+    appointments: list = field(default_factory=list)   # [dict] appointments of this row's trips
+    info: list = field(default_factory=list)           # notes for the Check List only (no yellow)
 
     @property
     def submitted(self) -> bool:
@@ -154,7 +178,7 @@ def extra_category(trip: dict) -> str:
     code = trip.get("type_code", "")
     blob = f'{trip.get("comment") or ""} {trip.get("remarks") or ""}'.lower()
     if code == "BANK":
-        return "Extra Document(Bank)"
+        return "Extra Document(BS)"
     if code in ("HOUSE", "OFFICE", "GUARANTOR_HOUSE", "GUARANTOR_OFFICE"):
         return "Extra Trip"
     if "loi" in blob:
@@ -208,6 +232,80 @@ def row_area(trips: list) -> tuple[str, bool, str]:
     return "In", sure, why
 
 
+# ------------------------------------------------------------------------------ appointments / last update
+def _trip_label(t: dict) -> str:
+    return BASE_TYPE.get(t.get("type_code", ""), t.get("type") or "Trip")
+
+
+def appointments_for(trips: list) -> list[dict]:
+    """Appointments of the trips of ONE row (oldest first) - straight from the dashboard."""
+    out = []
+    for _c, t in trips:
+        for a in t.get("appointments") or []:
+            out.append({"trip_id": t["id"], "trip_type": _trip_label(t), "time": a.get("time"),
+                        "type": a.get("type") or "", "reason": a.get("reason") or "",
+                        "created_at": a.get("created_at"), "active": a.get("active", True)})
+    out.sort(key=lambda a: (a["created_at"] or datetime.min, a["trip_id"] or 0))
+    return out
+
+
+def last_update_for(logs: "FileLogs | None", trips: list, labels: dict | None = None) -> tuple:
+    """Newest activity-log entry of the whole file, and of each trip of this row."""
+    if logs is None or not logs.ok or not logs.events:
+        return None, []
+    labels = labels or {}
+    ev = logs.events                                     # newest first
+    newest = ev[0]
+    what = newest.text
+    if newest.etype == "TRIP" and newest.entity_id:
+        what = f"Trip {newest.entity_id} ({labels.get(newest.entity_id, 'Trip')}) - {newest.text}"
+    file_last = (newest.when, what, newest.user)
+    rows = []
+    for _c, t in trips:
+        mine = next((e for e in ev if e.etype == "TRIP" and e.entity_id == t["id"]), None)
+        if mine:
+            rows.append((t["id"], _trip_label(t), mine.when, mine.text, mine.user))
+        else:
+            rows.append((t["id"], _trip_label(t), None, "", ""))
+    return file_last, rows
+
+
+def short_slab(slab: str) -> str:
+    if slab == SLAB_DOC:
+        return "Single Document"
+    if slab == SLAB_PG:
+        return "PG Verification"
+    return slab
+
+
+def fill_history(rows: list[BillRow]) -> None:
+    """Every row of a file carries the same numbered history (first to last) of that file's bills."""
+    by_file: dict = {}
+    for r in rows:
+        by_file.setdefault(r.file_id, []).append(r)
+    for rs in by_file.values():
+        rs.sort(key=lambda r: (r.receive_dt or datetime.max, r.trips[0][1]["id"] or 0))
+        rs.sort(key=lambda r: {"Package": 0, "Single": 1, "ReCpv": 2, "Extra": 2}.get(r.kind, 3))
+        # chronological by receive date, Package always first
+        pkg = [r for r in rs if r.kind == "Package"]
+        rest = sorted([r for r in rs if r.kind != "Package"],
+                      key=lambda r: (r.receive_dt or datetime.max, r.trips[0][1]["id"] or 0))
+        rs[:] = pkg + rest
+        lines = []
+        for i, r in enumerate(rs, 1):
+            when = f" - {r.receive_dt:%d-%m-%Y}" if r.receive_dt else ""
+            if r.kind == "Package":
+                what = f"Package ({len(r.trips)} trip{'s' if len(r.trips) != 1 else ''})"
+            elif r.kind == "Single":
+                what = f"{r.category.replace('Created - ', '')} - {short_slab(r.slab)}"
+            else:
+                what = f"{r.category} - {short_slab(r.slab)}"
+            lines.append(f"{i}. {what} - {r.area}{when}")
+        for pos, r in enumerate(rs):
+            r.file_history = lines
+            r.history_pos = pos
+
+
 # ------------------------------------------------------------------------------ building
 def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileLogs | None,
                history_since: datetime) -> list[BillRow]:
@@ -232,7 +330,7 @@ def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileL
     groups: list[tuple[str, list]] = []
     if same_day:
         groups.append(("Package", same_day[:PACKAGE_MAX]))
-        groups += [("Single", [ct]) for ct in same_day[PACKAGE_MAX:]]
+        groups += [("Single", [ct]) for ct in same_day[PACKAGE_MAX:]]      # 6th, 7th, 8th ... = Extra Trip 1, 2, 3 ...
     for ct in later:
         t = ct[1]
         kind = "ReCpv" if (t["id"] in recpv_by_trip or t.get("re_cpv")) else "Extra"
@@ -241,6 +339,8 @@ def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileL
     rows: list[BillRow] = []
     ftype = file_type_of(file["file_no"], file.get("type", ""))
     total_rows = len(groups)
+    single_no = 0
+    labels = {t["id"]: _trip_label(t) for _c, t in flat}
     for kind, trips in groups:
         r = BillRow(file_id=file["id"], file_no=file["file_no"], file_type=ftype, kind=kind, trips=trips)
         t0 = trips[0][1]
@@ -259,7 +359,8 @@ def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileL
         else:
             r.slab = slab_for(t0, trips[0][0]["role"].upper())
             if kind == "Single":
-                r.category = "Created"
+                single_no += 1
+                r.category = f"Created - Extra Trip {single_no}"
                 r.receive_dt = created or t0.get("created_at")
             elif kind == "ReCpv":
                 r.category = "Re-CPV"
@@ -273,12 +374,21 @@ def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileL
         r.area, r.area_sure, r.area_why = row_area(trips)
         if not r.area_sure:
             r.flags["area"] = r.area_why
+        r.sla_days = SLA_OUT if r.area == "Out" else SLA_IN
+        if kind != "Package":
+            r.bill_note = f"{r.area} bill"
+        if kind == "Package":
+            st = (file.get("station") or "").lower()
+            if st.startswith("out") and r.area == "In" or st.startswith("in ") and r.area == "Out":
+                r.info.append(f"ড্যাশবোর্ডের Station = {file.get('station')}, কিন্তু ম্যাপ অনুযায়ী {r.area}")
+        r.appointments = appointments_for(trips)
+        r.last_file, r.last_trips = last_update_for(logs, trips, labels)
         if any(t.get("status_code") == 6 for _c, t in trips):
             r.canceled = True
             r.flags["slab"] = "Canceled ট্রিপ আছে (বিলযোগ্য কি না সিদ্ধান্ত বাকি)"
         _assign_submission(r, file, logs, has_followups=total_rows > 1 and any(g[0] in ("ReCpv", "Extra") for g in groups))
         views = [TripView(t, c["role"].upper(), info[c["id"]]["who"]) for c, t in trips]
-        r.summary = analyze(views, r.submitted, "BS" if kind == "Package" else "Bank")
+        r.summary = analyze(views, r.submitted, "BS")
         if r.summary.uncertain:
             r.flags["summary"] = "; ".join(dict.fromkeys(r.summary.reasons)) or "সংক্ষেপ নিশ্চিত নয়"
         rows.append(r)
@@ -322,7 +432,9 @@ def compute_tat(r: BillRow, report_date: date, holiday_set: set[date]) -> None:
     end = r.submitted_at.date() if r.submitted_at else report_date
     start = r.receive_dt.date() + timedelta(days=1)
     r.tat = max(0, hol.count_business_days(start, end, holiday_set))
-    r.extra_tat = max(0, r.tat - (3 if r.area == "Out" else 2))
+    r.sla_days = SLA_OUT if r.area == "Out" else SLA_IN
+    r.extra_tat = max(0, r.tat - r.sla_days)
+    r.sla_breach = r.extra_tat > 0
 
 
 def before_after(r: BillRow) -> str:

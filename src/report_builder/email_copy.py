@@ -8,17 +8,19 @@ from __future__ import annotations
 from html import escape
 from pathlib import Path
 
+from . import config, theme as T
 from .billing import before_after
 from .collect_prime import PrimeData, title_for
-from . import config
+from .report_text import appointment_lines, bill_slab_lines, last_update_lines, summary_lines
 
 SIGNATURE_FILE = config.SETTINGS_DIR / "email_signature.txt"
 HEAD = ["S.N", "File Number", "Type", "Concerns", "Re-CPV / Extra Trip (ID)", "Bill Slab", "Area", "Receive Date",
-        "Submission Date", "Before/After 3 PM", "Tat", "Extra Tat", "Report Status", "Report Summary"]
+        "Submission Date", "Before/After 3 PM", "Tat", "Extra Tat", "SLA", "Report Status", "Report Summary",
+        "Last Update", "Appointment"]
 
-TD = "border:1px solid #000;padding:3px 4px;vertical-align:middle;text-align:center;font-size:12px;"
-TDL = "border:1px solid #000;padding:3px 4px;vertical-align:middle;text-align:left;font-size:12px;"
-TH = "border:1px solid #000;padding:3px 4px;text-align:center;font-weight:bold;font-size:12px;"
+TD = f"border:1px solid #{T.BORDER};padding:3px 5px;vertical-align:top;text-align:center;font-size:12px;"
+TDL = f"border:1px solid #{T.BORDER};padding:3px 5px;vertical-align:top;text-align:left;font-size:12px;"
+TH = f"border:1px solid #{T.BORDER};padding:4px 5px;text-align:center;font-weight:bold;font-size:12px;background:#{T.NAVY};color:#fff;"
 
 
 def load_signature() -> str:
@@ -37,21 +39,46 @@ def _br(s) -> str:
     return escape(str(s if s is not None else "")).replace("\n", "<br>")
 
 
+_ST = {"n": "", "b": "font-weight:bold;", "m": f"color:#{T.MUTED};", "h": f"font-weight:bold;font-size:10px;color:#{T.NAVY};",
+       "g": f"color:#{T.POS};", "gb": f"font-weight:bold;color:#{T.POS};", "a": f"color:#{T.NEG};",
+       "ab": f"font-weight:bold;color:#{T.NEG};", "k": f"color:#{T.MUTED};"}
+
+
+def _html(lines, kind_color=None) -> str:
+    out = []
+    for ln in lines:
+        seg = []
+        for text, st in ln:
+            css = _ST.get(st, "")
+            if st == "k" and kind_color:
+                css = f"font-weight:bold;color:#{kind_color};"
+            seg.append(f'<span style="{css}">{escape(text)}</span>' if text else "")
+        out.append("".join(seg) or "&nbsp;")
+    return "<br>".join(out)
+
+
 def _table(title: str, rows) -> str:
-    out = [f'<table style="border-collapse:collapse;border:1px solid #000;font-family:Times New Roman,serif;margin-bottom:14px;">',
+    out = [f'<table style="border-collapse:collapse;border:1px solid #{T.BORDER};font-family:Calibri,Arial,sans-serif;margin-bottom:14px;">',
            f'<tr><td colspan="{len(HEAD)}" style="{TH}font-size:14px;">{escape(title)}</td></tr>',
            "<tr>" + "".join(f'<td style="{TH}">{escape(h)}</td>' for h in HEAD) + "</tr>"]
     for r in rows:
         sub = r.submitted
         when = f"{r.submitted_at:%d/%m/%Y} {r.submitted_at:%I:%M %p}" if sub else "Pending"
+        sla_c = T.NEG if r.sla_breach else T.POS
+        out_a = r.area == "Out"
         cells = [
-            (r.sl, TD), (r.file_no, TD), (r.file_type, TD), ("\n".join(r.concern_lines), TDL),
-            ("\n\n".join(r.history_lines), TDL), (f"{r.slab}\n{r.category}", TD), (r.area, TD),
-            (f"{r.receive_dt:%d/%m/%Y}" if r.receive_dt else "", TD), (when, TD),
-            (before_after(r) if sub else "-", TD), (r.tat if r.tat is not None else "", TD),
-            (r.extra_tat if r.extra_tat is not None else "", TD), (r.status, TD), (r.summary.text(), TDL),
+            (escape(str(r.sl)), TD), (f"<b>{escape(r.file_no)}</b>", TD), (escape(r.file_type), TD),
+            (_br("\n".join(r.concern_lines)), TDL), (_br("\n\n".join(r.history_lines)), TDL),
+            (_html(bill_slab_lines(r), T.KIND_TX.get(r.kind)), TDL + f"background:#{T.KIND_BG.get(r.kind, 'FFFFFF')};"),
+            (f"<b>{r.area}</b>", TD + f"color:#{T.OUT if out_a else T.IN};background:#{T.OUT_BG if out_a else T.IN_BG};"),
+            (f"{r.receive_dt:%d/%m/%Y}" if r.receive_dt else "", TD), (escape(when), TD),
+            (escape(before_after(r)) if sub else "-", TD), (str(r.tat) if r.tat is not None else "", TD),
+            (f"<b>{r.extra_tat}</b>" if r.extra_tat is not None else "", TD + f"color:#{sla_c};"),
+            ("SLA Breach" if r.sla_breach else "Within SLA", TD + f"color:#{sla_c};font-weight:bold;"),
+            (escape(r.status), TD + f"font-weight:bold;color:#{T.POS if sub else T.NEG};background:#{T.POS_BG if sub else T.NEG_BG};"),
+            (_html(summary_lines(r)), TDL), (_html(last_update_lines(r)), TDL), (_html(appointment_lines(r)), TDL),
         ]
-        out.append("<tr>" + "".join(f'<td style="{st}">{_br(v)}</td>' for v, st in cells) + "</tr>")
+        out.append("<tr>" + "".join(f'<td style="{st}">{v}</td>' for v, st in cells) + "</tr>")
     out.append("</table>")
     return "".join(out)
 

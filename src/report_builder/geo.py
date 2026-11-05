@@ -1,26 +1,58 @@
-"""Dhaka In / Out decision from latitude / longitude (with address-text fallback).
+"""In / Out decision from latitude / longitude (with address-text fallback).
 
-"In"  = inside the Dhaka metropolitan area (DNCC + DSCC outline, approximated below).
+"In"  = inside ONE of three city areas: Dhaka city, Gazipur city, Narayanganj city.
 "Out" = anywhere else.
-Every answer carries a `sure` flag. When the point is close to the boundary (within
-NEAR_KM) or the coordinates disagree / are missing, `sure` is False and the report
-shows the cell in yellow so a person checks it.
 
-The outline is an approximation drawn from public maps; if the bank's own In/Out
-list shows a different edge, edit DHAKA_POLYGON below (lat, lon pairs, in order).
+Every answer carries a `sure` flag. When the point is close to the edge of the In-area (within
+NEAR_KM) or the coordinates disagree / are missing, `sure` is False and the internal report shows the
+cell in yellow so a person checks it.
+
+The outlines are approximations drawn from public maps (city-corporation areas). If the bank's own
+In/Out list shows a different edge, edit the polygons below (lat, lon pairs, in order) or use the
+file  ~/.verify_report_builder/areas.json  ({"Dhaka": [[lat, lon], ...], ...}) - it replaces the built-in outline.
 """
 from __future__ import annotations
 
+import json
 import math
 import re
 
-# (lat, lon) - clockwise outline of Dhaka city (Uttara - Demra - Jatrabari - Hazaribagh - Mirpur).
+from . import config
+
+# (lat, lon) outlines
 DHAKA_POLYGON = [
     (23.905, 90.375), (23.905, 90.420), (23.885, 90.455), (23.835, 90.465),
-    (23.800, 90.462), (23.760, 90.458), (23.730, 90.492), (23.700, 90.502),
-    (23.688, 90.470), (23.688, 90.430), (23.698, 90.395), (23.712, 90.368),
+    (23.800, 90.462), (23.765, 90.480), (23.745, 90.508), (23.715, 90.518),
+    (23.695, 90.512), (23.688, 90.470), (23.688, 90.430), (23.698, 90.395), (23.712, 90.368),
     (23.740, 90.338), (23.790, 90.333), (23.840, 90.333), (23.875, 90.348),
 ]
+# Gazipur City Corporation: Tongi - Board Bazar - Joydebpur - Chandana - Konabari - Pubail (approx.)
+GAZIPUR_POLYGON = [
+    (23.905, 90.372), (23.905, 90.425), (23.925, 90.470), (23.965, 90.495), (24.030, 90.490),
+    (24.085, 90.455), (24.095, 90.395), (24.075, 90.335), (24.025, 90.310), (23.965, 90.330),
+    (23.925, 90.350),
+]
+# Narayanganj City Corporation: Siddhirganj - Narayanganj Sadar - Fatullah - Bandar (approx.)
+NARAYANGANJ_POLYGON = [
+    (23.700, 90.505), (23.698, 90.535), (23.665, 90.548), (23.612, 90.540), (23.592, 90.508),
+    (23.600, 90.468), (23.640, 90.452), (23.688, 90.458),
+]
+AREAS = {"Dhaka": DHAKA_POLYGON, "Gazipur": GAZIPUR_POLYGON, "Narayanganj": NARAYANGANJ_POLYGON}
+
+
+def _load_user_areas() -> dict:
+    try:
+        raw = json.loads((config.SETTINGS_DIR / "areas.json").read_text(encoding="utf-8"))
+        out = {}
+        for name, pts in raw.items():
+            poly = [(float(a), float(b)) for a, b in pts]
+            if len(poly) >= 3:
+                out[str(name)] = poly
+        return out
+    except Exception:
+        return {}
+
+
 NEAR_KM = 2.0           # closer to the edge than this = "not sure"
 BD_BOX = (20.5, 26.8, 88.0, 92.8)   # lat_min, lat_max, lon_min, lon_max (valid Bangladesh coordinates)
 
@@ -29,12 +61,12 @@ _IN_WORDS = (
     "farmgate", "tejgaon", "badda", "rampura", "khilgaon", "malibagh", "mogbazar", "shantinagar", "paltan",
     "bashundhara", "khilkhet", "mohakhali", "kawran", "kafrul", "pallabi", "shyamoli", "adabor", "kalabagan",
     "lalmatia", "jatrabari", "demra", "sabujbagh", "shahbagh", "azimpur", "lalbagh", "hazaribagh", "wari",
-    "old dhaka", "sutrapur", "gendaria", "tikatuly", "ramna", "segunbagicha", "bangshal", "newmarket",
+    "old dhaka", "joydebpur", "joydevpur", "board bazar", "konabari", "siddhirganj", "fatullah", "chashara", "sutrapur", "gendaria", "tikatuly", "ramna", "segunbagicha", "bangshal", "newmarket",
     "elephant road", "kamalapur", "mugda", "basabo", "shahjahanpur", "banasree", "aftabnagar", "nikunja",
     "cantonment", "airport", "turag", "dakshinkhan", "uttarkhan", "vatara", "satarkul", "tejkunipara",
 )
 _OUT_WORDS = (
-    "gazipur", "narayanganj", "savar", "ashulia", "keraniganj", "tongi", "narsingdi", "munshiganj", "manikganj",
+    "gazipur", "narayanganj", "savar", "ashulia", "keraniganj", "narsingdi", "munshiganj", "manikganj",
     "chattogram", "chittagong", "sylhet", "rajshahi", "khulna", "barishal", "barisal", "rangpur", "mymensingh",
     "comilla", "cumilla", "bogura", "bogra", "jessore", "jashore", "cox", "dinajpur", "tangail", "faridpur",
     "kishoreganj", "narail", "pabna", "kushtia", "noakhali", "feni", "brahmanbaria", "habiganj", "gopalganj",
@@ -77,13 +109,34 @@ def _dist_seg(px, py, ax, ay, bx, by) -> float:
     return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
 
 
-def classify_point(lat: float, lon: float) -> tuple[str, bool]:
-    """-> ("In"/"Out", sure)."""
-    poly = [_xy(a, o) for a, o in DHAKA_POLYGON]
+def _in_any(lat: float, lon: float, polys) -> str | None:
     px, py = _xy(lat, lon)
-    inside = _inside(px, py, poly)
-    d = min(_dist_seg(px, py, *poly[i], *poly[(i + 1) % len(poly)]) for i in range(len(poly)))
-    return ("In" if inside else "Out"), d >= NEAR_KM
+    for name, poly in polys:
+        if _inside(px, py, poly):
+            return name
+    return None
+
+
+def classify_point(lat: float, lon: float) -> tuple[str, bool, str]:
+    """-> ("In"/"Out", sure, city name or "").
+
+    A point is "sure" only if eight points on a NEAR_KM circle around it fall on the same side, so the
+    shared border between two neighbouring In-cities does not cause a false doubt.
+    """
+    areas = dict(AREAS)
+    areas.update(_load_user_areas())
+    polys = [(n, [_xy(a, o) for a, o in p]) for n, p in areas.items()]
+    here = _in_any(lat, lon, polys)
+    dlat = NEAR_KM / 110.57
+    dlon = NEAR_KM / (111.32 * math.cos(math.radians(lat)))
+    same = True
+    for k in range(8):
+        ang = math.radians(45 * k)
+        other = _in_any(lat + dlat * math.sin(ang), lon + dlon * math.cos(ang), polys)
+        if (other is None) != (here is None):
+            same = False
+            break
+    return ("In" if here else "Out"), same, here or ""
 
 
 def _word_hit(text: str, words) -> bool:
@@ -112,13 +165,13 @@ def trip_area(trip: dict) -> tuple[str, bool, str]:
     for lat, lon, label in ((trip.get("lat"), trip.get("lon"), "address"),
                             (trip.get("end_lat"), trip.get("end_lon"), "visit")):
         if valid_coord(lat, lon):
-            area, sure = classify_point(float(lat), float(lon))
-            cands.append((area, sure, label))
+            area, sure, city = classify_point(float(lat), float(lon))
+            cands.append((area, sure, label, city))
     text_hint = classify_text(trip.get("address", ""), trip.get("exact_address", ""),
                               trip.get("area", ""), trip.get("place_name", ""))
     if cands:
-        area, sure, label = cands[0]
-        why = f"লাট-লং ({label})"
+        area, sure, label, city = cands[0]
+        why = f"লাট-লং ({label})" + (f" - {city}" if city else "")
         if len(cands) > 1 and cands[1][0] != area:
             return area, False, "ঠিকানা ও ভিজিটের স্থানাঙ্ক আলাদা"
         if not sure:

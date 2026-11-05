@@ -65,9 +65,12 @@ def test_submission_and_tat(data):
     f2 = next(r for r in d.complete if r.file_no == "CC-20261101000002")
     assert f2.submitted_at == datetime(2026, 11, 2, 11, 0) and (f2.tat, f2.extra_tat) == (1, 0)
     f6 = next(r for r in d.complete if r.kind == "Package" and r.file_no.startswith("CC--"))
-    assert f6.area == "Out" and (f6.tat, f6.extra_tat) == (4, 1)
+    assert f6.area == "Out" and (f6.tat, f6.extra_tat) == (4, 0) and f6.sla_days == 4 and not f6.sla_breach
     f3 = d.incomplete[0] if d.incomplete[0].file_no.endswith("0003") else d.incomplete[1]
     assert f3.status == "Incomplete" and f3.status_note == "Partially Submitted" and f3.tat == 7
+
+
+from report_builder.report_text import appointment_lines, last_update_lines, plain as text_of
 
 
 def test_summary_text(data):
@@ -96,7 +99,7 @@ def test_outputs(data, tmp_path):
     wb = load_workbook(tmp_path / "Prime_Bank_2026-11-02_3pm_Submission_Tracker.xlsx")
     assert wb.sheetnames == ["Prime Bank Report", "Summary", "Holidays"]            # bank copy: no check list
     ws = wb["Prime Bank Report"]
-    assert str(ws["K6"].value).startswith("=MAX(0,NETWORKDAYS.INTL(")
+    assert str(ws["K7"].value).startswith("=MAX(0,NETWORKDAYS.INTL(")
     wb2 = load_workbook(tmp_path / "Prime_Bank_2026-11-02_3pm_Submission_Tracker_INTERNAL.xlsx")
     assert "Check List" in wb2.sheetnames
     html = (tmp_path / "Prime_Bank_2026-11-02_3pm_Submission_Tracker_email.html").read_text(encoding="utf-8")
@@ -107,7 +110,9 @@ def test_outputs(data, tmp_path):
 
 
 def test_geo_and_slot_and_holidays(tmp_path):
-    assert geo.classify_point(23.7925, 90.4078) == ("In", True)
+    assert geo.classify_point(23.7925, 90.4078) == ("In", True, "Dhaka")
+    assert geo.classify_point(23.999, 90.420)[::2] == ("In", "Gazipur")            # Joydebpur
+    assert geo.classify_point(23.6238, 90.5000)[::2] == ("In", "Narayanganj")      # Narayanganj Sadar
     assert geo.classify_point(23.8583, 90.2667)[0] == "Out"
     assert geo.trip_area({})[:2] == ("In", False)
     assert slot_for(datetime(2026, 11, 2, 14, 59)) == "3pm" and slot_for(datetime(2026, 11, 2, 17, 0)) == "7pm"
@@ -133,3 +138,38 @@ def test_remark_engine_samples():
     assert s.done == "App House, Sign, Chamber" and s.due == "0"
     s = S.analyze([view("BANK", 5, "Bank statement not verified. Applicant call not received.")], True)
     assert s.done == "BS (Call not received; Statement not verified)"
+
+
+def test_bs_label_history_and_extra_trip_names(data):
+    d, _ = data
+    f6 = [r for r in d.all_rows if r.file_no.startswith("CC--")]
+    assert [r.category for r in f6 if r.kind == "Single"] == ["Created - Extra Trip 1", "Created - Extra Trip 2"]
+    assert any(r.slab == "BS" for r in f6 if r.kind == "Single")
+    assert "Bank" not in " ".join(" ".join(r.concern_lines) for r in d.all_rows)
+    f1 = sorted([r for r in d.all_rows if r.file_no == "PL-20261026000001"], key=lambda r: r.history_pos)
+    assert [r.kind for r in f1] == ["Package", "Single", "ReCpv"]
+    h = f1[0].file_history
+    assert len(h) == 3 and h[0].startswith("1. Package (5 trips)") and h[1].startswith("2. Extra Trip 1") and h[2].startswith("3. Re-CPV")
+    assert f1[2].history_pos == 2
+    assert all(r.file_history == h for r in f1)
+
+
+def test_sla_in_out(data):
+    d, _ = data
+    f2 = next(r for r in d.all_rows if r.file_no == "CC-20261101000002")
+    assert f2.area == "In" and f2.sla_days == 2
+    pk = next(r for r in d.all_rows if r.file_no == "PL-20261026000001" and r.kind == "Package")
+    assert pk.area == "Out" and pk.sla_days == 4          # one guarantor trip is in Savar
+
+
+def test_last_update_and_appointments(data):
+    d, _ = data
+    f3 = next(r for r in d.incomplete if r.file_no.endswith("0003"))
+    when, what, user = f3.last_file
+    assert when == datetime(2026, 11, 1, 10, 0) and "Trip 700051 (Office)" in what and "On Hold" in what and user == "Verifier"
+    assert [t[0] for t in f3.last_trips] == [700050, 700051]
+    assert len(f3.appointments) == 1 and f3.appointments[0]["time"] == datetime(2026, 11, 4, 12, 0)
+    assert f3.appointments[0]["created_at"] == datetime(2026, 11, 1, 10, 0)
+    f2 = next(r for r in d.complete if r.file_no == "CC-20261101000002")
+    assert text_of(appointment_lines(f2)) == "NO"
+    assert "Trip 700051 · Office" in text_of(appointment_lines(f3)) + text_of(last_update_lines(f3))

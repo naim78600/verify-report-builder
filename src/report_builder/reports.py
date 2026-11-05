@@ -14,7 +14,7 @@ from .recpv_excel import build_recpv_workbook
 def base_name(d: PrimeData) -> str:
     if d.mode == "tracker":
         return f"Prime_Bank_{d.report_date:%Y-%m-%d}_{d.slot}_Submission_Tracker"
-    return f"Prime_Bank_Bill_Report_{d.w_from:%Y%m%d}-{d.w_till:%Y%m%d}"
+    return f"Prime_Bank_Report_{d.w_from:%Y%m%d}-{d.w_till:%Y%m%d}"
 
 
 def write_prime_outputs(d: PrimeData, out_dir: Path, excel: bool = True, pdf: bool = True,

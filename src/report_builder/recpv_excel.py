@@ -110,8 +110,9 @@ def _calculation_sheet(wb, d: PrimeData, n_rows: int):
     put(ws, r, 2, f'=COUNTIF({rng("N")},"Incomplete")', align=Alignment(horizontal="center"), formula=True)
     r += 2
     for note in ("Package = trips created on the file-creation date, first 5 in creation order (any type).",
-                 "Single = 6th, 7th ... trip of the same date. Re-CPV / Extra = trip created after the creation date.",
-                 "Package is Out if any trip is outside Dhaka (from latitude/longitude); a single row is judged on its own trip.",
+                 "Extra Trip 1, 2, 3 = 6th, 7th, 8th trip created with the file (billed alone). Re-CPV / Extra Document / Extra Trip = trip created after the creation date.",
+                 "In = inside Dhaka city, Gazipur city or Narayanganj city (from latitude/longitude), otherwise Out. A Package is Out if any trip is Out; a single row is judged on its own trip.",
+                 "SLA: In = 2 working days, Out = 4 working days. Extra TAT = TAT - SLA.",
                  "TAT counts working days (Friday and Saturday off, plus the Holidays list)."):
         put(ws, r, 1, note, font=Font(color="555555", italic=True))
         r += 1
