@@ -24,7 +24,7 @@ def data():
     port = srv.server_address[1]
     base = f"http://127.0.0.1:{port}"
     cfg = PrimeConfig(web=base, api=base, server_label="mock", email="test@example.com", password="secret",
-                      days=30, mode="tracker", report_date=date(2026, 11, 2), slot="3pm")
+                      days=30, mode="tracker", report_date=date(2026, 11, 2), slot="3pm", incomplete_scope="all_pending")
     d = collect_prime(cfg, lambda *a: None, threading.Event())
     yield d, srv
     srv.shutdown()
@@ -298,4 +298,62 @@ def test_range_mode_lists_what_the_dashboard_lists(tmp_path):
     finally:
         mock_server.STATE["files"].remove(f7)
         ps.LOGS.pop(500007, None)
+        srv.shutdown()
+
+
+def test_tracker_window_rollover_and_incomplete_scope():
+    """Rules read from the mails sent 25/10-05/11/2026 and the live activity logs (see README v2.3.0):
+      * Complete = SUBMITTED on the report day; Fri / Sat / holiday submissions go into the NEXT working day's tracker,
+        shown with that day's date, and the TAT is counted up to it.
+      * Incomplete = rows still not Submitted of the files that became Partially Submitted inside the tracker window."""
+    import prime_scenario as ps
+    srv = mock_server.start_scenario(0)
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+    d = "2026-10-27 10:00:00"
+    f8 = ps.application(500008, "CC-20261027000008", d, 6, [
+        ps.concern(5000081, 500008, "APPLICANT", "IOTA EIGHT", [ps.trip(700080, 5000081, "HOUSE", 5, d, ps.OK, loc=ps.SAVAR)])], atype=2)
+    ps.LOGS[500008] = [ps._log("APPLICATION", 500008, "Application : 500008 status updated to SUBMITTED by Mgr", "FINISHED", "SUBMITTED", "2026-10-31 15:00:00")]
+    f9 = ps.application(500009, "PL-20261028000009", "2026-10-28 09:00:00", 7, [
+        ps.concern(5000091, 500009, "APPLICANT", "KAPPA NINE", [
+            ps.trip(700090 + 1, 5000091, "HOUSE", 5, "2026-10-28 09:00:00", ps.OK),
+            ps.trip(700090 + 2, 5000091, "OFFICE", 2, "2026-10-28 09:00:00", "")])])
+    ps.LOGS[500009] = [ps._log("APPLICATION", 500009, "Application : 500009 status updated to PARTIAL_SUBMITTED by Mgr", "HOLD", "PARTIAL_SUBMITTED", "2026-11-02 12:00:00")]
+    mock_server.STATE["files"].extend([f8, f9])
+
+    def run(day, scope=None, mode_kwargs=None):
+        kw = dict(web=base, api=base, server_label="mock", email="test@example.com", password="secret", days=30,
+                  mode="tracker", report_date=day)
+        if scope:
+            kw["incomplete_scope"] = scope
+        return collect_prime(PrimeConfig(**kw), lambda *a: None, threading.Event())
+    nos = lambda rows: sorted({r.file_no for r in rows})               # noqa: E731
+    try:
+        # Sunday 01-Nov: the tracker covers Fri 30-Oct .. Sun 01-Nov
+        d1 = run(date(2026, 11, 1))
+        assert d1.track_from == date(2026, 10, 30)
+        r8 = next(r for r in d1.complete if r.file_no == "CC-20261027000008")
+        assert r8.submitted_at == datetime(2026, 10, 31, 15, 0) and r8.sub_day == date(2026, 11, 1) and r8.rolled
+        assert r8.reported_at == datetime(2026, 11, 1, 15, 0)
+        assert (r8.tat, r8.extra_tat) == (3, 0)                        # Wed 28, Thu 29, Sun 01 - counted up to the reported day
+        assert d1.dash["check"]["missing"] == [] and d1.dash["check"]["matched"] == 1
+        assert nos(d1.incomplete) == ["PL-20261020000003"]             # F3 became Partially Submitted on Fri 30-Oct
+        assert any("পরের কর্মদিবস" in n for n in d1.notes)
+        # Saturday 31-Oct (a day off, report made anyway): that day stays that day
+        d0 = run(date(2026, 10, 31))
+        r8 = next(r for r in d0.complete if r.file_no == "CC-20261027000008")
+        assert not r8.rolled and r8.sub_day == date(2026, 10, 31) and r8.tat == 2
+        # Monday 02-Nov: F8 was already in Sunday's tracker; only F9 became Partially Submitted today
+        d2 = run(date(2026, 11, 2))
+        assert d2.track_from == date(2026, 11, 2) and "CC-20261027000008" not in nos(d2.complete)
+        assert nos(d2.incomplete) == ["PL-20261028000009"] and d2.incomplete_scope == "partial_today"
+        f9r = d2.incomplete[0]
+        assert f9r.status == "Incomplete" and f9r.status_note == "Partially Submitted"
+        # the wider lists
+        assert nos(run(date(2026, 11, 2), "partial_open").incomplete) == ["PL-20261020000003", "PL-20261028000009"]
+        assert nos(run(date(2026, 11, 2), "all_pending").incomplete) == ["PL-20250901000005", "PL-20261020000003", "PL-20261028000009"]
+    finally:
+        for f in (f8, f9):
+            mock_server.STATE["files"].remove(f)
+        ps.LOGS.pop(500008, None)
+        ps.LOGS.pop(500009, None)
         srv.shutdown()

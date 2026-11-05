@@ -149,7 +149,7 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool) -> Path:
         for i, r in enumerate(rows, 1):
             sub = r.submitted
             if sub:
-                when = f"{r.submitted_at:%d/%m/%Y}<br/>{r.submitted_at:%I:%M %p}<br/><font color='#{T.MUTED}'>({before_after(r)})</font>"
+                when = f"{r.reported_at:%d/%m/%Y}<br/>{r.reported_at:%I:%M %p}<br/><font color='#{T.MUTED}'>({before_after(r)})</font>"
             else:
                 when = f"<font color='#{T.MUTED}'>Pending</font>"
             st_color = T.POS if sub else T.NEG

@@ -51,7 +51,7 @@ def _billing_rows_sheet(wb, d: PrimeData):
     for n, r in enumerate(sorted(d.all_rows, key=lambda x: (x.file_no, x.receive_dt or datetime.max)), 2):
         vals = [r.file_no, r.kind, r.slab, r.category, ", ".join(str(t["id"]) for _c, t in r.trips), len(r.trips),
                 "; ".join(r.concern_lines), r.receive_dt.date() if r.receive_dt else None, r.area, r.area_why,
-                r.submitted_at, r.tat, r.extra_tat, r.status, "Yes" if r.canceled else ""]
+                r.reported_at, r.tat, r.extra_tat, r.status, "Yes" if r.canceled else ""]
         for j, v in enumerate(vals, 1):
             c = put(ws, n, j, v)
             if j == 8:

@@ -212,6 +212,12 @@ class App(tk.Tk):
         self.rdate.pack(side="left", padx=(6, 12))
         self.slot = tk.StringVar(value="auto")
         Segmented(self.track_row, f, [("auto", f"অটো ({slot_for()})"), ("3pm", "3pm"), ("7pm", "7pm")], self.slot).pack(side="left")
+        self.scope_row = tk.Frame(b, bg=P["card"])
+        self.scope_row.pack(fill="x", pady=(8, 0))
+        tk.Label(self.scope_row, text="Incomplete তালিকা", bg=P["card"], fg=P["text"], font=f.small).pack(side="left")
+        self.scope = tk.StringVar(value=self.settings.get("incomplete_scope", "partial_today"))
+        Segmented(self.scope_row, f, [("partial_today", "আজকের Partial"), ("partial_open", "চলমান Partial সহ"),
+                                      ("all_pending", "সব Pending")], self.scope).pack(side="left", padx=(8, 0))
 
         # ---- 4 outputs -----------------------------------------------------------
         c4 = Card(colA, f, "যা তৈরি হবে", "৪")
@@ -316,8 +322,10 @@ class App(tk.Tk):
         pb = rt in ("tracker", "range")
         if rt == "tracker":
             self.track_row.pack(fill="x", pady=(8, 0))
+            self.scope_row.pack(fill="x", pady=(8, 0))
         else:
             self.track_row.pack_forget()
+            self.scope_row.pack_forget()
         self.rdate.enable(not rng)
         self.period_hint.config(text=(
             "তারিখ বাছলে ‘শেষ কয়েক দিন’ বন্ধ থাকে। ট্র্যাকারে ‘পর্যন্ত’ তারিখই রিপোর্টের তারিখ।" if rng else
@@ -363,7 +371,7 @@ class App(tk.Tk):
         config.save_settings({
             "server": self.server.get(), "web": self.web.get().strip(), "api": self.api.get().strip(), "email": email,
             "days": days if not d_from else int(self.settings.get("days", 60)), "out_dir": str(self.out_dir),
-            "rtype": self.rtype.get()})
+            "rtype": self.rtype.get(), "incomplete_scope": self.scope.get()})
         return {"web": web, "api": api, "email": email, "pw": pw, "days": days, "from": d_from, "till": d_till}
 
     def _resolve_urls(self):
@@ -403,7 +411,8 @@ class App(tk.Tk):
             cfg = PrimeConfig(web=inp["web"], api=inp["api"], server_label=self.server.get(), email=inp["email"],
                               password=inp["pw"], days=inp["days"], mode=mode, report_date=rdate,
                               slot=slot_for() if slot == "auto" else slot, date_from=inp["from"],
-                              date_till=inp["till"] if mode == "range" else None, workers=workers, org_name=org)
+                              date_till=inp["till"] if mode == "range" else None, workers=workers, org_name=org,
+                              incomplete_scope=self.scope.get())
             opts = {k: v.get() for k, v in self.opts.items()}
             if rt in ("tracker", "range"):
                 if not (opts["excel"] or opts["pdf"] or (opts["email"] and rt == "tracker")):

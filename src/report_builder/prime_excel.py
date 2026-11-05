@@ -205,7 +205,7 @@ def _write_rows(ws, r0: int, rows, internal: bool, checks: list, section: str) -
             "SL": row.sl, "File No": row.file_no, "Type": row.file_type, "Concerns": concerns,
             "Re-CPV / Extra Trip (ID)": history, "Area": row.area,
             "Receive Date": row.receive_dt.date() if row.receive_dt else None,
-            "Submission Date-Time": row.submitted_at if sub else "Pending",
+            "Submission Date-Time": row.reported_at if sub else "Pending",
             "Before / After 3 PM": before_after(row) if sub else "-",
             "Report Status": row.status + (f"\n({row.status_note})" if row.status_note and not sub else ""),
             "Last Update Date": lu.date() if lu else "N/A",

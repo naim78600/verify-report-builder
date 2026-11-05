@@ -96,6 +96,8 @@ class BillRow:
     area_sure: bool = True
     area_why: str = ""
     submitted_at: datetime | None = None
+    sub_day: date | None = None                        # the date the tracker shows (a Fri/Sat/holiday submission -> next working day)
+    partial_events: list = field(default_factory=list) # when the FILE became "Partially Submitted" (activity log, Dhaka time)
     status: str = "Incomplete"
     status_note: str = ""
     summary: Summary = field(default_factory=Summary)
@@ -117,6 +119,19 @@ class BillRow:
     @property
     def submitted(self) -> bool:
         return self.status == "Submitted"
+
+    @property
+    def reported_at(self) -> datetime | None:
+        """Submission date-time as the tracker shows it: the real time of day, on the reported (working) day."""
+        if not self.submitted_at:
+            return None
+        if self.sub_day and self.sub_day != self.submitted_at.date():
+            return datetime.combine(self.sub_day, self.submitted_at.time())
+        return self.submitted_at
+
+    @property
+    def rolled(self) -> bool:
+        return bool(self.submitted_at and self.sub_day and self.sub_day != self.submitted_at.date())
 
 
 # ------------------------------------------------------------------------------ concerns
@@ -388,6 +403,7 @@ def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileL
             r.canceled = True
             r.flags["slab"] = "Canceled ট্রিপ আছে (বিলযোগ্য কি না সিদ্ধান্ত বাকি)"
         _assign_submission(r, file, logs, has_followups=total_rows > 1 and any(g[0] in ("ReCpv", "Extra") for g in groups))
+        r.partial_events = list(logs.partial) if logs is not None and logs.ok else []
         views = [TripView(t, c["role"].upper(), info[c["id"]]["who"]) for c, t in trips]
         r.views = views
         r.summary = analyze(views, r.submitted, "BS")
@@ -426,12 +442,30 @@ def _assign_submission(r: BillRow, file: dict, logs: FileLogs | None, has_follow
 
 
 # ------------------------------------------------------------------------------ TAT
+def assign_sub_days(rows: list[BillRow], cap: date | None, holiday_set: set[date]) -> int:
+    """Tracker convention (checked on the sent mails and the bank's Excel: not one of 3714 rows has a Friday submission):
+    a submission that happens on a day off (Fri / Sat / holiday) is reported - and its TAT counted - on the NEXT working
+    day.  `cap` = the last day of the report (a report made for a day off keeps that day).  -> rows rolled forward."""
+    n = 0
+    for r in rows:
+        if not r.submitted_at:
+            r.sub_day = None
+            continue
+        a = r.submitted_at.date()
+        day = hol.next_working_day(a, holiday_set)
+        if cap is not None and day > max(a, cap):
+            day = max(a, cap)
+        r.sub_day = day
+        n += day != a
+    return n
+
+
 def compute_tat(r: BillRow, report_date: date, holiday_set: set[date]) -> None:
     """Same numbers as the Excel formulas (Fri+Sat off, holidays from the list)."""
     if r.receive_dt is None:
         r.tat = r.extra_tat = None
         return
-    end = r.submitted_at.date() if r.submitted_at else report_date
+    end = (r.sub_day or r.submitted_at.date()) if r.submitted_at else report_date
     start = r.receive_dt.date() + timedelta(days=1)
     r.tat = max(0, hol.count_business_days(start, end, holiday_set))
     r.sla_days = SLA_OUT if r.area == "Out" else SLA_IN
@@ -460,26 +494,59 @@ def apply_as_of(rows: list[BillRow], cutoff: date | None) -> int:
     return n
 
 
+INCOMPLETE_SCOPES = ("partial_today", "partial_open", "all_pending")
+SCOPE_TEXT = {
+    "partial_today": "আজ Partially Submitted হয়েছে এমন ফাইলের বাকি সারি",
+    "partial_open": "Partially Submitted হয়ে এখনও খোলা সব ফাইলের বাকি সারি",
+    "all_pending": "Submitted না হওয়া সব সারি",
+}
+
+
+def tracker_window(report_date: date, hset: set[date] | None) -> tuple[date, date]:
+    """The days one tracker covers: from the day after the previous working day up to the report date, so the Friday /
+    Saturday / holiday submissions come out in the next working day's tracker (Thursday's tracker covers Thursday only)."""
+    return hol.previous_working_day(report_date, hset or set()) + timedelta(days=1), report_date
+
+
 def select_rows(rows: list[BillRow], mode: str, report_date: date, w_from: date | None = None,
-                w_till: date | None = None) -> tuple[list[BillRow], list[BillRow]]:
+                w_till: date | None = None, hset: set[date] | None = None,
+                scope: str = "partial_today") -> tuple[list[BillRow], list[BillRow]]:
     """-> (complete rows, incomplete rows), each sorted by Receive Date then file number.
 
-    Complete   = rows SUBMITTED inside the dates (tracker: on the report date; range: from..till), whenever they were
-                 received - exactly what the dashboard's Reports page lists for status = Submitted.
-    Incomplete = rows not submitted yet (tracker: received inside the look-back window; range: received inside the dates)."""
+    Complete   = rows SUBMITTED inside the dates (tracker: on the report date and the days off just before it; range:
+                 from..till), whenever they were received - exactly what the dashboard's Reports page lists for Submitted.
+    Incomplete = tracker, by `scope` (checked against the mails sent 25/10-05/11/2026 and the live activity logs):
+                   partial_today : rows still not Submitted of the files that became "Partially Submitted" inside the
+                                   tracker window  - this is what the bank's tracker lists (4 of 9 days matched row for row)
+                   partial_open  : the same, plus every file that is still waiting in "Partially Submitted" from before
+                   all_pending   : every row not submitted yet (received inside the look-back window)
+                 range: rows not submitted yet that were received inside the dates."""
+    if scope not in INCOMPLETE_SCOPES:
+        scope = "partial_today"
+    t_lo, t_hi = tracker_window(report_date, hset) if mode == "tracker" else (None, None)
     complete, incomplete = [], []
     for r in rows:
         rd = r.receive_dt.date() if r.receive_dt else None
         if mode == "tracker":
-            if rd is not None and w_from and rd < w_from:      # outside the look-back window
+            if r.submitted:
+                if t_lo <= r.submitted_at.date() <= t_hi:
+                    complete.append(r)
                 continue
-            if r.submitted and r.submitted_at.date() == report_date:
-                complete.append(r)
-            elif not r.submitted:
+            if rd is not None and w_from and rd < w_from and scope == "all_pending":   # outside the look-back window
+                continue
+            if rd is not None and rd > report_date:                    # not even received on that day
+                continue
+            if scope == "all_pending":
+                incomplete.append(r)
+                continue
+            days = [e.date() for e in r.partial_events]
+            if scope == "partial_today" and any(t_lo <= x <= t_hi for x in days):
+                incomplete.append(r)
+            elif scope == "partial_open" and any(x <= t_hi for x in days):
                 incomplete.append(r)
         else:
             if r.submitted:
-                sd = r.submitted_at.date()
+                sd = r.sub_day or r.submitted_at.date()
                 if (w_from is None or sd >= w_from) and (w_till is None or sd <= w_till):
                     complete.append(r)
             elif rd is not None and (w_from is None or rd >= w_from) and (w_till is None or rd <= w_till):

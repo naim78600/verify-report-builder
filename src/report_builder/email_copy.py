@@ -65,7 +65,7 @@ def _table(title: str, rows) -> str:
            "<tr>" + "".join(f'<td style="{TH}">{escape(h)}</td>' for h in HEAD) + "</tr>"]
     for r in rows:
         sub = r.submitted
-        when = f"{r.submitted_at:%d/%m/%Y} {r.submitted_at:%I:%M %p}" if sub else "Pending"
+        when = f"{r.reported_at:%d/%m/%Y} {r.reported_at:%I:%M %p}" if sub else "Pending"
         sla_c = T.NEG if r.sla_breach else T.POS
         out_a = r.area == "Out"
         cells = [
