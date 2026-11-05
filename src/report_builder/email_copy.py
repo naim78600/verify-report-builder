@@ -11,7 +11,7 @@ from pathlib import Path
 from . import config, theme as T
 from .billing import before_after
 from .collect_prime import PrimeData, title_for
-from .report_text import appointment_lines, bill_slab_lines, last_update_lines, summary_lines
+from .report_text import appointment_lines, bill_slab_lines, has_due, last_update_lines, summary_lines
 
 SIGNATURE_FILE = config.SETTINGS_DIR / "email_signature.txt"
 HEAD = ["S.N", "File Number", "Type", "Concerns", "Re-CPV / Extra Trip (ID)", "Bill Slab", "Area", "Receive Date",
@@ -41,7 +41,9 @@ def _br(s) -> str:
 
 _ST = {"n": "", "b": "font-weight:bold;", "m": f"color:#{T.MUTED};", "h": f"font-weight:bold;font-size:10px;color:#{T.NAVY};",
        "g": f"color:#{T.POS};", "gb": f"font-weight:bold;color:#{T.POS};", "a": f"color:#{T.NEG};",
-       "ab": f"font-weight:bold;color:#{T.NEG};", "k": f"color:#{T.MUTED};"}
+       "ab": f"font-weight:bold;color:#{T.NEG};", "k": f"color:#{T.MUTED};",
+       "dn": f"color:#{T.NOTE};",
+       "hl": f"font-weight:bold;color:#{T.HILITE};background:#{T.HILITE_BG};padding:0 2px;border-radius:2px;"}
 
 
 def _html(lines, kind_color=None) -> str:
@@ -67,7 +69,7 @@ def _table(title: str, rows) -> str:
         sla_c = T.NEG if r.sla_breach else T.POS
         out_a = r.area == "Out"
         cells = [
-            (escape(str(r.sl)), TD), (f"<b>{escape(r.file_no)}</b>", TD), (escape(r.file_type), TD),
+            (escape(str(r.sl)), TD), (f"<b>{escape(r.file_no)}</b>", TD + "white-space:nowrap;"), (escape(r.file_type), TD),
             (_br("\n".join(r.concern_lines)), TDL), (_br("\n\n".join(r.history_lines)), TDL),
             (_html(bill_slab_lines(r), T.KIND_TX.get(r.kind)), TDL + f"background:#{T.KIND_BG.get(r.kind, 'FFFFFF')};"),
             (f"<b>{r.area}</b>", TD + f"color:#{T.OUT if out_a else T.IN};background:#{T.OUT_BG if out_a else T.IN_BG};"),
@@ -76,7 +78,7 @@ def _table(title: str, rows) -> str:
             (f"<b>{r.extra_tat}</b>" if r.extra_tat is not None else "", TD + f"color:#{sla_c};"),
             ("SLA Breach" if r.sla_breach else "Within SLA", TD + f"color:#{sla_c};font-weight:bold;"),
             (escape(r.status), TD + f"font-weight:bold;color:#{T.POS if sub else T.NEG};background:#{T.POS_BG if sub else T.NEG_BG};"),
-            (_html(summary_lines(r)), TDL), (_html(last_update_lines(r)), TDL), (_html(appointment_lines(r)), TDL),
+            (_html(summary_lines(r)), TDL + (f"background:#{T.DUE_CELL_BG};" if has_due(r) else "")), (_html(last_update_lines(r)), TDL), (_html(appointment_lines(r)), TDL),
         ]
         out.append("<tr>" + "".join(f'<td style="{st}">{v}</td>' for v, st in cells) + "</tr>")
     out.append("</table>")

@@ -18,6 +18,8 @@ from .collect import RunConfig, collect
 from .collect_prime import PrimeConfig, collect_prime, slot_for
 from .email_copy import build_email_html, load_signature, save_signature
 from .excel import build_workbook
+from .file_history import HistoryConfig, collect_history, parse_ids_file, parse_ids_text
+from .history_excel import write_history_outputs
 from .reports import write_prime_outputs, write_recpv_workbook
 from .ui_kit import (Button, Card, DateField, Entry, Fonts, P, Progress, Segmented, Stepper, Tile, parse_date,
                      pick_font_family)
@@ -163,6 +165,7 @@ class App(tk.Tk):
         # ---- 2 period ------------------------------------------------------------
         c2 = Card(colA, f, "ফাইলের সময়সীমা", "২")
         c2.pack(fill="x")
+        self.c2 = c2
         b = c2.body
         self.period = tk.StringVar(value="days")
         Segmented(b, f, [("days", "শেষ কয়েক দিন"), ("range", "তারিখ বাছুন")], self.period, self._sync_ui).pack(anchor="w", pady=(0, 8))
@@ -199,7 +202,8 @@ class App(tk.Tk):
                 ("tracker", "দৈনিক সাবমিশন ট্র্যাকার", "Complete + Incomplete রিপোর্ট, ইমেইলের মতো সাজানো (3pm / 7pm)"),
                 ("range", "সময়সীমার সব ফাইলের রিপোর্ট", "বাছাই করা সময়ের সব সারি: Submitted ও Incomplete"),
                 ("recpv", "Re-CPV সহ বিস্তারিত এক্সেল", "প্রতি ফাইলের নিচে Re-CPV/Extra + Calculation শিট"),
-                ("v1", "সাধারণ বিস্তারিত এক্সেল", "ফাইল ও ট্রিপের পুরো রিপোর্ট (আগের ভার্সনের মতো)")):
+                ("v1", "সাধারণ বিস্তারিত এক্সেল", "ফাইল ও ট্রিপের পুরো রিপোর্ট (আগের ভার্সনের মতো)"),
+                ("history", "ফাইল হিস্টরি", "ফাইল নম্বরের Excel/CSV দিন: প্রতিটি ফাইলের শুরু থেকে শেষ পর্যন্ত পুরো ইতিহাস")):
             Tile(b, f, val, title, help_, self.rtype, self._sync_ui).pack(fill="x", pady=3)
         self.track_row = tk.Frame(b, bg=P["card"])
         self.track_row.pack(fill="x", pady=(8, 0))
@@ -212,16 +216,42 @@ class App(tk.Tk):
         # ---- 4 outputs -----------------------------------------------------------
         c4 = Card(colA, f, "যা তৈরি হবে", "৪")
         c4.pack(fill="x", pady=(10, 0))
+        self.c4 = c4
         b = c4.body
         self.opts = {}
         self.opt_boxes = []
         for key, text, dflt in (("excel", "Excel", True), ("pdf", "PDF", True), ("email", "ইমেইলের জন্য পেজ", True),
-                                ("bank", "ব্যাংক কপি (পরিষ্কার)", True), ("internal", "অভ্যন্তরীণ কপি (হলুদ চিহ্ন সহ)", True)):
+                                ("bank", "ব্যাংক কপি (পরিষ্কার)", True), ("internal", "অভ্যন্তরীণ কপি (নীল চিহ্ন সহ)", True)):
             self.opts[key] = tk.BooleanVar(value=dflt)
             cbx = tk.Checkbutton(b, text=text, variable=self.opts[key], bg=P["card"], activebackground=P["card"], font=f.body,
                                  fg=P["text"], anchor="w", highlightthickness=0, selectcolor="white", command=self._sync_ui)
             cbx.pack(fill="x", anchor="w")
             self.opt_boxes.append((key, cbx))
+
+        # ---- 2/4 (file history only) -------------------------------------------------------
+        ch = Card(colA, f, "ফাইল নম্বর দিন", "২")
+        self.c_hist = ch
+        b = ch.body
+        self.hist_ids: list = []
+        pick = tk.Frame(b, bg=P["card"])
+        pick.pack(fill="x")
+        Button(pick, "📄  Excel / CSV বাছুন", self._pick_ids_file, kind="secondary", font=f.body, padx=12, pady=7).pack(side="left")
+        self.hist_file = tk.Label(pick, text="কোনো ফাইল বাছা হয়নি", bg=P["card"], fg=P["mute"], font=f.small, anchor="w", wraplength=210, justify="left")
+        self.hist_file.pack(side="left", padx=10)
+        tk.Label(b, text="অথবা নম্বরগুলো এখানে লিখুন বা পেস্ট করুন (প্রতি লাইনে একটি):", bg=P["card"], fg=P["text"],
+                 font=f.small, anchor="w").pack(fill="x", pady=(10, 2))
+        self.hist_text = tk.Text(b, width=46, height=5, font=f.body, relief="flat", highlightthickness=1, highlightbackground=P["line"])
+        self.hist_text.pack(fill="x")
+        self.hist_text.bind("<KeyRelease>", lambda _e: self._hist_count())
+        self.hist_count = tk.Label(b, text="", bg=P["card"], fg=P["ok"], font=f.small, anchor="w")
+        self.hist_count.pack(fill="x", pady=(4, 0))
+        self.hist_refresh = tk.BooleanVar(value=False)
+        tk.Checkbutton(b, text="সব ফাইলের তালিকা নতুন করে পড়ুন (ধীর; সাধারণত দরকার নেই)", variable=self.hist_refresh, bg=P["card"],
+                       activebackground=P["card"], font=f.tiny, fg=P["text"], anchor="w", highlightthickness=0,
+                       selectcolor="white").pack(fill="x", pady=(4, 0))
+        tk.Label(b, text="পুরো ফাইল নম্বর বা শেষের কয়েকটি অঙ্ক—দুটোই চলবে (শূন্য যোগ করতে হবে না)। কোনো সময়সীমা নেই। "
+                         "প্রথমবার কয়েক মিনিট লাগতে পারে; পরের বার অনেক দ্রুত। না পেলে ‘File not found’ লেখা থাকবে।",
+                 bg=P["card"], fg=P["mute"], font=f.tiny, anchor="w", justify="left", wraplength=380).pack(fill="x", pady=(6, 0))
 
         # ---- action bar ----------------------------------------------------------
         bar = tk.Frame(foot, bg=P["card"], highlightbackground=P["line"], highlightthickness=1)
@@ -267,6 +297,15 @@ class App(tk.Tk):
             self.dir_label.config(text=self._short(self.out_dir))
 
     def _sync_ui(self):
+        hist = self.rtype.get() == "history"
+        for w in (self.c2, self.c_hist, self.c4):
+            w.pack_forget()
+        if hist:
+            self.c_hist.pack(fill="x")
+        else:
+            self.c2.pack(fill="x")
+            self.c4.pack(fill="x", pady=(10, 0))
+        self.go_btn.config(text="ইতিহাস তৈরি করুন" if hist else "রিপোর্ট তৈরি করুন")
         rng = self.period.get() == "range"
         self.days_entry.enable(not rng)
         for ch in self.chips:
@@ -302,7 +341,9 @@ class App(tk.Tk):
             messagebox.showwarning("তথ্য ঠিক নেই", "ইমেইল ও পাসওয়ার্ড দিন।")
             return None
         days, d_from, d_till = None, None, None
-        if self.period.get() == "range":
+        if self.rtype.get() == "history":
+            days = int(self.settings.get("days", 60))
+        elif self.period.get() == "range":
             d_from, d_till = self.d_from.get(), self.d_till.get()
             if not d_from or not d_till:
                 messagebox.showwarning("তারিখ ঠিক নেই", "তারিখ এভাবে লিখুন: 05-11-2026 (অথবা 📅 চেপে বাছুন)।")
@@ -343,6 +384,18 @@ class App(tk.Tk):
         rt = self.rtype.get()
         workers = int(self.settings.get("workers", config.DEFAULT_WORKERS))
         org = self.settings.get("org_name", config.DEFAULT_ORG)
+        if rt == "history":
+            ids = self._collect_ids()
+            if not ids:
+                messagebox.showwarning("ফাইল নম্বর নেই", "Excel/CSV বাছুন, অথবা ফাইল নম্বর (বা শেষের কয়েকটি অঙ্ক) লিখুন।")
+                return
+            cfg = HistoryConfig(web=inp["web"], api=inp["api"], server_label=self.server.get(), email=inp["email"],
+                                password=inp["pw"], workers=workers, org_name=org, ids=ids,
+                                refresh_index=self.hist_refresh.get())
+            self._busy()
+            self.worker = threading.Thread(target=self._work_history, args=(cfg,), daemon=True)
+            self.worker.start()
+            return
         if rt in ("tracker", "range", "recpv"):
             mode = "tracker" if rt == "tracker" else "range"
             rdate = inp["till"] if (rt == "tracker" and inp["till"]) else (self.rdate.get() or date.today())
@@ -394,6 +447,47 @@ class App(tk.Tk):
             self.q.put(("error", str(exc)))
         except Exception as exc:                      # unexpected
             self.q.put(("error", f"অপ্রত্যাশিত সমস্যা: {type(exc).__name__}: {exc}"))
+
+    def _work_history(self, cfg: HistoryConfig):
+        try:
+            h = collect_history(cfg, lambda *a: self.q.put(("progress", *a)), self.cancel)
+            self.q.put(("progress", "write", 0, 1, "ফাইল হিস্টরি Excel তৈরি হচ্ছে…"))
+            self.q.put(("hist_done", write_history_outputs(h, self.out_dir), h))
+        except Cancelled:
+            self.q.put(("cancelled",))
+        except (AuthError, ApiError, PermissionError, ValueError) as exc:
+            self.q.put(("error", str(exc)))
+        except Exception as exc:
+            self.q.put(("error", f"অপ্রত্যাশিত সমস্যা: {type(exc).__name__}: {exc}"))
+
+    # ---- file history input -------------------------------------------------------------------------
+    def _pick_ids_file(self):
+        path = filedialog.askopenfilename(title="ফাইল নম্বরের Excel / CSV বাছুন",
+                                          filetypes=[("Excel / CSV", "*.xlsx *.xlsm *.csv *.txt"), ("All", "*.*")])
+        if not path:
+            return
+        try:
+            self.hist_ids = parse_ids_file(Path(path))
+        except ValueError as exc:
+            self.hist_ids = []
+            messagebox.showwarning("ফাইল পড়া যায়নি", str(exc))
+        except Exception as exc:                                  # noqa: BLE001
+            self.hist_ids = []
+            messagebox.showwarning("ফাইল পড়া যায়নি", f"{type(exc).__name__}: {exc}")
+        self.hist_file.config(text=Path(path).name if self.hist_ids else "কোনো ফাইল নম্বর পাওয়া যায়নি", fg=P["text"] if self.hist_ids else P["warn"])
+        self._hist_count()
+
+    def _collect_ids(self) -> list:
+        seen, out = set(), []
+        for e in list(self.hist_ids) + parse_ids_text(self.hist_text.get("1.0", "end")):
+            if e.uid not in seen:
+                seen.add(e.uid)
+                out.append(e)
+        return out
+
+    def _hist_count(self):
+        n = len(self._collect_ids())
+        self.hist_count.config(text=f"✓ {n} টি ফাইল নম্বর পাওয়া গেছে" if n else "")
 
     def _work_recpv(self, cfg: PrimeConfig):
         try:
@@ -475,6 +569,17 @@ class App(tk.Tk):
                         txt += "\n" + " ".join(d.notes[:2])
                     self.status.set(txt)
                     self._show_results(paths, d.mode == "tracker")
+                elif kind == "hist_done":
+                    _, paths, h = msg
+                    self.out_files = paths
+                    self._finish_ui()
+                    self.bar.set(1)
+                    self.stepper.set(len(STAGES))
+                    txt = f"সম্পন্ন!  পাওয়া গেছে {len(h.results)} টি ফাইল · পাওয়া যায়নি {len(h.not_found)} টি নম্বর"
+                    if h.notes:
+                        txt += "\n" + " ".join(h.notes[:2])
+                    self.status.set(txt)
+                    self._show_results(paths, False)
                 elif kind == "v1_done":
                     _, path, res = msg
                     self.out_files = [path]

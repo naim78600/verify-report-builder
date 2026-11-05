@@ -29,12 +29,12 @@ THIN = Side(style="thin", color="D0D0D0")
 BORDER = Border(bottom=THIN)
 
 FILE_STATUS_COLOR = {
-    "Created": "E4DCF2", "On Going": "CFE0F7", "Hold": "FFE7A8", "Finished": "CDEFD0",
-    "Canceled": "F8C9C9", "Submitted": "BFE9E4", "Partially Submitted": "FFD9B3", "Withdrawn": "DDDDDD",
+    "Created": "E4DCF2", "On Going": "CFE0F7", "Hold": "FBDCC0", "Finished": "CDEFD0",
+    "Canceled": "CBD5E1", "Submitted": "BFE9E4", "Partially Submitted": "FFD9B3", "Withdrawn": "DDDDDD",
 }
 TRIP_STATUS_COLOR = {
-    "Created": "E4DCF2", "Allocated": "D6E6F7", "Started": "B9D3F2", "Hold": "FFE7A8",
-    "Finished": "CDEFD0", "Canceled": "F8C9C9", "Inactive": "D9D9D9", "Withdrawn": "C4C4C4",
+    "Created": "E4DCF2", "Allocated": "D6E6F7", "Started": "B9D3F2", "Hold": "FBDCC0",
+    "Finished": "CDEFD0", "Canceled": "CBD5E1", "Inactive": "D9D9D9", "Withdrawn": "C4C4C4",
 }
 
 

@@ -31,11 +31,25 @@ def cli(argv):
     p.add_argument("--till", default="")
     p.add_argument("--slot", default="", choices=["", "3pm", "7pm"])
     p.add_argument("--outdir", default=".")
+    p.add_argument("--history", default="", help="v2.2: File History - Excel/CSV/TXT of file numbers (full or last digits) into --outdir")
+    p.add_argument("--refresh-index", action="store_true", help="File History: read the whole file list again")
     a = p.parse_args(argv)
     pw = os.environ.get("VERIFY_PASSWORD") or getpass.getpass("Password: ")
     cfg = RunConfig(web=a.web, api=a.api or config.derive_api_url(a.web), server_label=a.web, email=a.email,
                     password=pw, days=a.days, org_name=a.org, workers=a.workers)
     last = [""]
+    if a.history:
+        from report_builder.file_history import HistoryConfig, collect_history, parse_ids_file
+        from report_builder.history_excel import write_history_outputs
+        ids = parse_ids_file(a.history)
+        print(f"{len(ids)} file number(s) found in {a.history}", flush=True)
+        hc = HistoryConfig(web=cfg.web, api=cfg.api, server_label=cfg.server_label, email=a.email, password=pw,
+                           org_name=a.org, workers=a.workers, ids=ids, refresh_index=a.refresh_index)
+        h = collect_history(hc, lambda s, n, t, m: print(m, flush=True), threading.Event())
+        for p_ in write_history_outputs(h, Path(a.outdir)):
+            print("Saved", p_)
+        print(f"found {len(h.results)} file(s), not found {len(h.not_found)} number(s)")
+        return
     if a.prime:
         from datetime import date, datetime, timedelta
         from report_builder.collect_prime import PrimeConfig, collect_prime, slot_for

@@ -100,7 +100,7 @@ def _calculation_sheet(wb, d: PrimeData, n_rows: int):
     put(ws, r, 1, "Package trips (max 5 each)")
     put(ws, r, 2, f'=SUMIFS({rng("F")},{rng("B")},"Package")', align=Alignment(horizontal="center"), formula=True)
     r += 1
-    put(ws, r, 1, "Rows with a Canceled trip (yellow, billing undecided)")
+    put(ws, r, 1, "Rows with a Canceled trip (billing undecided)")
     put(ws, r, 2, f'=COUNTIF({rng("O")},"Yes")', align=Alignment(horizontal="center"), formula=True)
     r += 1
     put(ws, r, 1, "Submitted rows")
@@ -111,7 +111,7 @@ def _calculation_sheet(wb, d: PrimeData, n_rows: int):
     r += 2
     for note in ("Package = trips created on the file-creation date, first 5 in creation order (any type).",
                  "Extra Trip 1, 2, 3 = 6th, 7th, 8th trip created with the file (billed alone). Re-CPV / Extra Document / Extra Trip = trip created after the creation date.",
-                 "In = inside Dhaka city, Gazipur city or Narayanganj city (from latitude/longitude), otherwise Out. A Package is Out if any trip is Out; a single row is judged on its own trip.",
+                 "In = inside Dhaka City Corporation (DNCC / DSCC) or Chattogram City Corporation (from latitude/longitude); everything else (Gazipur, Narayanganj, Savar, Tongi ...) is Out. A Package is Out if any trip is Out; a single row is judged on its own trip.",
                  "SLA: In = 2 working days, Out = 4 working days. Extra TAT = TAT - SLA.",
                  "TAT counts working days (Friday and Saturday off, plus the Holidays list)."):
         put(ws, r, 1, note, font=Font(color="555555", italic=True))

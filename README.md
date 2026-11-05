@@ -1,4 +1,4 @@
-# Verify Report Builder v2.1 (ভেরিফাই রিপোর্ট বিল্ডার)
+# Verify Report Builder v2.2 (ভেরিফাই রিপোর্ট বিল্ডার)
 
 Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্যার। লগইন করে শেষ N দিনের (আদিতে ৯০) Prime Bank PLC-এর সব ফাইল সংগ্রহ করে একটি এক্সেল রিপোর্ট বানায়।
 **শুধু তথ্য পড়ে (GET); কোনো তথ্য বদলায় না।** পাসওয়ার্ড কোডে বা ফাইলে সংরক্ষণ হয় না।
@@ -15,6 +15,15 @@ Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্�
 - **Mac:** অ্যাপে ডাবল ক্লিক করলে “can’t be opened” আসবে। তখন **System Settings → Privacy & Security** এ নিচে নামুন → “VerifyReportBuilder was blocked” এর পাশে **Open Anyway** চাপুন → পাসওয়ার্ড দিন।
   (পুরনো macOS-এ অ্যাপে ডান ক্লিক → Open কাজ করে। নতুন macOS-এ সাধারণত Open Anyway লাগে।)
   বিকল্প: Terminal এ `xattr -dr com.apple.quarantine ~/Downloads/VerifyReportBuilder.app`
+
+## v2.2 এ যা বদলেছে
+
+- **In / Out (সংশোধন):** শুধু **Dhaka City Corporation (DNCC + DSCC)** ও **Chattogram City Corporation** = In। গাজীপুর, নারায়ণগঞ্জ, সাভার, টঙ্গী … সব Out। প্যাকেজের একটি ট্রিপ Out হলে পুরো প্যাকেজ Out; Single/Extra/Re-CPV নিজ ঠিকানা অনুযায়ী। SLA: In = ২, Out = ৪ কার্যদিবস।
+- **Report Summary (Done / Due):** ট্র্যাকারের ভাষায় — `Done-App House, Office, Sign, LOI, BS1 (Insufficient fund), BS2, Co-App House` / `Due-0`। ক্রম: App → LOI/BS/ডকুমেন্ট → Co-App → PG। Bank ট্রিপ সবসময় **BS** (একাধিক হলে BS1, BS2)। **I/F = Insufficient fund।** ফোন/ইমেইল/নাম লেখা হয় না। Done-এর **সমস্যাগুলো (ব্র্যাকেটে) Due-তেও হুবহু একই ভাষায়** আসে, নরম পিচ রঙে হাইলাইট করা; সমস্যা না থাকলে `Due-0`।
+- **Excel:** দুটি শিট — **Complete Report** ও **Incomplete Report** (সঙ্গে Summary, Holidays; অভ্যন্তরীণ কপিতে Check List)। ফিল্টার-বোতাম শুধু **File No** ও **Last Update Date**-এ। *Last Update* ভাগ হয়েছে: **Last Update Date** (আসল তারিখ, ফিল্টার করা যায়) ও **Last Update Details** (ফাইলের শেষ আপডেট + প্রতিটি ট্রিপের আইডি/ধরন সহ শেষ লাইন; ফিল্টার নেই)। ব্যানার, KPI টাইল, ৭৫% জুম — পুরো রিপোর্ট স্ক্রিনে ধরে।
+- **রং:** লাল ও হলুদ কোথাও নেই। সবুজ/টিল = ভালো, নরম কমলা = নেতিবাচক, ইন্ডিগো = Out, **হালকা আকাশি নীল = অভ্যন্তরীণ কপিতে ‘যাচাই করুন’**।
+- **ফাইল হিস্টরি (নতুন):** ‘রিপোর্টের ধরন’-এ **ফাইল হিস্টরি** বাছুন → ফাইল নম্বরের Excel/CSV দিন (পুরো নম্বর অথবা শেষের কয়েকটি অঙ্ক, শূন্য যোগ করতে হবে না; অথবা নম্বর পেস্ট করুন)। সফটওয়্যার প্রতিটি ফাইল খুঁজে সম্পূর্ণ ইতিহাসের একটি Excel বানায়: Summary, Timeline (নতুন থেকে পুরোনো), Submission History (`2026-09-08 Done-PG. Due-App …` ধাঁচে — ড্যাশবোর্ডের ঘটনা থেকে হিসাব করা, আনুমানিক), Trips, Appointments, Re-CPV & Extra, Concerns, Not Found। **সময়সীমা নেই।** প্রথমবার সব ফাইলের তালিকা পড়তে কয়েক মিনিট লাগতে পারে; ফাইল নম্বর ও তারিখ কম্পিউটারে (`~/.verify_report_builder/file_index.json`, কোনো ব্যক্তিগত তথ্য নেই) জমা থাকে, পরের বার শুধু নতুন দিন পড়ে। না পেলে **File not found**, বাকি ফাইলের ইতিহাস ঠিকই আসে। এটিও শুধু পড়ে (GET)।
+- **কমান্ড লাইন:** `python run_app.py --cli --email you@x.com --history numbers.xlsx --outdir out` (পাসওয়ার্ড `VERIFY_PASSWORD` পরিবেশ চলকে বা প্রম্পটে)।
 
 ## v2.1 এ যা বদলেছে
 

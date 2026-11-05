@@ -3,7 +3,8 @@
 Design goals: simple, same two parts as the daily e-mail (Complete / Incomplete), A3 landscape (the 14 columns
 stay big and readable; prints scaled on A4), header row repeated on every page, rows never split across pages,
 status and area shown both by colour AND by words (still readable on a black-and-white printer), embedded fonts,
-calm colours (no harsh red).
+calm colours (no red, no yellow).  Problems written in Done are amber; the same problems repeated in Due sit on a
+soft peach marker.  Internal copy: light sky-blue cells = "please check".
 """
 from __future__ import annotations
 
@@ -24,13 +25,13 @@ from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, 
 from . import theme as T
 from .billing import SLA_IN, SLA_OUT, before_after
 from .collect_prime import PrimeData, title_for
-from .report_text import appointment_lines, bill_slab_lines, last_update_lines, summary_lines
+from .report_text import appointment_lines, bill_slab_lines, has_due, last_update_lines, summary_lines
 
 def _c(hexv: str):
     return colors.HexColor("#" + hexv)
 
 
-NAVY, GREEN, AMBER, GREY, YELLOW = _c(T.NAVY), _c(T.POS), _c(T.NEG), _c(T.MUTED), _c(T.YELLOW)
+NAVY, GREEN, AMBER, GREY, CHECK = _c(T.NAVY), _c(T.POS), _c(T.NEG), _c(T.MUTED), _c(T.CHECK)
 KIND_BG = {k: "#" + v for k, v in T.KIND_BG.items()}
 
 _FONT_READY = False
@@ -91,6 +92,7 @@ class _NumberedCanvas(rl_canvas.Canvas):
 _FONT_TAGS = {   # style code -> (bold, colour, size delta)
     "n": (False, T.TEXT), "b": (True, T.TEXT), "m": (False, T.MUTED), "h": (True, T.NAVY),
     "g": (False, T.POS), "gb": (True, T.POS), "a": (False, T.NEG), "ab": (True, T.NEG), "k": (False, T.MUTED),
+    "dn": (False, T.NOTE), "hl": (True, T.HILITE),
 }
 
 
@@ -110,7 +112,10 @@ def _markup(lines, kind_color: str | None = None) -> str:
                 t = f'<font size="6">{t}</font>'
             if bold:
                 t = f"<b>{t}</b>"
-            seg.append(f'<font color="#{color}">{t}</font>')
+            if st == "hl":
+                seg.append(f'<font color="#{color}" backColor="#{T.HILITE_BG}">{t}</font>')
+            else:
+                seg.append(f'<font color="#{color}">{t}</font>')
         out.append("".join(seg) or "&nbsp;")
     return "<br/>".join(out)
 
@@ -175,16 +180,18 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool) -> Path:
             style.append(("BACKGROUND", (4, i), (4, i), _c(T.KIND_BG.get(r.kind, "FFFFFF"))))
             style.append(("BACKGROUND", (5, i), (5, i), _c(T.OUT_BG if out else T.IN_BG)))
             style.append(("BACKGROUND", (10, i), (10, i), _c(T.POS_BG if sub else T.NEG_BG)))
+            if has_due(r):
+                style.append(("BACKGROUND", (11, i), (11, i), _c(T.DUE_CELL_BG)))
             if i % 2 == 0:
-                for col in (0, 1, 2, 3, 6, 7, 8, 9, 11, 12, 13):
+                for col in (0, 1, 2, 3, 6, 7, 8, 9, 12, 13) + (() if has_due(r) else (11,)):
                     style.append(("BACKGROUND", (col, i), (col, i), _c(T.ZEBRA)))
             if internal:
                 col_for = {"area": 5, "slab": 4, "summary": 11, "status": 10}
                 for key in r.flags:
                     if key in col_for:
-                        style.append(("BACKGROUND", (col_for[key], i), (col_for[key], i), YELLOW))
+                        style.append(("BACKGROUND", (col_for[key], i), (col_for[key], i), CHECK))
                 if r.canceled:
-                    style.append(("BACKGROUND", (4, i), (4, i), YELLOW))
+                    style.append(("BACKGROUND", (4, i), (4, i), CHECK))
         t = Table(data, colWidths=widths, repeatRows=1, splitByRow=1)
         t.setStyle(TableStyle(style))
         return t
@@ -200,12 +207,16 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool) -> Path:
     def on_page(cv, doc):
         cv.saveState()
         w, h = page
-        cv.setFont("Vera-Bold", 12)
         cv.setFillColor(NAVY)
-        cv.drawString(left, h - 8 * mm, _safe(title))
-        cv.setStrokeColor(NAVY)
-        cv.setLineWidth(1)
-        cv.line(left, h - 10 * mm, w - right, h - 10 * mm)
+        cv.rect(0, h - 13 * mm, w, 13 * mm, stroke=0, fill=1)
+        cv.setFillColor(colors.white)
+        cv.setFont("Vera-Bold", 13)
+        cv.drawString(left, h - 8.6 * mm, _safe(title))
+        cv.setFont("Vera", 8)
+        cv.drawRightString(w - right, h - 8.2 * mm, _safe(f"Report date {d.report_date:%d/%m/%Y}"))
+        cv.setStrokeColor(_c(T.BORDER))
+        cv.setLineWidth(0.4)
+        cv.line(left, 9.5 * mm, w - right, 9.5 * mm)
         cv.setFont("Vera", 7.5)
         cv.setFillColor(GREY)
         cv.drawString(left, 6 * mm, f"Generated {d.generated_at:%d/%m/%Y %I:%M %p}   |   BS = Bank Statement   |   "
@@ -220,14 +231,18 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool) -> Path:
     n_rc = sum(1 for r in allr if r.kind == "ReCpv")
     n_ex = sum(1 for r in allr if r.kind == "Extra")
     n_br = sum(1 for r in allr if r.sla_breach)
-    cells = [("Complete", len(d.complete), T.POS), ("Incomplete", len(d.incomplete), T.NEG), ("Package", n_pk, T.TEXT),
-             ("Extra Trip", n_sg, T.TEXT), ("Re-CPV", n_rc, T.TEXT), ("Extra Doc / Trip", n_ex, T.TEXT), ("SLA Breach", n_br, T.NEG)]
-    stat_style = ParagraphStyle("st", parent=center, fontSize=8, leading=17)
-    stats = Table([[Paragraph(f"{k}<br/><font size='14' color='#{c}'><b>{v}</b></font>", stat_style) for k, v, c in cells]],
+    cells = [("Complete", len(d.complete), T.POS), ("Incomplete", len(d.incomplete), T.NEG), ("Package", n_pk, T.NAVY),
+             ("Extra Trip", n_sg, T.NAVY), ("Re-CPV", n_rc, T.NAVY), ("Extra Doc / Trip", n_ex, T.NAVY),
+             ("Area In", sum(1 for r in allr if r.area == "In"), T.IN), ("Area Out", sum(1 for r in allr if r.area == "Out"), T.OUT),
+             ("SLA Breach", n_br, T.NEG)]
+    stat_style = ParagraphStyle("st", parent=center, fontSize=7.5, leading=17, textColor=GREY)
+    stats = Table([[Paragraph(f"{k.upper()}<br/><font size='15' color='#{c}'><b>{v}</b></font>", stat_style) for k, v, c in cells]],
                   colWidths=[usable / len(cells)] * len(cells))
-    stats.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, _c(T.BORDER)), ("INNERGRID", (0, 0), (-1, -1), 0.3, _c(T.BORDER)),
-                               ("BACKGROUND", (0, 0), (-1, -1), _c("F1F5F9")),
-                               ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+    tstyle = [("BACKGROUND", (0, 0), (-1, -1), _c(T.PANEL)), ("LINEAFTER", (0, 0), (-2, -1), 3, colors.white),
+              ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]
+    for j, (_k, _v, c) in enumerate(cells):
+        tstyle.append(("LINEBELOW", (j, 0), (j, 0), 2, _c(c)))
+    stats.setStyle(TableStyle(tstyle))
     story += [stats, Spacer(1, 4 * mm)]
 
     story.append(band(f"Complete Report  ({len(d.complete)})", T.BAND_OK_BG, T.BAND_OK_TX))
@@ -249,10 +264,10 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool) -> Path:
         rc = d.recon
         story += [Spacer(1, 4 * mm), _p(
             f"Internal check - trips in report rows: {rc.get('row_trips')}, trips in files: {rc.get('file_trips')}. "
-            f"Yellow cells need a person to check (see the Check List sheet of the Excel).", small)]
+            f"Light-blue cells need a person to check (see the Check List sheet of the Excel).", small)]
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    doc = SimpleDocTemplate(str(path), pagesize=page, leftMargin=left, rightMargin=right, topMargin=14 * mm,
+    doc = SimpleDocTemplate(str(path), pagesize=page, leftMargin=left, rightMargin=right, topMargin=17 * mm,
                             bottomMargin=12 * mm, title=title, author="Verify Report Builder")
     doc.build(story, onFirstPage=on_page, onLaterPages=on_page, canvasmaker=_NumberedCanvas)
     return path

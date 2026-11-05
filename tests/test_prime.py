@@ -76,10 +76,14 @@ from report_builder.report_text import appointment_lines, last_update_lines, pla
 def test_summary_text(data):
     d, _ = data
     f2 = next(r for r in d.complete if r.file_no == "CC-20261101000002")
-    assert f2.summary.due == "0" and f2.summary.done.startswith("App House, Office, Sign, LOI")
-    assert "Head office does not verify" in f2.summary.done and f2.canceled and "slab" in f2.flags
+    assert f2.summary.done.startswith("App House, Office, Sign, LOI")
+    assert "Head office disagree" in f2.summary.done and f2.canceled and "slab" in f2.flags
+    # problems in Done are repeated in Due with the same wording; good-news notes are not
+    assert "Head office disagree" in f2.summary.due and "Signed from branch" not in f2.summary.due
+    assert "BS" not in f2.summary.done.split("LOI")[-1] and f2.summary.uncertain    # canceled bank trip is not written, only flagged
+    assert any(k == "note" for _x, k in f2.summary.due_parts)
     f3 = next(r for r in d.incomplete if r.file_no.endswith("0003"))
-    assert f3.summary.done == "App House" and "Gave appointment on 04-11-2026" in f3.summary.due
+    assert f3.summary.done == "App House" and "Appointment 04-11-2026 12:00 PM" in f3.summary.due
     f5 = next(r for r in d.incomplete if r.file_no.endswith("0005"))
     assert f5.summary.due.startswith("App Office")
 
@@ -97,9 +101,14 @@ def test_outputs(data, tmp_path):
     names = sorted(p.name for p in paths)
     assert len(names) == 5 and any(n.endswith("_INTERNAL.pdf") for n in names)
     wb = load_workbook(tmp_path / "Prime_Bank_2026-11-02_3pm_Submission_Tracker.xlsx")
-    assert wb.sheetnames == ["Prime Bank Report", "Summary", "Holidays"]            # bank copy: no check list
-    ws = wb["Prime Bank Report"]
-    assert str(ws["K7"].value).startswith("=MAX(0,NETWORKDAYS.INTL(")
+    assert wb.sheetnames == ["Complete Report", "Incomplete Report", "Summary", "Holidays"]   # bank copy: no check list
+    ws = wb["Complete Report"]
+    assert str(ws["K5"].value).startswith("=MAX(0,NETWORKDAYS.INTL(")
+    # filter buttons only on File No (B) and Last Update Date (P); every other button is hidden
+    for sh in (wb["Complete Report"], wb["Incomplete Report"]):
+        hidden = {fc.colId for fc in sh.auto_filter.filterColumn if fc.hiddenButton}
+        assert hidden == set(range(18)) - {1, 15}, hidden
+        assert sh["P4"].value == "Last Update Date" and sh["Q4"].value == "Last Update Details"
     wb2 = load_workbook(tmp_path / "Prime_Bank_2026-11-02_3pm_Submission_Tracker_INTERNAL.xlsx")
     assert "Check List" in wb2.sheetnames
     html = (tmp_path / "Prime_Bank_2026-11-02_3pm_Submission_Tracker_email.html").read_text(encoding="utf-8")
@@ -111,8 +120,12 @@ def test_outputs(data, tmp_path):
 
 def test_geo_and_slot_and_holidays(tmp_path):
     assert geo.classify_point(23.7925, 90.4078) == ("In", True, "Dhaka")
-    assert geo.classify_point(23.999, 90.420)[::2] == ("In", "Gazipur")            # Joydebpur
-    assert geo.classify_point(23.6238, 90.5000)[::2] == ("In", "Narayanganj")      # Narayanganj Sadar
+    assert geo.classify_point(23.999, 90.420)[::2] == ("Out", "")                  # Joydebpur, Gazipur = Out
+    assert geo.classify_point(23.6238, 90.5000)[::2] == ("Out", "")                # Narayanganj Sadar = Out
+    assert geo.classify_point(22.3250, 91.8110)[::2] == ("In", "Chattogram")       # Agrabad, Chattogram city
+    assert geo.classify_point(23.8968, 90.4314)[0] == "Out"                        # Tongi
+    assert geo.classify_text("House 5, Joydebpur, Gazipur") == "Out"
+    assert geo.classify_text("Agrabad, Chattogram") == "In"
     assert geo.classify_point(23.8583, 90.2667)[0] == "Out"
     assert geo.trip_area({})[:2] == ("In", False)
     assert slot_for(datetime(2026, 11, 2, 14, 59)) == "3pm" and slot_for(datetime(2026, 11, 2, 17, 0)) == "7pm"
@@ -137,7 +150,7 @@ def test_remark_engine_samples():
                    view("DOCUMENT", 5, "Information ok.", "CHAMBER VERIFICATION")], True)
     assert s.done == "App House, Sign, Chamber" and s.due == "0"
     s = S.analyze([view("BANK", 5, "Bank statement not verified. Applicant call not received.")], True)
-    assert s.done == "BS (Call not received; Statement not verified)"
+    assert s.done == "BS (Call not received)"
 
 
 def test_bs_label_history_and_extra_trip_names(data):
@@ -173,3 +186,64 @@ def test_last_update_and_appointments(data):
     f2 = next(r for r in d.complete if r.file_no == "CC-20261101000002")
     assert text_of(appointment_lines(f2)) == "NO"
     assert "Trip 700051 · Office" in text_of(appointment_lines(f3)) + text_of(last_update_lines(f3))
+
+
+def test_done_due_convention():
+    def view(tid, code, status, remarks, comment="", who="App", role="APPLICANT"):
+        return S.TripView({"id": tid, "type_code": code, "status_code": status, "remarks": remarks, "comment": comment,
+                           "appointments": []}, role, who)
+    # I/F is written "Insufficient fund"; two bank trips become BS1 / BS2; tracker order App -> LOI -> BS -> Co-App -> PG
+    views = [view(1, "HOUSE", 5, "Information ok."), view(2, "OFFICE", 5, "Information ok. LOI signed in front of me."),
+             view(3, "BANK", 5, "Bank statement not verified. I/F."), view(4, "BANK", 5, "Information ok."),
+             view(5, "HOUSE", 5, "Information ok.", who="PG1", role="GUARANTOR"),
+             view(6, "HOUSE", 5, "Information ok.", who="Co-App", role="CO_APPLICANT")]
+    s = S.analyze(views, True)
+    assert s.done == "App House, Office, LOI, BS1 (Insufficient fund), BS2, Co-App House, PG1 House"
+    assert s.due == "BS1 (Insufficient fund)"                    # the problem is repeated in Due, nothing else
+    assert ("BS1", "ok") in s.due_parts and (" (Insufficient fund)", "note") in s.due_parts
+    # nothing wrong -> Due-0
+    s = S.analyze([view(1, "HOUSE", 5, "Information ok."), view(2, "OFFICE", 5, "Information ok.")], True)
+    assert (s.done, s.due) == ("App House, Office", "0")
+    # good-news notes stay in Done only
+    s = S.analyze([view(1, "HOUSE", 5, "Given address mismatch. New address found and verified.")], True)
+    assert s.done == "App House (New address found & verified)" and s.due == "0"
+    # long text is shortened and phone numbers / e-mails never appear
+    long = "The head office accounts officer informed us about the process. Contact: 01711099977 mail abc@bank.com. He disagree to verify the given LOI at all."
+    s = S.analyze([view(1, "DOCUMENT", 5, long, "LOI VERIFICATION")], True)
+    assert "01711" not in s.done and "@" not in s.done and len(s.done) < 90
+    assert S.scrub("call 01711099977 or x@y.com Name: Rahim Uddin") == "call or"
+    # incomplete: pending trip with an appointment goes to Due with the reason
+    t = {"id": 9, "type_code": "OFFICE", "status_code": 2, "remarks": "", "comment": "",
+         "appointments": [{"time": datetime(2026, 11, 6, 11, 0), "reason": "come tomorrow", "active": True}]}
+    s = S.analyze([S.TripView(t, "APPLICANT", "App")], False)
+    assert s.done == "0" and s.due.startswith("App Office (Appointment 06-11-2026 11:00 AM")
+
+
+def test_report_cells_done_due_colours_and_last_update(data, tmp_path):
+    """Problems: amber in Done, repeated in Due on a soft marker ('hl'); no problem -> Due-0 in green.
+    The Excel has no red / yellow fills and a real, filterable 'Last Update Date' column."""
+    from report_builder.report_text import has_due, last_update_date, summary_lines
+    d, _ = data
+    f2 = next(r for r in d.complete if r.file_no == "CC-20261101000002")
+    done, due = summary_lines(f2)
+    assert done[0] == ("Done-", "gb") and any(st == "dn" for _t, st in done)
+    assert due[0] == ("Due-", "ab") and any(st == "hl" for _t, st in due) and has_due(f2)
+    ok = next(r for r in d.complete if not has_due(r))
+    d_ok, due_ok = summary_lines(ok)
+    assert due_ok == [("Due-", "gb"), ("0", "g")]
+    assert last_update_date(ok) == ok.last_file[0]
+    paths = write_prime_outputs(d, tmp_path, excel=True, pdf=False, internal=True, bank=True, email=False)
+    wb = load_workbook(next(p for p in paths if p.name.endswith("Tracker_INTERNAL.xlsx")))
+    ws = wb["Complete Report"]
+    heads = [c.value for c in ws[4]]
+    assert heads.index("Last Update Date") == 15 and heads[16] == "Last Update Details"
+    assert isinstance(ws.cell(5, 16).value, __import__("datetime").date)             # a real date, so Excel can filter it
+    banned = {"FFF200", "FFFF00", "FF0000", "FEF3C7", "FEE2E2", "DC2626", "EF4444", "FFE7A8", "F8C9C9"}
+    for sh in wb.worksheets:
+        for row in sh.iter_rows():
+            for c in row:
+                for col in (c.fill.fgColor.rgb if c.fill and c.fill.fill_type else None,):
+                    if isinstance(col, str):
+                        assert col[-6:].upper() not in banned, (sh.title, c.coordinate, col)
+    assert any(c.fill.fgColor.rgb[-6:] == "BFE3FF" for sh in (wb["Complete Report"], wb["Incomplete Report"])
+               for row in sh.iter_rows() for c in row if c.fill and c.fill.fill_type and isinstance(c.fill.fgColor.rgb, str))

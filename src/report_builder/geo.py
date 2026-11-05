@@ -1,11 +1,11 @@
 """In / Out decision from latitude / longitude (with address-text fallback).
 
-"In"  = inside ONE of three city areas: Dhaka city, Gazipur city, Narayanganj city.
-"Out" = anywhere else.
+"In"  = inside ONE of two city areas: Dhaka City Corporation (DNCC + DSCC) or Chattogram City Corporation.
+"Out" = anywhere else (Gazipur, Narayanganj, Savar, Tongi ... are all Out).
 
 Every answer carries a `sure` flag. When the point is close to the edge of the In-area (within
 NEAR_KM) or the coordinates disagree / are missing, `sure` is False and the internal report shows the
-cell in yellow so a person checks it.
+cell light-blue so a person checks it.
 
 The outlines are approximations drawn from public maps (city-corporation areas). If the bank's own
 In/Out list shows a different edge, edit the polygons below (lat, lon pairs, in order) or use the
@@ -21,23 +21,18 @@ from . import config
 
 # (lat, lon) outlines
 DHAKA_POLYGON = [
-    (23.905, 90.375), (23.905, 90.420), (23.885, 90.455), (23.835, 90.465),
+    (23.898, 90.372), (23.893, 90.405), (23.872, 90.440), (23.835, 90.465),
     (23.800, 90.462), (23.765, 90.480), (23.745, 90.508), (23.715, 90.518),
     (23.695, 90.512), (23.688, 90.470), (23.688, 90.430), (23.698, 90.395), (23.712, 90.368),
     (23.740, 90.338), (23.790, 90.333), (23.840, 90.333), (23.875, 90.348),
 ]
-# Gazipur City Corporation: Tongi - Board Bazar - Joydebpur - Chandana - Konabari - Pubail (approx.)
-GAZIPUR_POLYGON = [
-    (23.905, 90.372), (23.905, 90.425), (23.925, 90.470), (23.965, 90.495), (24.030, 90.490),
-    (24.085, 90.455), (24.095, 90.395), (24.075, 90.335), (24.025, 90.310), (23.965, 90.330),
-    (23.925, 90.350),
+# Chattogram City Corporation: Patenga - Halishahar - Agrabad - Kotwali - Bakalia - Chandgaon - Pahartali - Khulshi (approx.)
+CHATTOGRAM_POLYGON = [
+    (22.225, 91.772), (22.232, 91.812), (22.268, 91.830), (22.305, 91.838), (22.335, 91.848),
+    (22.355, 91.878), (22.392, 91.892), (22.425, 91.875), (22.435, 91.822), (22.432, 91.790),
+    (22.402, 91.768), (22.350, 91.758), (22.295, 91.758), (22.250, 91.762),
 ]
-# Narayanganj City Corporation: Siddhirganj - Narayanganj Sadar - Fatullah - Bandar (approx.)
-NARAYANGANJ_POLYGON = [
-    (23.700, 90.505), (23.698, 90.535), (23.665, 90.548), (23.612, 90.540), (23.592, 90.508),
-    (23.600, 90.468), (23.640, 90.452), (23.688, 90.458),
-]
-AREAS = {"Dhaka": DHAKA_POLYGON, "Gazipur": GAZIPUR_POLYGON, "Narayanganj": NARAYANGANJ_POLYGON}
+AREAS = {"Dhaka": DHAKA_POLYGON, "Chattogram": CHATTOGRAM_POLYGON}
 
 
 def _load_user_areas() -> dict:
@@ -61,17 +56,22 @@ _IN_WORDS = (
     "farmgate", "tejgaon", "badda", "rampura", "khilgaon", "malibagh", "mogbazar", "shantinagar", "paltan",
     "bashundhara", "khilkhet", "mohakhali", "kawran", "kafrul", "pallabi", "shyamoli", "adabor", "kalabagan",
     "lalmatia", "jatrabari", "demra", "sabujbagh", "shahbagh", "azimpur", "lalbagh", "hazaribagh", "wari",
-    "old dhaka", "joydebpur", "joydevpur", "board bazar", "konabari", "siddhirganj", "fatullah", "chashara", "sutrapur", "gendaria", "tikatuly", "ramna", "segunbagicha", "bangshal", "newmarket",
+    "old dhaka", "sutrapur", "gendaria", "tikatuly", "ramna", "segunbagicha", "bangshal", "newmarket",
     "elephant road", "kamalapur", "mugda", "basabo", "shahjahanpur", "banasree", "aftabnagar", "nikunja",
     "cantonment", "airport", "turag", "dakshinkhan", "uttarkhan", "vatara", "satarkul", "tejkunipara",
+    # Chattogram City Corporation
+    "agrabad", "pahartali", "khulshi", "kulshi", "halishahar", "patenga", "panchlaish", "chandgaon", "bakalia",
+    "kotwali", "double mooring", "nasirabad", "muradpur", "bayazid", "bahaddarhat", "sadarghat", "chawkbazar",
+    "andarkilla", "firingi bazar", "jamal khan", "lalkhan bazar", "oxygen", "akbarshah", "baluchara",
 )
 _OUT_WORDS = (
     "gazipur", "narayanganj", "savar", "ashulia", "keraniganj", "narsingdi", "munshiganj", "manikganj",
-    "chattogram", "chittagong", "sylhet", "rajshahi", "khulna", "barishal", "barisal", "rangpur", "mymensingh",
+    "joydebpur", "joydevpur", "board bazar", "konabari", "siddhirganj", "fatullah", "chashara", "tongi", "sitakunda",
+    "hathazari", "raozan", "anwara", "sylhet", "rajshahi", "khulna", "barishal", "barisal", "rangpur", "mymensingh",
     "comilla", "cumilla", "bogura", "bogra", "jessore", "jashore", "cox", "dinajpur", "tangail", "faridpur",
     "kishoreganj", "narail", "pabna", "kushtia", "noakhali", "feni", "brahmanbaria", "habiganj", "gopalganj",
     "madaripur", "shariatpur", "jamalpur", "netrokona", "sherpur", "tarakandi", "purbachal", "rupganj",
-    "sonargaon", "bandar", "kaliakoir", "dhamrai", "nabinagar", "araihazar", "sreepur", "kapasia",
+    "sonargaon", "kaliakoir", "dhamrai", "nabinagar", "araihazar", "sreepur", "kapasia",
 )
 
 

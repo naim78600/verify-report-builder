@@ -14,7 +14,7 @@ P = {
     "side": "#14284A", "side_hi": "#1F3A6B", "side_tx": "#E6ECF7", "side_mute": "#9FB0CC",
     "bg": "#F3F6FB", "card": "#FFFFFF", "line": "#DCE3EF", "text": "#1E293B", "mute": "#64748B",
     "accent": "#0F766E", "accent_hi": "#0B5F59", "accent_soft": "#D8F3EF", "navy": "#1F3A5F",
-    "ok": "#047857", "ok_bg": "#D1FAE5", "warn": "#B45309", "warn_bg": "#FEF3C7", "off": "#CBD5E1", "off_tx": "#94A3B8",
+    "ok": "#047857", "ok_bg": "#D1FAE5", "warn": "#B45309", "warn_bg": "#FDE8D3", "off": "#CBD5E1", "off_tx": "#94A3B8",
 }
 
 
@@ -43,7 +43,7 @@ class Button(tk.Label):
         "primary": ("#FFFFFF", P["accent"], P["accent_hi"]),
         "secondary": (P["navy"], "#E8EEF8", "#D6E0F0"),
         "ghost": (P["side_tx"], P["side"], P["side_hi"]),
-        "danger": (P["warn"], P["warn_bg"], "#FDE7A8"),
+        "danger": (P["warn"], P["warn_bg"], "#FBDCC0"),
     }
 
     def __init__(self, parent, text, command, kind="secondary", font=None, padx=16, pady=8, **kw):

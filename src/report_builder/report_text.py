@@ -2,6 +2,7 @@
 
 Every builder returns `lines`: a list of lines, each line a list of (text, style) pairs.
 Styles:  n normal | b bold | m muted | h small heading | g green | gb green bold | a amber | ab amber bold
+         dn problem note inside Done (amber) | hl problem repeated in Due (amber on a soft marker)
 The Excel, PDF and e-mail writers turn the same lines into their own formatting, so all three always say the same thing.
 """
 from __future__ import annotations
@@ -31,12 +32,28 @@ def bill_slab_lines(r: BillRow) -> list:
 
 
 def summary_lines(r: BillRow) -> list:
-    done, due = r.summary.done, r.summary.due
-    due_style = "g" if due == "0" else "a"
-    return [[("Done-", "gb"), (done, "g")], [("Due-", "gb" if due == "0" else "ab"), (due, due_style)]]
+    """Done / Due as two lines.  Done: finished items (problems in amber brackets).
+    Due: the same problems repeated with a soft marker; "0" (green) when nothing is open."""
+    sm = r.summary
+    done_parts = sm.done_parts or [(sm.done, "ok")]
+    due_parts = sm.due_parts or [(sm.due, "ok" if sm.due.strip() == "0" else "note")]
+    clear = sm.due.strip() == "0"
+    done = [("Done-", "gb")] + [(t, "g" if st == "ok" else "dn") for t, st in done_parts]
+    due = [("Due-", "gb" if clear else "ab")] + [(t, "g" if clear else ("a" if st == "ok" else "hl")) for t, st in due_parts]
+    return [done, due]
+
+
+def has_due(r: BillRow) -> bool:
+    return r.summary.due.strip() not in ("", "0")
+
+
+def last_update_date(r: BillRow):
+    """The file's newest activity (a real datetime, so Excel can filter by date), or None."""
+    return r.last_file[0] if r.last_file else None
 
 
 def last_update_lines(r: BillRow) -> list:
+    """Details part: what the file did last and the newest line of every trip (trip id + type)."""
     if r.last_file is None:
         return [[("N/A", "m")]]
     when, what, user = r.last_file

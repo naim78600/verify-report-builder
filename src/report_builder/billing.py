@@ -6,7 +6,7 @@ Rules (agreed with the user)
     labelled Extra Trip 1, 2, 3 ... (billed In or Out by their own address).
   * Every trip created after the creation date is a single bill: in the Re-CPV tracker -> ReCpv,
     otherwise Extra Document / Extra Trip.
-  * Inactive trips are billable; Canceled trips are highlighted yellow.
+  * Inactive trips are billable; Canceled trips are marked light-blue (internal copy).
   * In = inside Dhaka city, Gazipur city or Narayanganj city (lat/long); everything else = Out.
   * Package is Out if ANY of its trips is Out; a single row is judged on its own trip.
   * SLA (working days from Receive Date): In = 2, Out = 4. Extra TAT = TAT - SLA (never below 0).
@@ -99,7 +99,7 @@ class BillRow:
     status: str = "Incomplete"
     status_note: str = ""
     summary: Summary = field(default_factory=Summary)
-    flags: dict = field(default_factory=dict)          # column -> reason text (yellow cells)
+    flags: dict = field(default_factory=dict)          # column -> reason text (light-blue cells)
     tat: int | None = None
     extra_tat: int | None = None
     canceled: bool = False
