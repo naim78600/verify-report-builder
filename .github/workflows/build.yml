@@ -54,20 +54,42 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --onefile --windowed --name VerifyReportBuilder --paths src --collect-data reportlab run_app.py
+          pyinstaller --noconfirm --clean --onefile --windowed --name VerifyReportBuilder --paths src --collect-data reportlab `
+            --add-data "src\report_builder\assets\barikoi_logo.png;report_builder\assets" run_app.py
           Compress-Archive -Path dist\VerifyReportBuilder.exe -DestinationPath "VerifyReportBuilder-${{ matrix.label }}.zip"
+
+      - name: Windows installer (Setup.exe)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $v = (Select-String -Path src\report_builder\__init__.py -Pattern '__version__ = "(.+)"').Matches[0].Groups[1].Value
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DAppVersion=$v" "/DArch=${{ matrix.arch }}" installer\VerifyReportBuilder.iss
+          Move-Item "installer_out\VerifyReportBuilder-Setup-${{ matrix.arch }}.exe" "VerifyReportBuilder-Setup-${{ matrix.label }}.exe"
 
       - name: Build (Mac .app)
         if: runner.os == 'macOS'
         run: |
           pyinstaller --noconfirm --clean --windowed --name VerifyReportBuilder --paths src --collect-data reportlab \
+            --add-data "src/report_builder/assets/barikoi_logo.png:report_builder/assets" \
             --osx-bundle-identifier com.example.verifyreportbuilder run_app.py
           ditto -c -k --sequesterRsrc --keepParent dist/VerifyReportBuilder.app "VerifyReportBuilder-${{ matrix.label }}.zip"
+
+      - name: Mac disk image (.dmg, drag to Applications)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p dmg_root
+          cp -R dist/VerifyReportBuilder.app dmg_root/
+          ln -s /Applications dmg_root/Applications
+          hdiutil create -volname "Verify Report Builder" -srcfolder dmg_root -ov -format UDZO "VerifyReportBuilder-${{ matrix.label }}.dmg"
 
       - uses: actions/upload-artifact@v4
         with:
           name: VerifyReportBuilder-${{ matrix.label }}
-          path: VerifyReportBuilder-${{ matrix.label }}.zip
+          path: |
+            VerifyReportBuilder-${{ matrix.label }}.zip
+            VerifyReportBuilder-Setup-${{ matrix.label }}.exe
+            VerifyReportBuilder-${{ matrix.label }}.dmg
           if-no-files-found: error
 
   release:
@@ -79,4 +101,7 @@ jobs:
         with: { path: out, merge-multiple: true }
       - uses: softprops/action-gh-release@v2
         with:
-          files: out/*.zip
+          files: |
+            out/*.exe
+            out/*.dmg
+            out/*.zip

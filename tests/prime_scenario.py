@@ -105,7 +105,9 @@ LOGS = {
              _log("TRIP", 700030, "Trip : 700030 FINISHED", when="2026-10-31 12:00:00"),
              _log("APPLICATION", 500001, "Application : 500001 status updated to SUBMITTED by Mgr", "HOLD", "SUBMITTED", "2026-11-02 16:30:00")],
     500002: [_log("APPLICATION", 500002, "Application : 500002 status updated to SUBMITTED by Mgr", "HOLD", "SUBMITTED", "2026-11-02 11:00:00")],
-    500003: [_log("APPLICATION", 500003, "Application : 500003 status updated to PARTIALLY_SUBMITTED by Mgr", "HOLD", "PARTIALLY_SUBMITTED", "2026-10-30 10:00:00")],
+    500003: [_log("APPLICATION", 500003, "Application : 500003 status updated to PARTIAL_SUBMITTED by Mgr", "HOLD", "PARTIAL_SUBMITTED", "2026-10-30 10:00:00"),
+             _log("TRIP", 700050, "Trip : 700050 FINISHED", "STARTED", "FINISHED", "2026-10-21 11:00:00"),
+             dict(_log("TRIP", 700051, "Trip : 700051 HOLD", "ALLOCATED", "HOLD", "2026-11-01 10:00:00"), causer_name="Verifier")],
     500004: [_log("APPLICATION", 500004, "Application : 500004 status updated to SUBMITTED by Mgr", "HOLD", "SUBMITTED", "2026-01-17 10:00:00"),
              _log("TRIP", 700090, "Trip : 700090 FINISHED", when="2026-11-01 10:00:00"),
              _log("APPLICATION", 500004, "Application : 500004 status updated to SUBMITTED by Mgr", "HOLD", "SUBMITTED", "2026-11-02 18:00:00")],
@@ -126,7 +128,21 @@ def handle(h, p, q):
     files = h.server_files
     if p == "/api/v2/manager/applications":
         a, b = q["dateFrom"][0], q["dateTill"][0]
-        sel = [f for f in files if a <= f["start_date"][:10] <= b]
+        st = {int(x) for x in q.get("status[]", [])}
+        if st:
+            # like the live Reports page: WITH status[] the dates mean "the day the file's CURRENT status began"
+            # (Submitted / Partially Submitted = the latest such event in the activity log, anything else = start day)
+            def entered_day(f):
+                if f["status"] in (6, 7):
+                    days = sorted((datetime.strptime(g["created_at"][:19], "%Y-%m-%dT%H:%M:%S") + timedelta(hours=6)).strftime("%Y-%m-%d")
+                                  for g in LOGS.get(f["id"], []) if g.get("current_data") in ("SUBMITTED", "PARTIALLY_SUBMITTED", "PARTIAL_SUBMITTED"))
+                    if days:
+                        return days[-1]
+                return f["start_date"][:10]
+            sel = [f for f in files if f["status"] in st and a <= entered_day(f) <= b]
+        else:
+            # WITHOUT status[] the dates are the file's Start Date, whatever its status is now
+            sel = [f for f in files if a <= f["start_date"][:10] <= b]
         sel.sort(key=lambda f: f["id"])
         page = int(q.get("page", ["1"])[0])
         chunk = sel[(page - 1) * 50: page * 50]

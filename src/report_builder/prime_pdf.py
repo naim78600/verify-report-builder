@@ -1,8 +1,10 @@
 """Prime Bank Report - PDF for bankers (reportlab, no other tools needed).
 
-Design goals: simple, same two parts as the daily e-mail (Complete / Incomplete), A4 landscape,
-header row repeated on every page, rows never split across pages, status and area shown both
-by colour AND by words (still readable on a black-and-white printer), embedded fonts.
+Design goals: simple, same two parts as the daily e-mail (Complete / Incomplete), A3 landscape (the 14 columns
+stay big and readable; prints scaled on A4), header row repeated on every page, rows never split across pages,
+status and area shown both by colour AND by words (still readable on a black-and-white printer), embedded fonts,
+calm colours (no red, no yellow).  Problems written in Done are amber; the same problems repeated in Due sit on a
+soft peach marker.  Internal copy: light sky-blue cells = "please check".
 """
 from __future__ import annotations
 
@@ -12,7 +14,7 @@ from pathlib import Path
 
 import reportlab
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.pagesizes import A3, landscape
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
@@ -20,15 +22,17 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas as rl_canvas
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from .billing import before_after
+from . import theme as T
+from .billing import SLA_IN, SLA_OUT, before_after
 from .collect_prime import PrimeData, title_for
+from .report_text import appointment_lines, bill_slab_lines, has_due, last_update_lines, summary_lines
 
-NAVY = colors.HexColor("#1F3864")
-GREEN = colors.HexColor("#2E7D32")
-RED = colors.HexColor("#C00000")
-GREY = colors.HexColor("#666666")
-YELLOW = colors.HexColor("#FFF200")
-KIND_BG = {"Package": "#DDEBF7", "Single": "#EDEDED", "ReCpv": "#FCE4D6", "Extra": "#E4DFEC"}
+def _c(hexv: str):
+    return colors.HexColor("#" + hexv)
+
+
+NAVY, GREEN, AMBER, GREY, CHECK = _c(T.NAVY), _c(T.POS), _c(T.NEG), _c(T.MUTED), _c(T.CHECK)
+KIND_BG = {k: "#" + v for k, v in T.KIND_BG.items()}
 
 _FONT_READY = False
 _CMAP: set[int] = set()
@@ -80,124 +84,175 @@ class _NumberedCanvas(rl_canvas.Canvas):
             self.setFont("Vera", 7)
             self.setFillColor(GREY)
             w, _h = self._pagesize
-            self.drawRightString(w - 10 * mm, 6 * mm, f"Page {self._pageNumber} of {n}")
+            self.drawRightString(w - 9 * mm, 6 * mm, f"Page {self._pageNumber} of {n}")
             super().showPage()
         super().save()
 
 
-def build_prime_pdf(d: PrimeData, path: Path, internal: bool) -> Path:
+_FONT_TAGS = {   # style code -> (bold, colour, size delta)
+    "n": (False, T.TEXT), "b": (True, T.TEXT), "m": (False, T.MUTED), "h": (True, T.NAVY),
+    "g": (False, T.POS), "gb": (True, T.POS), "a": (False, T.NEG), "ab": (True, T.NEG), "k": (False, T.MUTED),
+    "dn": (False, T.NOTE), "hl": (True, T.HILITE),
+}
+
+
+def _markup(lines, kind_color: str | None = None) -> str:
+    """Lines of (text, style) -> reportlab paragraph markup."""
+    out = []
+    for ln in lines:
+        seg = []
+        for text, st in ln:
+            if not text:
+                continue
+            bold, color = _FONT_TAGS.get(st, _FONT_TAGS["n"])
+            if st == "k" and kind_color:
+                bold, color = True, kind_color
+            t = escape(_safe(text.replace("\u25ba", "\u00bb")))
+            if st == "h":
+                t = f'<font size="6">{t}</font>'
+            if bold:
+                t = f"<b>{t}</b>"
+            if st == "hl":
+                seg.append(f'<font color="#{color}" backColor="#{T.HILITE_BG}">{t}</font>')
+            else:
+                seg.append(f'<font color="#{color}">{t}</font>')
+        out.append("".join(seg) or "&nbsp;")
+    return "<br/>".join(out)
+
+
+def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
     _fonts()
     title = title_for(d)
-    page = landscape(A4)
-    left = right = 8 * mm
+    page = landscape(A3)
+    left = right = 9 * mm
     usable = page[0] - left - right
-    base = ParagraphStyle("b", fontName="Vera", fontSize=6.9, leading=8.6)
-    bold = ParagraphStyle("bb", parent=base, fontName="Vera-Bold")
+    base = ParagraphStyle("b", fontName="Vera", fontSize=7.6, leading=9.6, textColor=_c(T.TEXT))
     center = ParagraphStyle("c", parent=base, alignment=1)
-    head = ParagraphStyle("h", parent=base, fontName="Vera-Bold", textColor=colors.white, alignment=1, fontSize=7)
-    small = ParagraphStyle("s", parent=base, fontSize=6.2, leading=7.6, textColor=GREY)
+    head = ParagraphStyle("h", parent=base, fontName="Vera-Bold", textColor=colors.white, alignment=1, fontSize=8)
+    small = ParagraphStyle("s", parent=base, fontSize=7, leading=8.6, textColor=GREY)
 
-    widths_mm = [7, 31, 45, 30, 29, 9, 16, 21, 8, 9, 22, 48]
+    heads = ["SL", "File No", "Concerns", "Re-CPV / Extra Trip (ID)", "Bill Slab", "Area", "Receive Date",
+             "Submission Date-Time", "TAT", "Extra TAT / SLA", "Report Status", "Report Summary", "Last Update", "Appointment"]
+    widths_mm = [8, 37, 40, 34, 52, 11, 18, 22, 10, 17, 21, 50, 50, 40]
     scale = usable / (sum(widths_mm) * mm)
     widths = [w * mm * scale for w in widths_mm]
-    heads = ["SL", "File No", "Concerns", "Re-CPV / Extra Trip (ID)", "Bill Slab", "Area", "Receive Date",
-             "Submission Date-Time", "TAT", "Extra TAT", "Report Status", "Report Summary"]
 
     def table_for(rows) -> Table:
         data = [[Paragraph(h, head) for h in heads]]
         style = [
             ("BACKGROUND", (0, 0), (-1, 0), NAVY),
-            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#9A9A9A")),
+            ("GRID", (0, 0), (-1, -1), 0.4, _c(T.BORDER)),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 2.5), ("RIGHTPADDING", (0, 0), (-1, -1), 2.5),
-            ("TOPPADDING", (0, 0), (-1, -1), 2.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("LEFTPADDING", (0, 0), (-1, -1), 3), ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+            ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3.5),
         ]
         for i, r in enumerate(rows, 1):
             sub = r.submitted
             if sub:
-                when = f"{r.submitted_at:%d/%m/%Y}\n{r.submitted_at:%I:%M %p}\n({before_after(r)})"
+                when = f"{r.reported_at:%d/%m/%Y}<br/>{r.reported_at:%I:%M %p}<br/><font color='#{T.MUTED}'>({before_after(r)})</font>"
             else:
-                when = "Pending"
-            status_color = "#2E7D32" if sub else "#C00000"
-            status = r.status + (f"\n({r.status_note})" if r.status_note and not sub else "")
-            summ = r.summary
-            summary_par = Paragraph(
-                f'<font color="#2E7D32"><b>Done-</b>{escape(_safe(summ.done))}</font><br/>'
-                f'<font color="{"#C00000" if summ.due != "0" else "#2E7D32"}"><b>Due-</b>{escape(_safe(summ.due))}</font>', base)
-            slab = Paragraph(f"<b>{escape(_safe(r.slab))}</b><br/><font color='#666666'>{escape(_safe(r.category))}</font>", base)
+                when = f"<font color='#{T.MUTED}'>Pending</font>"
+            st_color = T.POS if sub else T.NEG
+            status = r.status + (f"<br/><font size='6.5'>({escape(r.status_note)})</font>" if r.status_note and not sub else "")
+            out = r.area == "Out"
+            xt = r.extra_tat if r.extra_tat is not None else ""
+            sla_txt = "SLA Breach" if r.sla_breach else "Within SLA"
+            sla_col = T.NEG if r.sla_breach else T.POS
             hist = "\n".join(r.history_lines)
+            kc = T.KIND_TX.get(r.kind)
             data.append([
                 _p(r.sl, center),
-                Paragraph(f"<b>{escape(_safe(r.file_no))}</b><br/><font color='#666666'>{escape(r.file_type)}</font>", base),
+                Paragraph(f"<b><font color='#{T.NAVY}'>{escape(_safe(r.file_no))}</font></b><br/><font color='#{T.MUTED}'>{escape(r.file_type)}</font>", base),
                 _p("\n".join(r.concern_lines), base),
                 _p(hist, base),
-                slab,
-                Paragraph(f'<font color="{"#C00000" if r.area == "Out" else "#2E7D32"}"><b>{r.area}</b></font>', center),
+                Paragraph(_markup(bill_slab_lines(r), kc), base),
+                Paragraph(f'<font color="#{T.OUT if out else T.IN}"><b>{r.area}</b></font>', center),
                 _p(f"{r.receive_dt:%d/%m/%Y}" if r.receive_dt else "", center),
-                _p(when, center),
+                Paragraph(when, center),
                 _p(r.tat if r.tat is not None else "", center),
-                _p(r.extra_tat if r.extra_tat is not None else "", center),
-                Paragraph(f'<font color="{status_color}"><b>{escape(_safe(status)).replace(chr(10), "<br/>")}</b></font>', center),
-                summary_par,
+                Paragraph(f"<b><font color='#{sla_col}'>{xt}</font></b><br/><font size='6.6' color='#{sla_col}'>{sla_txt}<br/>"
+                          f"(SLA {r.sla_days} days)</font>", center),
+                Paragraph(f'<font color="#{st_color}"><b>{status}</b></font>', center),
+                Paragraph(_markup(summary_lines(r)), base),
+                Paragraph(_markup(last_update_lines(r)), base),
+                Paragraph(_markup(appointment_lines(r)), base),
             ])
-            style.append(("BACKGROUND", (4, i), (4, i), colors.HexColor(KIND_BG.get(r.kind, "#FFFFFF"))))
+            style.append(("BACKGROUND", (4, i), (4, i), _c(T.KIND_BG.get(r.kind, "FFFFFF"))))
+            style.append(("BACKGROUND", (5, i), (5, i), _c(T.OUT_BG if out else T.IN_BG)))
+            style.append(("BACKGROUND", (10, i), (10, i), _c(T.POS_BG if sub else T.NEG_BG)))
+            if has_due(r):
+                style.append(("BACKGROUND", (11, i), (11, i), _c(T.DUE_CELL_BG)))
+            if i % 2 == 0:
+                for col in (0, 1, 2, 3, 6, 7, 8, 9, 12, 13) + (() if has_due(r) else (11,)):
+                    style.append(("BACKGROUND", (col, i), (col, i), _c(T.ZEBRA)))
             if internal:
                 col_for = {"area": 5, "slab": 4, "summary": 11, "status": 10}
                 for key in r.flags:
                     if key in col_for:
-                        style.append(("BACKGROUND", (col_for[key], i), (col_for[key], i), YELLOW))
+                        style.append(("BACKGROUND", (col_for[key], i), (col_for[key], i), CHECK))
                 if r.canceled:
-                    style.append(("BACKGROUND", (4, i), (4, i), YELLOW))
+                    style.append(("BACKGROUND", (4, i), (4, i), CHECK))
         t = Table(data, colWidths=widths, repeatRows=1, splitByRow=1)
         t.setStyle(TableStyle(style))
         return t
 
-    def band(text, bg):
-        t = Table([[Paragraph(f"<b>{escape(text)}</b>", ParagraphStyle("band", parent=base, fontSize=10, leading=12,
-                                                                        textColor=colors.black))]], colWidths=[usable])
-        t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(bg)),
-                               ("LEFTPADDING", (0, 0), (-1, -1), 6), ("TOPPADDING", (0, 0), (-1, -1), 4),
-                               ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+    def band(text, bg, fg):
+        t = Table([[Paragraph(f"<b>{escape(text)}</b>", ParagraphStyle("band", parent=base, fontSize=12, leading=14,
+                                                                        textColor=_c(fg)))]], colWidths=[usable])
+        t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), _c(bg)), ("LINEBEFORE", (0, 0), (0, -1), 4, _c(fg)),
+                               ("LEFTPADDING", (0, 0), (-1, -1), 8), ("TOPPADDING", (0, 0), (-1, -1), 5),
+                               ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
         return t
 
     def on_page(cv, doc):
         cv.saveState()
         w, h = page
-        cv.setFont("Vera-Bold", 9)
         cv.setFillColor(NAVY)
-        cv.drawString(left, h - 7 * mm, _safe(title))
-        cv.setStrokeColor(NAVY)
-        cv.setLineWidth(0.8)
-        cv.line(left, h - 8.6 * mm, w - right, h - 8.6 * mm)
-        cv.setFont("Vera", 7)
+        cv.rect(0, h - 13 * mm, w, 13 * mm, stroke=0, fill=1)
+        cv.setFillColor(colors.white)
+        cv.setFont("Vera-Bold", 13)
+        cv.drawString(left, h - 8.6 * mm, _safe(title))
+        cv.setFont("Vera", 8)
+        cv.drawRightString(w - right, h - 8.2 * mm, _safe(f"Report date {d.report_date:%d/%m/%Y}"))
+        cv.setStrokeColor(_c(T.BORDER))
+        cv.setLineWidth(0.4)
+        cv.line(left, 9.5 * mm, w - right, 9.5 * mm)
+        cv.setFont("Vera", 7.5)
         cv.setFillColor(GREY)
-        cv.drawString(left, 6 * mm, f"Generated {d.generated_at:%d/%m/%Y %I:%M %p}")
+        cv.drawString(left, 6 * mm, f"Generated {d.generated_at:%d/%m/%Y %I:%M %p}   |   BS = Bank Statement   |   "
+                                    f"SLA: In area {SLA_IN} working days, Out area {SLA_OUT} working days (Fri, Sat and holidays excluded)")
         cv.restoreState()
 
     story = []
     story.append(Spacer(1, 1 * mm))
-    n_pk = sum(1 for r in d.complete + d.incomplete if r.kind == "Package")
-    n_sg = sum(1 for r in d.complete + d.incomplete if r.kind == "Single")
-    n_rc = sum(1 for r in d.complete + d.incomplete if r.kind == "ReCpv")
-    n_ex = sum(1 for r in d.complete + d.incomplete if r.kind == "Extra")
-    stats = Table([[Paragraph(f"<b>Complete</b> {len(d.complete)}", base), Paragraph(f"<b>Incomplete</b> {len(d.incomplete)}", base),
-                    Paragraph(f"<b>Package</b> {n_pk}", base), Paragraph(f"<b>Single</b> {n_sg}", base),
-                    Paragraph(f"<b>Re-CPV</b> {n_rc}", base), Paragraph(f"<b>Extra</b> {n_ex}", base)]],
-                  colWidths=[usable / 6] * 6)
-    stats.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#9A9A9A")),
-                               ("INNERGRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#CCCCCC")),
-                               ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F5F7FB")),
-                               ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
-    story += [stats, Spacer(1, 3 * mm)]
+    allr = d.complete + d.incomplete
+    n_pk = sum(1 for r in allr if r.kind == "Package")
+    n_sg = sum(1 for r in allr if r.kind == "Single")
+    n_rc = sum(1 for r in allr if r.kind == "ReCpv")
+    n_ex = sum(1 for r in allr if r.kind == "Extra")
+    n_br = sum(1 for r in allr if r.sla_breach)
+    cells = [("Complete", len(d.complete), T.POS), ("Incomplete", len(d.incomplete), T.NEG), ("Package", n_pk, T.NAVY),
+             ("Extra Trip", n_sg, T.NAVY), ("Re-CPV", n_rc, T.NAVY), ("Extra Doc / Trip", n_ex, T.NAVY),
+             ("Area In", sum(1 for r in allr if r.area == "In"), T.IN), ("Area Out", sum(1 for r in allr if r.area == "Out"), T.OUT),
+             ("SLA Breach", n_br, T.NEG)]
+    stat_style = ParagraphStyle("st", parent=center, fontSize=7.5, leading=17, textColor=GREY)
+    stats = Table([[Paragraph(f"{k.upper()}<br/><font size='15' color='#{c}'><b>{v}</b></font>", stat_style) for k, v, c in cells]],
+                  colWidths=[usable / len(cells)] * len(cells))
+    tstyle = [("BACKGROUND", (0, 0), (-1, -1), _c(T.PANEL)), ("LINEAFTER", (0, 0), (-2, -1), 3, colors.white),
+              ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]
+    for j, (_k, _v, c) in enumerate(cells):
+        tstyle.append(("LINEBELOW", (j, 0), (j, 0), 2, _c(c)))
+    stats.setStyle(TableStyle(tstyle))
+    story += [stats, Spacer(1, 4 * mm)]
 
-    story.append(band(f"Complete Report ({len(d.complete)})", "#E2EFDA"))
+    story.append(band(f"Complete Report  ({len(d.complete)})", T.BAND_OK_BG, T.BAND_OK_TX))
     story.append(Spacer(1, 1.5 * mm))
     if d.complete:
         story.append(table_for(d.complete))
     else:
         story.append(_p("No submitted files for this report.", small))
     story.append(PageBreak())
-    story.append(band(f"Incomplete Report ({len(d.incomplete)})", "#FCE4D6"))
+    story.append(band(f"Incomplete Report  ({len(d.incomplete)})", T.BAND_NO_BG, T.BAND_NO_TX))
     story.append(Spacer(1, 1.5 * mm))
     if d.incomplete:
         story.append(table_for(d.incomplete))
@@ -208,11 +263,11 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool) -> Path:
     if internal:
         rc = d.recon
         story += [Spacer(1, 4 * mm), _p(
-            f"Internal check - trips in billing rows: {rc.get('row_trips')}, trips in files: {rc.get('file_trips')}. "
-            f"Yellow cells need a person to check (see the Check List sheet of the Excel).", small)]
+            f"Internal check - trips in report rows: {rc.get('row_trips')}, trips in files: {rc.get('file_trips')}. "
+            f"Light-blue cells need a person to check (see the Check List sheet of the Excel).", small)]
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    doc = SimpleDocTemplate(str(path), pagesize=page, leftMargin=left, rightMargin=right, topMargin=12 * mm,
-                            bottomMargin=11 * mm, title=title, author="Verify Report Builder")
+    doc = SimpleDocTemplate(str(path), pagesize=page, leftMargin=left, rightMargin=right, topMargin=17 * mm,
+                            bottomMargin=12 * mm, title=title, author="Verify Report Builder")
     doc.build(story, onFirstPage=on_page, onLaterPages=on_page, canvasmaker=_NumberedCanvas)
     return path

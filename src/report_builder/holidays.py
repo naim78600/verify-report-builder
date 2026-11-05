@@ -186,3 +186,26 @@ def count_business_days(start: date, end: date, holidays: set[date]) -> int:
             n += 1
         d += timedelta(days=1)
     return sign * n
+
+
+def is_working_day(d: date, holidays: set[date]) -> bool:
+    return d.weekday() not in (4, 5) and d not in holidays
+
+
+def next_working_day(d: date, holidays: set[date]) -> date:
+    """`d` itself when it is a working day, otherwise the first working day after it (Fri/Sat/holiday -> next one)."""
+    for _ in range(60):
+        if is_working_day(d, holidays):
+            return d
+        d += timedelta(days=1)
+    return d
+
+
+def previous_working_day(d: date, holidays: set[date]) -> date:
+    """The last working day strictly BEFORE `d`."""
+    d -= timedelta(days=1)
+    for _ in range(60):
+        if is_working_day(d, holidays):
+            return d
+        d -= timedelta(days=1)
+    return d

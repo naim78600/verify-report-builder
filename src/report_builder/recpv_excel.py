@@ -51,7 +51,7 @@ def _billing_rows_sheet(wb, d: PrimeData):
     for n, r in enumerate(sorted(d.all_rows, key=lambda x: (x.file_no, x.receive_dt or datetime.max)), 2):
         vals = [r.file_no, r.kind, r.slab, r.category, ", ".join(str(t["id"]) for _c, t in r.trips), len(r.trips),
                 "; ".join(r.concern_lines), r.receive_dt.date() if r.receive_dt else None, r.area, r.area_why,
-                r.submitted_at, r.tat, r.extra_tat, r.status, "Yes" if r.canceled else ""]
+                r.reported_at, r.tat, r.extra_tat, r.status, "Yes" if r.canceled else ""]
         for j, v in enumerate(vals, 1):
             c = put(ws, n, j, v)
             if j == 8:
@@ -100,7 +100,7 @@ def _calculation_sheet(wb, d: PrimeData, n_rows: int):
     put(ws, r, 1, "Package trips (max 5 each)")
     put(ws, r, 2, f'=SUMIFS({rng("F")},{rng("B")},"Package")', align=Alignment(horizontal="center"), formula=True)
     r += 1
-    put(ws, r, 1, "Rows with a Canceled trip (yellow, billing undecided)")
+    put(ws, r, 1, "Rows with a Canceled trip (billing undecided)")
     put(ws, r, 2, f'=COUNTIF({rng("O")},"Yes")', align=Alignment(horizontal="center"), formula=True)
     r += 1
     put(ws, r, 1, "Submitted rows")
@@ -110,8 +110,9 @@ def _calculation_sheet(wb, d: PrimeData, n_rows: int):
     put(ws, r, 2, f'=COUNTIF({rng("N")},"Incomplete")', align=Alignment(horizontal="center"), formula=True)
     r += 2
     for note in ("Package = trips created on the file-creation date, first 5 in creation order (any type).",
-                 "Single = 6th, 7th ... trip of the same date. Re-CPV / Extra = trip created after the creation date.",
-                 "Package is Out if any trip is outside Dhaka (from latitude/longitude); a single row is judged on its own trip.",
+                 "Extra Trip 1, 2, 3 = 6th, 7th, 8th trip created with the file (billed alone). Re-CPV / Extra Document / Extra Trip = trip created after the creation date.",
+                 "In = inside Dhaka City Corporation (DNCC / DSCC) or Chattogram City Corporation (from latitude/longitude); everything else (Gazipur, Narayanganj, Savar, Tongi ...) is Out. A Package is Out if any trip is Out; a single row is judged on its own trip.",
+                 "SLA: In = 2 working days, Out = 4 working days. Extra TAT = TAT - SLA.",
                  "TAT counts working days (Friday and Saturday off, plus the Holidays list)."):
         put(ws, r, 1, note, font=Font(color="555555", italic=True))
         r += 1

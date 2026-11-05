@@ -1,4 +1,4 @@
-"""Small desktop window (tkinter) - works on Windows and macOS."""
+"""Desktop window (tkinter) - Windows and macOS.  Bengali interface, one screen, four steps."""
 from __future__ import annotations
 
 import os
@@ -7,19 +7,26 @@ import subprocess
 import sys
 import threading
 import tkinter as tk
-import tkinter.font as tkfont
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from . import __version__, config
+from . import holidays as hol
 from .client import ApiError, AuthError, Cancelled
 from .collect import RunConfig, collect
+from .collect_prime import PHASE_TEXT, PrimeConfig, collect_prime, slot_for
+from .mail_templates import facts_from
 from .excel import build_workbook
-from . import holidays as hol
-from .collect_prime import PrimeConfig, collect_prime, slot_for
-from .email_copy import build_email_html, load_signature, save_signature
+from .gui_mail import MailDialog, SentLogDialog, SignatureDialog
+from .file_history import HistoryConfig, collect_history, parse_ids_file, parse_ids_text
+from .history_excel import write_history_outputs
 from .reports import write_prime_outputs, write_recpv_workbook
+from .ui_kit import (Button, Card, DateField, Entry, Fonts, P, Progress, Segmented, Stepper, Tile, parse_date,
+                     pick_font_family)
+
+STAGES = ["লগইন", "ফাইল সংগ্রহ", "অ্যাক্টিভিটি লগ", "হিসাব", "ফাইল তৈরি"]
+STAGE_INDEX = {"login": 0, "list": 1, "detail": 1, "recpv": 1, "old": 1, "log": 2, "rows": 3, "write": 4, "excel": 4}
 
 
 def open_path(path: Path) -> None:
@@ -38,259 +45,427 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(f"{config.APP_NAME} {__version__}")
+        self.configure(bg=P["bg"])
         self.resizable(False, False)
-        self._setup_fonts()
+        self.fonts = Fonts(self, pick_font_family(self))
+        self._tune_default_fonts()
         self.settings = config.load_settings()
         self.q: queue.Queue = queue.Queue()
         self.cancel = threading.Event()
         self.worker: threading.Thread | None = None
-        self.out_file: Path | None = None
         self.out_dir = Path(self.settings.get("out_dir") or config.default_output_dir())
-        self._build()
-        self.after(100, self._poll)
-
-    def _setup_fonts(self):
-        """Prefer a font that has Bengali glyphs on the current OS."""
-        wanted = ["Nirmala UI", "Kohinoor Bangla", "Bangla Sangam MN", "Noto Sans Bengali", "Vrinda"]
-        have = set(tkfont.families(self))
-        family = next((f for f in wanted if f in have), None)
-        if family:
-            for name in ("TkDefaultFont", "TkTextFont", "TkMenuFont", "TkHeadingFont"):
-                try:
-                    tkfont.nametofont(name).configure(family=family, size=11)
-                except tk.TclError:
-                    pass
-
-    # ---------------------------------------------------------------- layout
-    def _build(self):
-        pad = {"padx": 10, "pady": 5}
-        root = ttk.Frame(self, padding=14)
-        root.grid()
-        r = 0
-
-        ttk.Label(root, text="সার্ভার").grid(row=r, column=0, sticky="w", **pad)
-        self.server = tk.StringVar(value=self.settings.get("server", config.SERVER_PRODUCTION))
-        cb = ttk.Combobox(root, textvariable=self.server, values=config.SERVER_CHOICES, state="readonly", width=34)
-        cb.grid(row=r, column=1, sticky="ew", **pad)
-        cb.bind("<<ComboboxSelected>>", lambda _e: self._toggle_urls())
-        r += 1
-
-        self.url_frame = ttk.Frame(root)
-        self.url_frame.grid(row=r, column=0, columnspan=2, sticky="ew")
-        ttk.Label(self.url_frame, text="ওয়েব ঠিকানা").grid(row=0, column=0, sticky="w", **pad)
-        self.web = tk.StringVar(value=self.settings.get("web", ""))
-        ttk.Entry(self.url_frame, textvariable=self.web, width=37).grid(row=0, column=1, **pad)
-        ttk.Label(self.url_frame, text="API ঠিকানা").grid(row=1, column=0, sticky="w", **pad)
-        self.api = tk.StringVar(value=self.settings.get("api", ""))
-        ttk.Entry(self.url_frame, textvariable=self.api, width=37).grid(row=1, column=1, **pad)
-        ttk.Label(self.url_frame, text="(API ঠিকানা ফাঁকা রাখলে ওয়েব ঠিকানা থেকে নিজে ঠিক হবে)",
-                  foreground="#666").grid(row=2, column=0, columnspan=2, sticky="w", padx=10)
-        r += 1
-
-        ttk.Label(root, text="ইমেইল").grid(row=r, column=0, sticky="w", **pad)
-        self.email = tk.StringVar(value=self.settings.get("email", ""))
-        ttk.Entry(root, textvariable=self.email, width=37).grid(row=r, column=1, **pad)
-        r += 1
-
-        ttk.Label(root, text="পাসওয়ার্ড").grid(row=r, column=0, sticky="w", **pad)
-        self.password = tk.StringVar()
-        ttk.Entry(root, textvariable=self.password, show="•", width=37).grid(row=r, column=1, **pad)
-        r += 1
-
-        ttk.Label(root, text="দিন সংখ্যা").grid(row=r, column=0, sticky="w", **pad)
-        self.days = tk.StringVar(value=str(self.settings.get("days", config.DEFAULT_DAYS)))
-        ttk.Spinbox(root, from_=1, to=730, textvariable=self.days, width=8).grid(row=r, column=1, sticky="w", **pad)
-        r += 1
-
-        ttk.Label(root, text="সেভের জায়গা").grid(row=r, column=0, sticky="w", **pad)
-        f = ttk.Frame(root)
-        f.grid(row=r, column=1, sticky="ew", **pad)
-        self.dir_label = ttk.Label(f, text=str(self.out_dir), width=28)
-        self.dir_label.pack(side="left")
-        ttk.Button(f, text="বদলান", width=7, command=self._choose_dir).pack(side="right")
-        r += 1
-
-        btns = ttk.Frame(root)
-        btns.grid(row=r, column=0, columnspan=2, pady=(10, 4))
-        self.go_btn = ttk.Button(btns, text="রিপোর্ট তৈরি করুন", command=self._start)
-        self.go_btn.pack(side="left", padx=4)
-        self.cancel_btn = ttk.Button(btns, text="বাতিল", command=self._cancel, state="disabled")
-        self.cancel_btn.pack(side="left", padx=4)
-        self.open_btn = ttk.Button(btns, text="এক্সেল খুলুন", command=self._open, state="disabled")
-        self.open_btn.pack(side="left", padx=4)
-        r += 1
-
-        # ---- v2: Prime Bank buttons --------------------------------------------------
-        sep = ttk.Separator(root, orient="horizontal")
-        sep.grid(row=r, column=0, columnspan=2, sticky="ew", padx=10, pady=(8, 2))
-        r += 1
-        pb = ttk.Frame(root)
-        pb.grid(row=r, column=0, columnspan=2, pady=(4, 2))
-        self.prime_btn = ttk.Button(pb, text="Prime Bank Report", command=self._prime_dialog)
-        self.prime_btn.grid(row=0, column=0, padx=4, pady=2)
-        self.recpv_btn = ttk.Button(pb, text="Re-CPV সহ এক্সেল রিপোর্ট", command=self._start_recpv)
-        self.recpv_btn.grid(row=0, column=1, padx=4, pady=2)
-        self.email_btn = ttk.Button(pb, text="ইমেইলের জন্য কপি", command=self._email_copy, state="disabled")
-        self.email_btn.grid(row=1, column=0, padx=4, pady=2)
-        ttk.Button(pb, text="ছুটির তালিকা", command=self._holiday_dialog).grid(row=1, column=1, padx=4, pady=2)
-        ttk.Button(pb, text="ইমেইল সিগনেচার", command=self._signature_dialog).grid(row=2, column=0, padx=4, pady=2)
-        self.folder_btn = ttk.Button(pb, text="ফোল্ডার খুলুন", command=lambda: open_path(self.out_dir))
-        self.folder_btn.grid(row=2, column=1, padx=4, pady=2)
         self.last_prime = None
-        r += 1
+        self.smtp_password = ""                     # kept in memory only (never written to disk)
+        self.out_files: list[Path] = []
+        self._build()
+        self._sync_ui()
+        self.after(100, self._poll)
+        self.update_idletasks()
+        w, h = self.winfo_reqwidth(), self.winfo_reqheight()
+        x = max(0, (self.winfo_screenwidth() - w) // 2)
+        y = max(0, (self.winfo_screenheight() - h) // 3)
+        self.geometry(f"+{x}+{y}")
 
-        self.bar = ttk.Progressbar(root, length=420, mode="determinate")
-        self.bar.grid(row=r, column=0, columnspan=2, padx=10, pady=(8, 2))
-        r += 1
+    def _tune_default_fonts(self):
+        import tkinter.font as tkfont
+        for name in ("TkDefaultFont", "TkTextFont", "TkMenuFont", "TkHeadingFont", "TkFixedFont"):
+            try:
+                tkfont.nametofont(name).configure(family=self.fonts.family, size=11)
+            except tk.TclError:
+                pass
+
+    # ================================================================== layout
+    def _build(self):
+        f = self.fonts
+        side = tk.Frame(self, bg=P["side"], width=236)
+        side.grid(row=0, column=0, sticky="ns")
+        side.grid_propagate(False)
+        holder = tk.Frame(self, bg=P["bg"])
+        holder.grid(row=0, column=1, sticky="nsew")
+        foot = tk.Frame(holder, bg=P["bg"], padx=18)
+        foot.pack(side="bottom", fill="x", pady=(0, 12))
+        self._foot = foot
+        canvas = tk.Canvas(holder, bg=P["bg"], highlightthickness=0, borderwidth=0)
+        vbar = tk.Scrollbar(holder, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        main = tk.Frame(canvas, bg=P["bg"], padx=18, pady=14)
+        win = canvas.create_window((0, 0), window=main, anchor="nw")
+        self._canvas, self._vbar, self._main_win = canvas, vbar, win
+
+        def _fit(_e=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            need = main.winfo_reqheight() + 28
+            room = max(380, self.winfo_screenheight() - 130 - foot.winfo_reqheight())
+            canvas.configure(height=min(need, room), width=main.winfo_reqwidth() + 36)
+            if need > room:
+                vbar.pack(side="right", fill="y")
+            else:
+                vbar.pack_forget()
+            canvas.itemconfigure(win, width=max(main.winfo_reqwidth(), canvas.winfo_width() - 36))
+        main.bind("<Configure>", _fit)
+        self._fit_scroll = _fit
+
+        def _wheel(e):
+            if vbar.winfo_ismapped():
+                canvas.yview_scroll(-1 * (e.delta if sys.platform == "darwin" else e.delta // 120), "units")
+        self.bind_all("<MouseWheel>", _wheel)
+
+        # ---- sidebar -------------------------------------------------------------
+        tk.Label(side, text="Verify", bg=P["side"], fg="white", font=f.title).pack(anchor="w", padx=20, pady=(22, 0))
+        tk.Label(side, text="Report Builder", bg=P["side"], fg=P["side_tx"], font=f.h2).pack(anchor="w", padx=20)
+        tk.Label(side, text=f"Prime Bank PLC · v{__version__}", bg=P["side"], fg=P["side_mute"], font=f.tiny).pack(anchor="w", padx=20, pady=(2, 18))
+        note = tk.Frame(side, bg=P["side_hi"])
+        note.pack(fill="x", padx=16)
+        tk.Label(note, text="🔒 শুধু তথ্য পড়ে\nকিছু বদলায় না, পাসওয়ার্ড সংরক্ষণ হয় না", bg=P["side_hi"], fg=P["side_tx"],
+                 font=f.tiny, justify="left", anchor="w", padx=10, pady=8).pack(fill="x")
+        tk.Frame(side, bg=P["side"], height=14).pack()
+        for text, cmd in (("✉  ইমেইল পাঠান", self._open_mail), ("📨  পাঠানো ইমেইল", lambda: SentLogDialog(self)),
+                          ("🖋  ইমেইল সিগনেচার", lambda: SignatureDialog(self)), ("📅  ছুটির তালিকা", self._holiday_dialog),
+                          ("📂  ফোল্ডার খুলুন", lambda: open_path(self.out_dir))):
+            Button(side, text, cmd, kind="ghost", font=f.body, anchor="w", padx=20, pady=9).pack(fill="x")
+        tk.Label(side, text="সেভের জায়গা", bg=P["side"], fg=P["side_mute"], font=f.tiny).pack(anchor="w", padx=20, pady=(20, 0))
+        self.dir_label = tk.Label(side, text=self._short(self.out_dir), bg=P["side"], fg=P["side_tx"], font=f.tiny, wraplength=200, justify="left")
+        self.dir_label.pack(anchor="w", padx=20)
+        Button(side, "বদলান", self._choose_dir, kind="ghost", font=f.small, anchor="w", padx=20, pady=4).pack(fill="x")
+
+        # ---- main: header --------------------------------------------------------
+        tk.Label(main, text="নতুন রিপোর্ট", bg=P["bg"], fg=P["navy"], font=f.title).grid(row=0, column=0, columnspan=2, sticky="w")
+        tk.Label(main, text="লগইন করুন, রিপোর্টের ধরন ও সময়সীমা বাছুন, তারপর ‘রিপোর্ট তৈরি করুন’ চাপুন।", bg=P["bg"], fg=P["mute"],
+                 font=f.small).grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 8))
+        colA = tk.Frame(main, bg=P["bg"])
+        colA.grid(row=2, column=0, sticky="n", padx=(0, 10))
+        colB = tk.Frame(main, bg=P["bg"])
+        colB.grid(row=2, column=1, sticky="n")
+
+        # ---- 1 login -------------------------------------------------------------
+        c1 = Card(colA, f, "লগইন", "১")
+        c1.pack(fill="x", pady=(0, 10))
+        b = c1.body
+        self.server = tk.StringVar(value=self.settings.get("server", config.SERVER_PRODUCTION))
+        row = tk.Frame(b, bg=P["card"])
+        row.pack(fill="x", pady=(0, 6))
+        tk.Label(row, text="সার্ভার", bg=P["card"], fg=P["mute"], font=f.small, width=9, anchor="w").pack(side="left")
+        cb = ttk.Combobox(row, textvariable=self.server, values=config.SERVER_CHOICES, state="readonly", width=30)
+        cb.pack(side="left")
+        cb.bind("<<ComboboxSelected>>", lambda _e: self._toggle_urls())
+        self.url_frame = tk.Frame(b, bg=P["card"])
+        self.web = tk.StringVar(value=self.settings.get("web", ""))
+        self.api = tk.StringVar(value=self.settings.get("api", ""))
+        for i, (lab, var) in enumerate((("ওয়েব ঠিকানা", self.web), ("API ঠিকানা", self.api))):
+            r_ = tk.Frame(self.url_frame, bg=P["card"])
+            r_.pack(fill="x", pady=2)
+            tk.Label(r_, text=lab, bg=P["card"], fg=P["mute"], font=f.small, width=9, anchor="w").pack(side="left")
+            Entry(r_, f, var, width=30).pack(side="left", ipady=3)
+        self.email = tk.StringVar(value=self.settings.get("email", ""))
+        self.password = tk.StringVar()
+        for lab, var, show in (("ইমেইল", self.email, None), ("পাসওয়ার্ড", self.password, "•")):
+            r_ = tk.Frame(b, bg=P["card"])
+            r_.pack(fill="x", pady=4)
+            tk.Label(r_, text=lab, bg=P["card"], fg=P["mute"], font=f.small, width=9, anchor="w").pack(side="left")
+            Entry(r_, f, var, show=show, width=31).pack(side="left", ipady=4)
+
+        # ---- 2 period ------------------------------------------------------------
+        c2 = Card(colA, f, "ফাইলের সময়সীমা", "২")
+        c2.pack(fill="x")
+        self.c2 = c2
+        b = c2.body
+        self.period = tk.StringVar(value="days")
+        Segmented(b, f, [("days", "শেষ কয়েক দিন"), ("range", "তারিখ বাছুন")], self.period, self._sync_ui).pack(anchor="w", pady=(0, 8))
+        d_row = tk.Frame(b, bg=P["card"])
+        d_row.pack(fill="x", pady=2)
+        tk.Label(d_row, text="শেষ", bg=P["card"], fg=P["text"], font=f.body).pack(side="left")
+        self.days = tk.StringVar(value=str(self.settings.get("days", config.DEFAULT_DAYS)))
+        self.days_entry = Entry(d_row, f, self.days, width=5, justify="center")
+        self.days_entry.pack(side="left", padx=6, ipady=4)
+        tk.Label(d_row, text="দিনের ফাইল", bg=P["card"], fg=P["text"], font=f.body).pack(side="left")
+        self.chips = []
+        for n in (30, 60, 90):
+            ch = Button(d_row, str(n), lambda n=n: self.days.set(str(n)), kind="secondary", font=f.tiny, padx=8, pady=3)
+            ch.pack(side="left", padx=(8 if n == 30 else 3, 0))
+            self.chips.append(ch)
+        r_row = tk.Frame(b, bg=P["card"])
+        r_row.pack(fill="x", pady=(10, 2))
+        today = date.today()
+        tk.Label(r_row, text="থেকে", bg=P["card"], fg=P["text"], font=f.body).pack(side="left")
+        self.d_from = DateField(r_row, f, today - timedelta(days=30))
+        self.d_from.pack(side="left", padx=6)
+        tk.Label(r_row, text="পর্যন্ত", bg=P["card"], fg=P["text"], font=f.body).pack(side="left")
+        self.d_till = DateField(r_row, f, today)
+        self.d_till.pack(side="left", padx=6)
+        self.period_hint = tk.Label(b, text="", bg=P["card"], fg=P["mute"], font=f.tiny, anchor="w", justify="left", wraplength=380)
+        self.period_hint.pack(fill="x", pady=(8, 0))
+
+        # ---- 3 report type -------------------------------------------------------
+        c3 = Card(colB, f, "রিপোর্টের ধরন", "৩")
+        c3.pack(fill="x", pady=(0, 10))
+        b = c3.body
+        self.rtype = tk.StringVar(value=self.settings.get("rtype", "tracker"))
+        for val, title, help_ in (
+                ("tracker", "দৈনিক সাবমিশন ট্র্যাকার", "Complete + Incomplete রিপোর্ট, ইমেইলের মতো সাজানো (3pm / 7pm)"),
+                ("range", "সময়সীমার সব ফাইলের রিপোর্ট", "বাছাই করা সময়ের সব সারি: Submitted ও Incomplete"),
+                ("recpv", "Re-CPV সহ বিস্তারিত এক্সেল", "প্রতি ফাইলের নিচে Re-CPV/Extra + Calculation শিট"),
+                ("v1", "সাধারণ বিস্তারিত এক্সেল", "ফাইল ও ট্রিপের পুরো রিপোর্ট (আগের ভার্সনের মতো)"),
+                ("history", "ফাইল হিস্টরি", "ফাইল নম্বরের Excel/CSV দিন: প্রতিটি ফাইলের শুরু থেকে শেষ পর্যন্ত পুরো ইতিহাস")):
+            Tile(b, f, val, title, help_, self.rtype, self._sync_ui).pack(fill="x", pady=3)
+
+        # ---- 2 (tracker only): date + phase --------------------------------------
+        ct = Card(colA, f, "তারিখ ও ফেজ", "২")
+        self.c_trk = ct
+        b = ct.body
+        self.track_row = tk.Frame(b, bg=P["card"])
+        self.track_row.pack(fill="x")
+        tk.Label(self.track_row, text="রিপোর্টের তারিখ", bg=P["card"], fg=P["text"], font=f.small).pack(side="left")
+        self.rdate = DateField(self.track_row, f, today)
+        self.rdate.pack(side="left", padx=(6, 12))
+        self.rdate.var.trace_add("write", lambda *_a: self.after_idle(self._sync_ui))
+        self.phase_row = tk.Frame(b, bg=P["card"])
+        self.phase_row.pack(fill="x", pady=(8, 0))
+        tk.Label(self.phase_row, text="ফেজ", bg=P["card"], fg=P["text"], font=f.small).pack(side="left")
+        self.slot = tk.StringVar(value="auto")
+        Segmented(self.phase_row, f, [("auto", f"অটো ({'1st' if slot_for() == '3pm' else '2nd'})"), ("3pm", "1st · 3:30 PM"),
+                                      ("7pm", "2nd · 7:00 PM")], self.slot, self._sync_ui).pack(side="left", padx=(8, 0))
+        self.after3_var = tk.BooleanVar(value=bool(self.settings.get("after3_only", False)))
+        self.after3_cb = tk.Checkbutton(b, text="২য় ফেজে শুধু বিকেল ৩টার পরের সাবমিশন দেখান\n(১ম ফেজে যা গেছে তা বাদ)", variable=self.after3_var,
+                                        bg=P["card"], activebackground=P["card"], font=f.tiny, fg=P["text"], anchor="w", justify="left",
+                                        highlightthickness=0, selectcolor="white")
+        self.day_warn = tk.Label(b, text="", bg=P["card"], fg=P["warn"], font=f.tiny, anchor="w", justify="left", wraplength=380)
+        self.rule_hint = tk.Label(b, text="Incomplete = SLA পার (In ২ / Out ৪ কর্মদিবস) + Partially Submitted। "
+                                          "প্রতিটি সারিতে কারণ থাকে; না পেলে ঘর হালকা নীল। লুক-ব্যাক ৯০ দিন।",
+                                  bg=P["card"], fg=P["mute"], font=f.tiny, anchor="w", justify="left", wraplength=380)
+        self.rule_hint.pack(fill="x", pady=(8, 0))
+
+        # ---- 4 outputs -----------------------------------------------------------
+        c4 = Card(colA, f, "যা তৈরি হবে", "৪")
+        c4.pack(fill="x", pady=(10, 0))
+        self.c4 = c4
+        b = c4.body
+        self.opts = {}
+        self.opt_boxes = []
+        for key, text, dflt in (("excel", "Excel (সম্পাদনাযোগ্য — ইমেইলে এটিই যায়)", True), ("pdf", "PDF (ঐচ্ছিক)", False),
+                                ("mail", "তৈরির পর ইমেইল উইন্ডো খুলুন", True)):
+            self.opts[key] = tk.BooleanVar(value=self.settings.get("opt_" + key, dflt))
+            cbx = tk.Checkbutton(b, text=text, variable=self.opts[key], bg=P["card"], activebackground=P["card"], font=f.body,
+                                 fg=P["text"], anchor="w", highlightthickness=0, selectcolor="white", command=self._sync_ui)
+            cbx.pack(fill="x", anchor="w")
+            self.opt_boxes.append((key, cbx))
+
+        # ---- 2/4 (file history only) -------------------------------------------------------
+        ch = Card(colA, f, "ফাইল নম্বর দিন", "২")
+        self.c_hist = ch
+        b = ch.body
+        self.hist_ids: list = []
+        pick = tk.Frame(b, bg=P["card"])
+        pick.pack(fill="x")
+        Button(pick, "📄  Excel / CSV বাছুন", self._pick_ids_file, kind="secondary", font=f.body, padx=12, pady=7).pack(side="left")
+        self.hist_file = tk.Label(pick, text="কোনো ফাইল বাছা হয়নি", bg=P["card"], fg=P["mute"], font=f.small, anchor="w", wraplength=210, justify="left")
+        self.hist_file.pack(side="left", padx=10)
+        tk.Label(b, text="অথবা নম্বরগুলো এখানে লিখুন বা পেস্ট করুন (প্রতি লাইনে একটি):", bg=P["card"], fg=P["text"],
+                 font=f.small, anchor="w").pack(fill="x", pady=(10, 2))
+        self.hist_text = tk.Text(b, width=46, height=5, font=f.body, relief="flat", highlightthickness=1, highlightbackground=P["line"])
+        self.hist_text.pack(fill="x")
+        self.hist_text.bind("<KeyRelease>", lambda _e: self._hist_count())
+        self.hist_count = tk.Label(b, text="", bg=P["card"], fg=P["ok"], font=f.small, anchor="w")
+        self.hist_count.pack(fill="x", pady=(4, 0))
+        self.hist_refresh = tk.BooleanVar(value=False)
+        tk.Checkbutton(b, text="সব ফাইলের তালিকা নতুন করে পড়ুন (ধীর; সাধারণত দরকার নেই)", variable=self.hist_refresh, bg=P["card"],
+                       activebackground=P["card"], font=f.tiny, fg=P["text"], anchor="w", highlightthickness=0,
+                       selectcolor="white").pack(fill="x", pady=(4, 0))
+        tk.Label(b, text="পুরো ফাইল নম্বর বা শেষের কয়েকটি অঙ্ক—দুটোই চলবে (শূন্য যোগ করতে হবে না)। কোনো সময়সীমা নেই। "
+                         "প্রথমবার কয়েক মিনিট লাগতে পারে; পরের বার অনেক দ্রুত। না পেলে ‘File not found’ লেখা থাকবে।",
+                 bg=P["card"], fg=P["mute"], font=f.tiny, anchor="w", justify="left", wraplength=380).pack(fill="x", pady=(6, 0))
+
+        # ---- action bar ----------------------------------------------------------
+        bar = tk.Frame(foot, bg=P["card"], highlightbackground=P["line"], highlightthickness=1)
+        bar.pack(fill="x")
+        top = tk.Frame(bar, bg=P["card"])
+        top.pack(fill="x", padx=14, pady=(10, 4))
+        self.go_btn = Button(top, "রিপোর্ট তৈরি করুন", self._go, kind="primary", font=f.big, padx=26, pady=10)
+        self.go_btn.pack(side="left")
+        self.cancel_btn = Button(top, "বাতিল", self._cancel, kind="danger", font=f.body, padx=14, pady=9)
+        self.cancel_btn.pack(side="left", padx=10)
+        self.cancel_btn.enable(False)
         self.status = tk.StringVar(value="প্রস্তুত।")
-        ttk.Label(root, textvariable=self.status, wraplength=430).grid(row=r, column=0, columnspan=2, padx=10)
-        r += 1
-        ttk.Label(root, text="এই সফটওয়্যার শুধু তথ্য পড়ে; কিছু বদলায় না। পাসওয়ার্ড কোথাও সংরক্ষণ হয় না।",
-                  foreground="#666", wraplength=430).grid(row=r, column=0, columnspan=2, padx=10, pady=(8, 0))
+        tk.Label(top, textvariable=self.status, bg=P["card"], fg=P["text"], font=f.small, anchor="w", justify="left",
+                 wraplength=470).pack(side="left", padx=10, fill="x", expand=True)
+        self.bar = Progress(bar, f)
+        self.bar.pack(fill="x", padx=14, pady=(2, 4))
+        self.stepper = Stepper(bar, f, STAGES)
+        self.stepper.pack(anchor="w", padx=8, pady=(0, 6))
+        self.result = tk.Frame(bar, bg=P["card"])
+        self.result.pack(fill="x", padx=14, pady=(0, 8))
+        main.grid_columnconfigure(0, weight=1)
+        main.grid_columnconfigure(1, weight=1)
+        foot.bind("<Configure>", lambda _e: self._fit_scroll())
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
         self._toggle_urls()
+
+    @staticmethod
+    def _short(p: Path, n=34) -> str:
+        s = str(p)
+        return s if len(s) <= n else "…" + s[-(n - 1):]
 
     def _toggle_urls(self):
         if self.server.get() == config.SERVER_PRODUCTION:
-            self.url_frame.grid_remove()
+            self.url_frame.pack_forget()
         else:
-            self.url_frame.grid()
+            self.url_frame.pack(fill="x", before=self.url_frame.master.winfo_children()[2] if len(self.url_frame.master.winfo_children()) > 2 else None)
 
     def _choose_dir(self):
-        d = filedialog.askdirectory(initialdir=str(self.out_dir), title="এক্সেল কোথায় সেভ হবে?")
+        d = filedialog.askdirectory(initialdir=str(self.out_dir), title="রিপোর্ট কোথায় সেভ হবে?")
         if d:
             self.out_dir = Path(d)
-            self.dir_label.config(text=str(self.out_dir))
+            self.dir_label.config(text=self._short(self.out_dir))
 
-    # ---------------------------------------------------------------- run
-    def _resolve_urls(self):
-        if self.server.get() == config.SERVER_PRODUCTION:
-            return config.PRODUCTION["web"], config.PRODUCTION["api"]
-        web = self.web.get().strip().rstrip("/")
-        if not web:
-            raise ValueError("ওয়েব ঠিকানা দিন (যেমন https://staging.example.com)।")
-        if not web.startswith(("http://", "https://")):
-            web = "https://" + web
-        api = self.api.get().strip().rstrip("/") or config.derive_api_url(web)
-        if not api.startswith(("http://", "https://")):
-            api = "https://" + api
-        return web, api
+    def _sync_ui(self):
+        hist = self.rtype.get() == "history"
+        rt = self.rtype.get()
+        for w in (self.c2, self.c_trk, self.c_hist, self.c4):
+            w.pack_forget()
+        if hist:
+            self.c_hist.pack(fill="x")
+        else:
+            (self.c_trk if rt == "tracker" else self.c2).pack(fill="x")
+            self.c4.pack(fill="x", pady=(10, 0))
+        self.go_btn.config(text="ইতিহাস তৈরি করুন" if hist else "রিপোর্ট তৈরি করুন")
+        rng = self.period.get() == "range"
+        self.days_entry.enable(not rng)
+        for ch in self.chips:
+            ch.enable(not rng)
+        self.d_from.enable(rng)
+        self.d_till.enable(rng)
+        pb = rt in ("tracker", "range")
+        slot = self.slot.get()
+        if slot == "7pm" or (slot == "auto" and slot_for() == "7pm"):
+            self.after3_cb.pack(fill="x", pady=(6, 0), after=self.phase_row)
+        else:
+            self.after3_cb.pack_forget()
+        rd = self.rdate.get()
+        if rd and rd.weekday() in (4, 5):
+            self.day_warn.config(text="⚠ এই তারিখটি সাপ্তাহিক ছুটির দিন (শুক্র/শনি)। ছুটির দিনের সাবমিশন পরের কর্মদিবসের ট্র্যাকারে যায়।")
+            self.day_warn.pack(fill="x", pady=(6, 0), before=self.rule_hint)
+        else:
+            self.day_warn.pack_forget()
+        self.period_hint.config(text=(
+            "তারিখ বাছলে ‘শেষ কয়েক দিন’ বন্ধ থাকে। ‘পর্যন্ত’ তারিখই রিপোর্টের শেষ তারিখ।" if rng else
+            "‘শেষ কয়েক দিন’ থেকে আজ পর্যন্ত। নির্দিষ্ট তারিখ চাইলে ‘তারিখ বাছুন’ চাপুন।"))
+        for key, cbx in self.opt_boxes:
+            on = pb and (key != "mail" or rt == "tracker")
+            cbx.config(state="normal" if on else "disabled")
 
-    def _common_inputs(self):
-        """Validate the login part of the window. -> (web, api, email, password, days) or None."""
+    # ================================================================== run
+    def _inputs(self):
+        """-> dict or None (a warning was shown)."""
         try:
             web, api = self._resolve_urls()
-            days = int(self.days.get())
-            if not 1 <= days <= 730:
-                raise ValueError
         except ValueError as exc:
-            messagebox.showwarning("তথ্য ঠিক নেই", str(exc) or "দিন সংখ্যা ১ থেকে ৭৩০ এর মধ্যে দিন।")
+            messagebox.showwarning("তথ্য ঠিক নেই", str(exc))
             return None
         email, pw = self.email.get().strip(), self.password.get()
         if not email or not pw:
             messagebox.showwarning("তথ্য ঠিক নেই", "ইমেইল ও পাসওয়ার্ড দিন।")
             return None
-        config.save_settings({
-            "server": self.server.get(), "web": self.web.get().strip(), "api": self.api.get().strip(),
-            "email": email, "days": days, "out_dir": str(self.out_dir),
-        })
-        return web, api, email, pw, days
-
-    def _busy(self, text="শুরু হচ্ছে…"):
-        self.cancel.clear()
-        self.out_file = None
-        for b in (self.go_btn, self.prime_btn, self.recpv_btn):
-            b.config(state="disabled")
-        self.open_btn.config(state="disabled")
-        self.cancel_btn.config(state="normal")
-        self.bar.config(value=0, maximum=100)
-        self.status.set(text)
-
-    # ---------------------------------------------------------------- Prime Bank Report
-    def _prime_dialog(self):
-        if self._common_inputs() is None:
-            return
-        dlg = tk.Toplevel(self)
-        dlg.title("Prime Bank Report")
-        dlg.resizable(False, False)
-        dlg.transient(self)
-        f = ttk.Frame(dlg, padding=14)
-        f.grid()
-        pad = {"padx": 8, "pady": 4}
-        mode = tk.StringVar(value="tracker")
-        ttk.Radiobutton(f, text="ট্র্যাকার (প্রতিদিনের 3pm / 7pm রিপোর্ট)", variable=mode, value="tracker").grid(
-            row=0, column=0, columnspan=3, sticky="w", **pad)
-        ttk.Radiobutton(f, text="বিলিং রিপোর্ট (তারিখের সীমা)", variable=mode, value="billing").grid(
-            row=1, column=0, columnspan=3, sticky="w", **pad)
-        today = date.today()
-        ttk.Label(f, text="রিপোর্টের তারিখ").grid(row=2, column=0, sticky="w", **pad)
-        rdate = tk.StringVar(value=today.isoformat())
-        ttk.Entry(f, textvariable=rdate, width=14).grid(row=2, column=1, sticky="w", **pad)
-        ttk.Label(f, text="সময় (শিরোনামে)").grid(row=3, column=0, sticky="w", **pad)
-        slot = tk.StringVar(value=f"অটো ({slot_for()})")
-        ttk.Combobox(f, textvariable=slot, width=14, state="readonly",
-                     values=[f"অটো ({slot_for()})", "3pm", "7pm"]).grid(row=3, column=1, sticky="w", **pad)
-        ttk.Label(f, text="কত দিন পিছনে দেখবে").grid(row=4, column=0, sticky="w", **pad)
-        look = tk.StringVar(value="60")
-        ttk.Spinbox(f, from_=7, to=365, textvariable=look, width=8).grid(row=4, column=1, sticky="w", **pad)
-        ttk.Label(f, text="বিলিং: শুরু").grid(row=5, column=0, sticky="w", **pad)
-        d_from = tk.StringVar(value=(today - timedelta(days=30)).isoformat())
-        ttk.Entry(f, textvariable=d_from, width=14).grid(row=5, column=1, sticky="w", **pad)
-        ttk.Label(f, text="শেষ").grid(row=5, column=2, sticky="w", **pad)
-        d_till = tk.StringVar(value=today.isoformat())
-        ttk.Entry(f, textvariable=d_till, width=14).grid(row=5, column=3, sticky="w", **pad)
-        ttk.Label(f, text="(তারিখ লিখুন YYYY-MM-DD, যেমন 2026-11-02)", foreground="#666").grid(
-            row=6, column=0, columnspan=4, sticky="w", padx=8)
-        opts = {}
-        for i, (key, text, dflt) in enumerate((
-                ("excel", "Excel", True), ("pdf", "PDF", True),
-                ("bank", "ব্যাংক কপি (পরিষ্কার)", True), ("internal", "অভ্যন্তরীণ কপি (হলুদ চিহ্ন সহ)", True),
-                ("email", "ইমেইলের জন্য কপি (ব্রাউজারে খুলবে)", True))):
-            opts[key] = tk.BooleanVar(value=dflt)
-            ttk.Checkbutton(f, text=text, variable=opts[key]).grid(row=7 + i, column=0, columnspan=4, sticky="w", **pad)
-
-        def go():
+        days, d_from, d_till = None, None, None
+        if self.rtype.get() in ("history", "tracker"):
+            days = int(self.settings.get("days", config.DEFAULT_DAYS))
+        elif self.period.get() == "range":
+            d_from, d_till = self.d_from.get(), self.d_till.get()
+            if not d_from or not d_till:
+                messagebox.showwarning("তারিখ ঠিক নেই", "তারিখ এভাবে লিখুন: 05-11-2026 (অথবা 📅 চেপে বাছুন)।")
+                return None
+            if d_from > d_till:
+                messagebox.showwarning("তারিখ ঠিক নেই", "শুরুর তারিখ শেষ তারিখের পরে হতে পারে না।")
+                return None
+            days = max(1, (date.today() - d_from).days)
+        else:
             try:
-                rd = datetime.strptime(rdate.get().strip(), "%Y-%m-%d").date()
-                a = datetime.strptime(d_from.get().strip(), "%Y-%m-%d").date()
-                b = datetime.strptime(d_till.get().strip(), "%Y-%m-%d").date()
-                lk = int(look.get())
+                days = int(self.days.get())
+                if not 1 <= days <= 730:
+                    raise ValueError
             except ValueError:
-                messagebox.showwarning("তথ্য ঠিক নেই", "তারিখ YYYY-MM-DD ফরম্যাটে দিন।", parent=dlg)
-                return
-            if not (opts["excel"].get() or opts["pdf"].get() or opts["email"].get()):
-                messagebox.showwarning("তথ্য ঠিক নেই", "Excel, PDF বা ইমেইল—অন্তত একটি বাছুন।", parent=dlg)
-                return
-            if (opts["excel"].get() or opts["pdf"].get()) and not (opts["bank"].get() or opts["internal"].get()):
-                messagebox.showwarning("তথ্য ঠিক নেই", "ব্যাংক কপি বা অভ্যন্তরীণ কপি—অন্তত একটি বাছুন।", parent=dlg)
-                return
-            sl = slot.get()
-            sl = sl if sl in ("3pm", "7pm") else slot_for()
-            dlg.destroy()
-            self._start_prime(mode.get(), rd, sl, lk, a, b, {k: v.get() for k, v in opts.items()})
+                messagebox.showwarning("দিন সংখ্যা ঠিক নেই", "দিন সংখ্যা ১ থেকে ৭৩০ এর মধ্যে দিন।")
+                return None
+        config.save_settings({
+            "server": self.server.get(), "web": self.web.get().strip(), "api": self.api.get().strip(), "email": email,
+            "days": days if not d_from else int(self.settings.get("days", config.DEFAULT_DAYS)), "out_dir": str(self.out_dir),
+            "rtype": self.rtype.get(), "after3_only": self.after3_var.get(),
+            **{"opt_" + k: v.get() for k, v in self.opts.items()}})
+        return {"web": web, "api": api, "email": email, "pw": pw, "days": days, "from": d_from, "till": d_till}
 
-        ttk.Button(f, text="তৈরি করুন", command=go).grid(row=13, column=0, columnspan=4, pady=(10, 2))
-        dlg.grab_set()
+    def _resolve_urls(self):
+        label = self.server.get()
+        if label == config.SERVER_PRODUCTION:
+            web = config.PRODUCTION["web"]
+            return web, config.PRODUCTION["api"]
+        web = self.web.get().strip().rstrip("/")
+        if not web.startswith("http"):
+            raise ValueError("ওয়েব ঠিকানা লিখুন (https:// দিয়ে শুরু)।")
+        api = self.api.get().strip().rstrip("/") or config.derive_api_url(web)
+        return web, api
 
-    def _start_prime(self, mode, report_date, slot, lookback, d_from, d_till, opts):
-        inp = self._common_inputs()
+    def _go(self):
+        inp = self._inputs()
         if inp is None:
             return
-        web, api, email, pw, _days = inp
-        cfg = PrimeConfig(web=web, api=api, server_label=self.server.get(), email=email, password=pw,
-                          days=lookback, mode=mode, report_date=report_date, slot=slot, date_from=d_from,
-                          date_till=d_till, workers=int(self.settings.get("workers", config.DEFAULT_WORKERS)),
-                          org_name=self.settings.get("org_name", config.DEFAULT_ORG))
+        rt = self.rtype.get()
+        workers = int(self.settings.get("workers", config.DEFAULT_WORKERS))
+        org = self.settings.get("org_name", config.DEFAULT_ORG)
+        if rt == "history":
+            ids = self._collect_ids()
+            if not ids:
+                messagebox.showwarning("ফাইল নম্বর নেই", "Excel/CSV বাছুন, অথবা ফাইল নম্বর (বা শেষের কয়েকটি অঙ্ক) লিখুন।")
+                return
+            cfg = HistoryConfig(web=inp["web"], api=inp["api"], server_label=self.server.get(), email=inp["email"],
+                                password=inp["pw"], workers=workers, org_name=org, ids=ids,
+                                refresh_index=self.hist_refresh.get())
+            self._busy()
+            self.worker = threading.Thread(target=self._work_history, args=(cfg,), daemon=True)
+            self.worker.start()
+            return
+        if rt in ("tracker", "range", "recpv"):
+            mode = "tracker" if rt == "tracker" else "range"
+            rdate = self.rdate.get() or date.today() if rt == "tracker" else (inp["till"] or date.today())
+            slot = self.slot.get()
+            slot = slot_for() if slot == "auto" else slot
+            cfg = PrimeConfig(web=inp["web"], api=inp["api"], server_label=self.server.get(), email=inp["email"],
+                              password=inp["pw"], days=inp["days"], mode=mode, report_date=rdate,
+                              slot=slot, date_from=inp["from"],
+                              date_till=inp["till"] if mode == "range" else None, workers=workers, org_name=org,
+                              after3_only=bool(self.after3_var.get() and slot == "7pm" and rt == "tracker"))
+            opts = {k: v.get() for k, v in self.opts.items()}
+            if rt in ("tracker", "range"):
+                if not (opts["excel"] or opts["pdf"]):
+                    messagebox.showwarning("তথ্য ঠিক নেই", "Excel বা PDF—অন্তত একটি বাছুন।")
+                    return
+                opts["mail"] = opts["mail"] and rt == "tracker" and opts["excel"]
+            target = self._work_prime if rt != "recpv" else self._work_recpv
+            args = (cfg, opts) if rt != "recpv" else (cfg,)
+        else:
+            cfg = RunConfig(web=inp["web"], api=inp["api"], server_label=self.server.get(), email=inp["email"],
+                            password=inp["pw"], days=inp["days"], workers=workers, org_name=org)
+            target, args = self._work_v1, (cfg,)
         self._busy()
-        self.worker = threading.Thread(target=self._work_prime, args=(cfg, opts), daemon=True)
+        self.worker = threading.Thread(target=target, args=args, daemon=True)
         self.worker.start()
+
+    def _busy(self):
+        self.cancel.clear()
+        self.out_files = []
+        for w in self.result.winfo_children():
+            w.destroy()
+        self.go_btn.enable(False)
+        self.cancel_btn.enable(True)
+        self.bar.set(0)
+        self.stepper.set(0)
+        self.status.set("শুরু হচ্ছে…")
 
     def _work_prime(self, cfg: PrimeConfig, opts: dict):
         try:
             d = collect_prime(cfg, lambda *a: self.q.put(("progress", *a)), self.cancel)
             self.q.put(("progress", "write", 0, 1, "Excel / PDF তৈরি হচ্ছে…"))
-            paths = write_prime_outputs(d, self.out_dir, excel=opts["excel"], pdf=opts["pdf"], internal=opts["internal"],
-                                        bank=opts["bank"], email=opts["email"])
-            self.q.put(("prime_done", paths, d))
+            paths = write_prime_outputs(d, self.out_dir, excel=opts["excel"], pdf=opts["pdf"])
+            self.q.put(("prime_done", paths, d, bool(opts.get("mail"))))
         except Cancelled:
             self.q.put(("cancelled",))
         except (AuthError, ApiError, PermissionError) as exc:
@@ -298,27 +473,52 @@ class App(tk.Tk):
         except Exception as exc:                      # unexpected
             self.q.put(("error", f"অপ্রত্যাশিত সমস্যা: {type(exc).__name__}: {exc}"))
 
-    # ---------------------------------------------------------------- Excel with Re-CPV
-    def _start_recpv(self):
-        inp = self._common_inputs()
-        if inp is None:
+    def _work_history(self, cfg: HistoryConfig):
+        try:
+            h = collect_history(cfg, lambda *a: self.q.put(("progress", *a)), self.cancel)
+            self.q.put(("progress", "write", 0, 1, "ফাইল হিস্টরি Excel তৈরি হচ্ছে…"))
+            self.q.put(("hist_done", write_history_outputs(h, self.out_dir), h))
+        except Cancelled:
+            self.q.put(("cancelled",))
+        except (AuthError, ApiError, PermissionError, ValueError) as exc:
+            self.q.put(("error", str(exc)))
+        except Exception as exc:
+            self.q.put(("error", f"অপ্রত্যাশিত সমস্যা: {type(exc).__name__}: {exc}"))
+
+    # ---- file history input -------------------------------------------------------------------------
+    def _pick_ids_file(self):
+        path = filedialog.askopenfilename(title="ফাইল নম্বরের Excel / CSV বাছুন",
+                                          filetypes=[("Excel / CSV", "*.xlsx *.xlsm *.csv *.txt"), ("All", "*.*")])
+        if not path:
             return
-        web, api, email, pw, days = inp
-        today = date.today()
-        cfg = PrimeConfig(web=web, api=api, server_label=self.server.get(), email=email, password=pw, days=days,
-                          mode="billing", date_from=today - timedelta(days=days), date_till=today,
-                          workers=int(self.settings.get("workers", config.DEFAULT_WORKERS)),
-                          org_name=self.settings.get("org_name", config.DEFAULT_ORG))
-        self._busy()
-        self.worker = threading.Thread(target=self._work_recpv, args=(cfg,), daemon=True)
-        self.worker.start()
+        try:
+            self.hist_ids = parse_ids_file(Path(path))
+        except ValueError as exc:
+            self.hist_ids = []
+            messagebox.showwarning("ফাইল পড়া যায়নি", str(exc))
+        except Exception as exc:                                  # noqa: BLE001
+            self.hist_ids = []
+            messagebox.showwarning("ফাইল পড়া যায়নি", f"{type(exc).__name__}: {exc}")
+        self.hist_file.config(text=Path(path).name if self.hist_ids else "কোনো ফাইল নম্বর পাওয়া যায়নি", fg=P["text"] if self.hist_ids else P["warn"])
+        self._hist_count()
+
+    def _collect_ids(self) -> list:
+        seen, out = set(), []
+        for e in list(self.hist_ids) + parse_ids_text(self.hist_text.get("1.0", "end")):
+            if e.uid not in seen:
+                seen.add(e.uid)
+                out.append(e)
+        return out
+
+    def _hist_count(self):
+        n = len(self._collect_ids())
+        self.hist_count.config(text=f"✓ {n} টি ফাইল নম্বর পাওয়া গেছে" if n else "")
 
     def _work_recpv(self, cfg: PrimeConfig):
         try:
             d = collect_prime(cfg, lambda *a: self.q.put(("progress", *a)), self.cancel)
             self.q.put(("progress", "write", 0, 1, "Re-CPV সহ এক্সেল তৈরি হচ্ছে…"))
-            path = write_recpv_workbook(d, self.out_dir)
-            self.q.put(("prime_done", [path], d))
+            self.q.put(("prime_done", [write_recpv_workbook(d, self.out_dir)], d, False))
         except Cancelled:
             self.q.put(("cancelled",))
         except (AuthError, ApiError, PermissionError) as exc:
@@ -326,44 +526,166 @@ class App(tk.Tk):
         except Exception as exc:
             self.q.put(("error", f"অপ্রত্যাশিত সমস্যা: {type(exc).__name__}: {exc}"))
 
-    def _email_copy(self):
-        d = self.last_prime
-        if d is None or d.mode != "tracker":
-            messagebox.showinfo("ইমেইল কপি", "আগে ট্র্যাকার ধরনে একটি Prime Bank Report তৈরি করুন।")
-            return
-        path = build_email_html(d, self.out_dir / f"Prime_Bank_{d.report_date:%Y-%m-%d}_{d.slot}_email.html")
-        open_path(path)
+    def _work_v1(self, cfg: RunConfig):
+        try:
+            res = collect(cfg, lambda *a: self.q.put(("progress", *a)), self.cancel)
+            self.q.put(("progress", "excel", 0, 1, "এক্সেল ফাইল তৈরি হচ্ছে…"))
+            name = f"Verify_Report_{datetime.now():%Y%m%d_%H%M%S}.xlsx"
+            self.q.put(("v1_done", build_workbook(res, self.out_dir / name), res))
+        except Cancelled:
+            self.q.put(("cancelled",))
+        except (AuthError, ApiError, PermissionError) as exc:
+            self.q.put(("error", str(exc)))
+        except Exception as exc:
+            self.q.put(("error", f"অপ্রত্যাশিত সমস্যা: {type(exc).__name__}: {exc}"))
 
-    # ---------------------------------------------------------------- holidays / signature
-    def _holiday_dialog(self):
+    def _cancel(self):
+        self.cancel.set()
+        self.status.set("বাতিল হচ্ছে…")
+
+    def _finish_ui(self):
+        self.go_btn.enable(True)
+        self.cancel_btn.enable(False)
+        self.password.set("")
+
+    def _show_results(self, paths: list[Path], mail_ok: bool, d=None):
+        for w in self.result.winfo_children():
+            w.destroy()
+        f = self.fonts
+        if d is not None and d.mode == "tracker":
+            fa = facts_from(d)
+            kp = tk.Frame(self.result, bg=P["card"])
+            kp.pack(fill="x", pady=(0, 6))
+            for label, big, small, bg, fg in (
+                    ("Complete", f"{fa.complete_files}", f"ফাইল · {fa.complete_rows} সারি", P["ok_bg"], P["ok"]),
+                    ("Incomplete", f"{fa.incomplete_files}", f"ফাইল · {fa.incomplete_rows} সারি", P["warn_bg"], P["warn"]),
+                    ("SLA পার", f"{fa.sla_breach_rows}", "সারি", P["warn_bg"], P["warn"]),
+                    ("Partial", f"{fa.partial_files}", "ফাইল", P["accent_soft"], P["accent_hi"]),
+                    ("কারণ নেই", f"{fa.reason_missing}", "সারি (নীল ঘর)", "#E3F1FD", P["navy"])):
+                t = tk.Frame(kp, bg=bg, padx=10, pady=4)
+                t.pack(side="left", padx=(0, 6))
+                tk.Label(t, text=label, bg=bg, fg=fg, font=f.tiny).pack(anchor="w")
+                tk.Label(t, text=big, bg=bg, fg=fg, font=f.h2).pack(side="left")
+                tk.Label(t, text=" " + small, bg=bg, fg=fg, font=f.tiny).pack(side="left", anchor="s", pady=(0, 3))
+        row = tk.Frame(self.result, bg=P["card"])
+        row.pack(fill="x")
+        if mail_ok:
+            Button(row, "✉  ইমেইল পাঠান", self._open_mail, kind="primary", font=f.small, padx=12, pady=5).pack(side="left", padx=(0, 8), pady=2)
+        for p in paths:
+            Button(row, f"{p.suffix[1:].upper()}  {p.stem[-26:]}", lambda p=p: open_path(p), kind="secondary", font=f.tiny,
+                   padx=8, pady=4).pack(side="left", padx=(0, 6), pady=2)
+
+    def _open_mail(self):
+        d = self.last_prime
+        if d is None or d.mode != "tracker" or not any(p.suffix.lower() == ".xlsx" for p in self.out_files):
+            messagebox.showinfo("ইমেইল পাঠান", "আগে ‘দৈনিক সাবমিশন ট্র্যাকার’ তৈরি করুন (Excel সহ)।\nতারপর এখান থেকে ইমেইল পাঠানো যাবে।")
+            return
+        MailDialog(self, d, list(self.out_files))
+
+    def _poll(self):
+        try:
+            while True:
+                msg = self.q.get_nowait()
+                kind = msg[0]
+                if kind == "progress":
+                    _, stage, done, total, text = msg
+                    idx = STAGE_INDEX.get(stage, 1)
+                    self.stepper.set(idx)
+                    self.bar.set((idx + (done / total if total else 0)) / len(STAGES))
+                    self.status.set(text)
+                elif kind == "prime_done":
+                    _, paths, d, open_mail = msg
+                    self.last_prime = d
+                    self.out_files = paths
+                    self._finish_ui()
+                    self.bar.set(1)
+                    self.stepper.set(len(STAGES))
+                    if d.mode == "tracker":
+                        txt = f"সম্পন্ন!  {PHASE_TEXT.get(d.slot, d.slot)} · {d.report_date:%d-%m-%Y}  —  Complete {len(d.complete)} · Incomplete {len(d.incomplete)}"
+                    else:
+                        txt = f"সম্পন্ন!  মোট {len(d.all_rows)} সারি · ফাইল {len(d.files)} টি"
+                    ck = (d.dash or {}).get("check")
+                    if ck:
+                        txt += (f"\nড্যাশবোর্ডের Submitted: {ck['dashboard']} টি ফাইল · রিপোর্টে মিলেছে: {ck['matched']} টি"
+                                + ("  ✓" if not ck["missing"] else f"  ⚠ মেলেনি {len(ck['missing'])} টি (Summary শিটে)"))
+                    if d.notes:
+                        txt += "\n" + " ".join(n for n in d.notes[:2] if not n.startswith("ড্যাশবোর্ডের Submitted তালিকায়"))
+                    self.status.set(txt)
+                    self._show_results(paths, d.mode == "tracker" and any(p.suffix.lower() == ".xlsx" for p in paths), d)
+                    if open_mail:
+                        self.after(300, self._open_mail)
+                elif kind == "hist_done":
+                    _, paths, h = msg
+                    self.out_files = paths
+                    self._finish_ui()
+                    self.bar.set(1)
+                    self.stepper.set(len(STAGES))
+                    txt = f"সম্পন্ন!  পাওয়া গেছে {len(h.results)} টি ফাইল · পাওয়া যায়নি {len(h.not_found)} টি নম্বর"
+                    if h.notes:
+                        txt += "\n" + " ".join(h.notes[:2])
+                    self.status.set(txt)
+                    self._show_results(paths, False)
+                elif kind == "v1_done":
+                    _, path, res = msg
+                    self.out_files = [path]
+                    self._finish_ui()
+                    self.bar.set(1)
+                    self.stepper.set(len(STAGES))
+                    txt = f"সম্পন্ন! ফাইল {len(res.files)}/{res.site_total} টি সংগৃহীত।"
+                    if res.failed:
+                        txt += f" ব্যর্থ: {len(res.failed)} টি (এক্সেলের 'Failed Files' শিটে)।"
+                    self.status.set(txt)
+                    self._show_results([path], False)
+                elif kind == "cancelled":
+                    self._finish_ui()
+                    self.bar.set(0)
+                    self.stepper.set(-1)
+                    self.status.set("বাতিল করা হয়েছে।")
+                elif kind == "error":
+                    self._finish_ui()
+                    self.bar.set(0)
+                    self.stepper.set(-1)
+                    self.status.set("ব্যর্থ হয়েছে।")
+                    messagebox.showerror("সমস্যা হয়েছে", msg[1])
+        except queue.Empty:
+            pass
+        self.after(100, self._poll)
+
+    # ================================================================== dialogs
+    def _dialog(self, title: str):
         dlg = tk.Toplevel(self)
-        dlg.title("ছুটির তালিকা")
+        dlg.title(title)
+        dlg.configure(bg=P["card"], padx=16, pady=14)
         dlg.transient(self)
-        f = ttk.Frame(dlg, padding=12)
-        f.grid()
-        note = f"তালিকা {hol.last_date():%d-%m-%Y} পর্যন্ত আছে।"
-        if hol.needs_update():
-            note += "  ⚠ নতুন ছুটি যোগ করুন।"
-        ttk.Label(f, text=note, foreground="#B00020" if hol.needs_update() else "#2E7D32").grid(row=0, column=0, sticky="w")
-        box = tk.Listbox(f, width=52, height=12, selectmode="extended")
-        box.grid(row=1, column=0, pady=6)
+        dlg.resizable(False, False)
+        return dlg
+
+    def _holiday_dialog(self):
+        f = self.fonts
+        dlg = self._dialog("ছুটির তালিকা")
+        warn = hol.needs_update()
+        note = f"তালিকা {hol.last_date():%d-%m-%Y} পর্যন্ত আছে।" + ("  ⚠ নতুন ছুটি যোগ করুন।" if warn else "")
+        tk.Label(dlg, text=note, bg=P["card"], fg=P["warn"] if warn else P["ok"], font=f.h3).pack(anchor="w")
+        box = tk.Listbox(dlg, width=54, height=11, selectmode="extended", font=f.small, relief="flat", highlightthickness=1,
+                         highlightbackground=P["line"])
+        box.pack(pady=8)
+        dates: list[date] = []
 
         def refresh():
             box.delete(0, "end")
-            self._hol_dates = []
+            dates.clear()
             for d, name in sorted(hol.load().items()):
                 if d >= date.today() - timedelta(days=15):
                     box.insert("end", f"{d.isoformat()}   {name}")
-                    self._hol_dates.append(d)
+                    dates.append(d)
         refresh()
-        ttk.Label(f, text="নতুন ছুটি (প্রতি লাইনে একটি):  শুরু | শেষ | নাম\nযেমন:  2027-03-09 | 2027-03-11 | Eid ul Fitr\n"
-                          "এক দিনের হলে শেষ তারিখ বাদ দেওয়া যায়।", foreground="#555", justify="left").grid(row=2, column=0, sticky="w")
-        txt = tk.Text(f, width=52, height=5)
-        txt.grid(row=3, column=0, pady=4)
+        tk.Label(dlg, text="নতুন ছুটি (প্রতি লাইনে একটি):   শুরু | শেষ | নাম\nযেমন:  2027-03-09 | 2027-03-11 | Eid ul Fitr\n"
+                           "এক দিনের ছুটি হলে শেষ তারিখ বাদ দিন।", bg=P["card"], fg=P["mute"], font=f.tiny, justify="left").pack(anchor="w")
+        txt = tk.Text(dlg, width=54, height=4, font=f.small, relief="flat", highlightthickness=1, highlightbackground=P["line"])
+        txt.pack(pady=6)
 
         def add():
-            lines = txt.get("1.0", "end").splitlines()
-            n, errs = hol.add_ranges(lines)
+            n, errs = hol.add_ranges(txt.get("1.0", "end").splitlines())
             if errs:
                 messagebox.showwarning("কিছু লাইন যোগ হয়নি", "\n".join(errs), parent=dlg)
             if n:
@@ -381,135 +703,14 @@ class App(tk.Tk):
 
         def remove():
             for i in box.curselection():
-                hol.remove_date(self._hol_dates[i])
+                hol.remove_date(dates[i])
             refresh()
 
-        b = ttk.Frame(f)
-        b.grid(row=4, column=0, pady=4)
-        ttk.Button(b, text="যোগ করুন", command=add).pack(side="left", padx=4)
-        ttk.Button(b, text="ফাইল থেকে ইমপোর্ট", command=import_csv).pack(side="left", padx=4)
-        ttk.Button(b, text="নির্বাচিত মুছুন", command=remove).pack(side="left", padx=4)
-        ttk.Button(b, text="বন্ধ করুন", command=dlg.destroy).pack(side="left", padx=4)
-
-    def _signature_dialog(self):
-        dlg = tk.Toplevel(self)
-        dlg.title("ইমেইল সিগনেচার")
-        dlg.transient(self)
-        f = ttk.Frame(dlg, padding=12)
-        f.grid()
-        ttk.Label(f, text="‘Regards,’ এর নিচে যা থাকবে (নাম, পদবি, ফোন…):").grid(row=0, column=0, sticky="w")
-        txt = tk.Text(f, width=46, height=7)
-        txt.grid(row=1, column=0, pady=6)
-        txt.insert("1.0", load_signature())
-
-        def save():
-            save_signature(txt.get("1.0", "end").strip())
-            dlg.destroy()
-        ttk.Button(f, text="সংরক্ষণ", command=save).grid(row=2, column=0)
-
-    def _start(self):
-        try:
-            web, api = self._resolve_urls()
-            days = int(self.days.get())
-            if not 1 <= days <= 730:
-                raise ValueError
-        except ValueError as exc:
-            messagebox.showwarning("তথ্য ঠিক নেই", str(exc) or "দিন সংখ্যা ১ থেকে ৭৩০ এর মধ্যে দিন।")
-            return
-        email, pw = self.email.get().strip(), self.password.get()
-        if not email or not pw:
-            messagebox.showwarning("তথ্য ঠিক নেই", "ইমেইল ও পাসওয়ার্ড দিন।")
-            return
-        config.save_settings({
-            "server": self.server.get(), "web": self.web.get().strip(), "api": self.api.get().strip(),
-            "email": email, "days": days, "out_dir": str(self.out_dir),
-        })
-        cfg = RunConfig(web=web, api=api, server_label=self.server.get(), email=email, password=pw, days=days,
-                        workers=int(self.settings.get("workers", config.DEFAULT_WORKERS)),
-                        org_name=self.settings.get("org_name", config.DEFAULT_ORG))
-        self.cancel.clear()
-        self.out_file = None
-        self.go_btn.config(state="disabled")
-        self.open_btn.config(state="disabled")
-        self.cancel_btn.config(state="normal")
-        self.bar.config(value=0, maximum=100)
-        self.status.set("শুরু হচ্ছে…")
-        self.worker = threading.Thread(target=self._work, args=(cfg,), daemon=True)
-        self.worker.start()
-
-    def _work(self, cfg: RunConfig):
-        try:
-            res = collect(cfg, lambda *a: self.q.put(("progress", *a)), self.cancel)
-            self.q.put(("progress", "excel", 0, 1, "এক্সেল ফাইল তৈরি হচ্ছে…"))
-            name = f"Verify_Report_{datetime.now():%Y%m%d_%H%M%S}.xlsx"
-            path = build_workbook(res, self.out_dir / name)
-            self.q.put(("done", path, res))
-        except Cancelled:
-            self.q.put(("cancelled",))
-        except (AuthError, ApiError, PermissionError) as exc:
-            self.q.put(("error", str(exc)))
-        except Exception as exc:                      # unexpected
-            self.q.put(("error", f"অপ্রত্যাশিত সমস্যা: {type(exc).__name__}: {exc}"))
-
-    def _cancel(self):
-        self.cancel.set()
-        self.status.set("বাতিল হচ্ছে…")
-
-    def _open(self):
-        if self.out_file:
-            open_path(self.out_file)
-
-    def _finish_ui(self):
-        self.go_btn.config(state="normal")
-        self.prime_btn.config(state="normal")
-        self.recpv_btn.config(state="normal")
-        self.cancel_btn.config(state="disabled")
-        self.password.set("")
-
-    def _poll(self):
-        try:
-            while True:
-                msg = self.q.get_nowait()
-                kind = msg[0]
-                if kind == "progress":
-                    _, stage, done, total, text = msg
-                    self.bar.config(maximum=max(total, 1), value=done)
-                    self.status.set(text)
-                elif kind == "done":
-                    _, path, res = msg
-                    self.out_file = path
-                    self._finish_ui()
-                    self.open_btn.config(state="normal")
-                    self.bar.config(value=self.bar["maximum"])
-                    txt = f"সম্পন্ন! ফাইল {len(res.files)}/{res.site_total} টি সংগৃহীত।"
-                    if res.failed:
-                        txt += f" ব্যর্থ: {len(res.failed)} টি (এক্সেলের 'Failed Files' শিটে)।"
-                    self.status.set(txt + f"\n{path}")
-                elif kind == "prime_done":
-                    _, paths, d = msg
-                    self.last_prime = d
-                    self.out_file = paths[0] if paths else None
-                    self._finish_ui()
-                    self.bar.config(value=self.bar["maximum"])
-                    if d.mode == "tracker":
-                        self.email_btn.config(state="normal")
-                    txt = f"সম্পন্ন! Complete {len(d.complete)}, Incomplete {len(d.incomplete)} সারি।"
-                    if d.mode != "tracker":
-                        txt = f"সম্পন্ন! মোট {len(d.all_rows)} সারি, ফাইল {len(d.files)} টি।"
-                    if d.notes:
-                        txt += "\n" + " ".join(d.notes[:2])
-                    self.status.set(txt + f"\n{len(paths)} টি ফাইল: {self.out_dir}")
-                    self.open_btn.config(state="normal")
-                elif kind == "cancelled":
-                    self._finish_ui()
-                    self.status.set("বাতিল করা হয়েছে।")
-                elif kind == "error":
-                    self._finish_ui()
-                    self.status.set("ব্যর্থ হয়েছে।")
-                    messagebox.showerror("সমস্যা হয়েছে", msg[1])
-        except queue.Empty:
-            pass
-        self.after(100, self._poll)
+        row = tk.Frame(dlg, bg=P["card"])
+        row.pack(pady=(4, 0))
+        for text, cmd, kind in (("যোগ করুন", add, "primary"), ("ফাইল থেকে ইমপোর্ট", import_csv, "secondary"),
+                                ("নির্বাচিত মুছুন", remove, "secondary"), ("বন্ধ", dlg.destroy, "secondary")):
+            Button(row, text, cmd, kind=kind, font=f.small, padx=10, pady=6).pack(side="left", padx=4)
 
 
 def run() -> None:

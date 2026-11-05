@@ -2,11 +2,14 @@
 
 Rules (agreed with the user)
   * Trips created on the file-creation date, in creation order: the first 5 = ONE Package
-    (any trip type counts). The 6th, 7th ... same-day trips = separate Single rows.
+    (any trip type counts). The 6th, 7th, 8th ... same-day trips = separate single rows
+    labelled Extra Trip 1, 2, 3 ... (billed In or Out by their own address).
   * Every trip created after the creation date is a single bill: in the Re-CPV tracker -> ReCpv,
     otherwise Extra Document / Extra Trip.
-  * Inactive trips are billable; Canceled trips are highlighted yellow.
-  * Package is Out if ANY of its trips is outside Dhaka; a single row is judged on its own trip.
+  * Inactive trips are billable; Canceled trips are marked light-blue (internal copy).
+  * In = inside Dhaka city, Gazipur city or Narayanganj city (lat/long); everything else = Out.
+  * Package is Out if ANY of its trips is Out; a single row is judged on its own trip.
+  * SLA (working days from Receive Date): In = 2, Out = 4. Extra TAT = TAT - SLA (never below 0).
   * The number of trips never changes because of Re-CPV - Re-CPV only labels a trip.
   * Each row has its own Receive Date, Submission, TAT and Extra TAT.
 """
@@ -14,17 +17,19 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
 from . import geo, holidays as hol
-from .summary import Summary, TripView, analyze
+from .summary import Summary, TripView, analyze, clean_text
 
 PACKAGE_MAX = 5
 CUTOFF_HOUR = 15          # "before / after 3 PM"
+SLA_IN = 2                # working days allowed, In area (Dhaka / Chattogram city corporation)
+SLA_OUT = 4               # working days allowed, Out area
 
 BASE_TYPE = {
     "HOUSE": "House", "GUARANTOR_HOUSE": "House", "OFFICE": "Office", "GUARANTOR_OFFICE": "Office",
-    "BANK": "Bank", "DOCUMENT": "Document", "RENTAL": "Rental", "CAR_QUATATION": "Car Quotation",
+    "BANK": "BS", "DOCUMENT": "Document", "RENTAL": "Rental", "CAR_QUATATION": "Car Quotation",
     "PROPERTY": "Property", "DOC_SERVICE": "Document", "DOC_DRCHAMBER": "Chamber", "DOC_TUITION": "Tuition",
 }
 SLAB_DOC = "Single Document(Salary Certificate/Pay Slip/LOI/Signature) Verification"
@@ -40,7 +45,7 @@ def slab_for(trip: dict, role: str) -> str:
     if code == "OFFICE":
         return "Single Office"
     if code == "BANK":
-        return "Bank"
+        return "BS"
     return SLAB_DOC
 
 
@@ -52,6 +57,16 @@ class FileLogs:
     submitted: list = field(default_factory=list)     # ascending
     partial: list = field(default_factory=list)
     trip_finished: dict = field(default_factory=dict)
+    events: list = field(default_factory=list)       # LogEvent, newest first
+
+
+@dataclass
+class LogEvent:
+    when: datetime
+    etype: str                # APPLICATION | TRIP | CONCERN
+    entity_id: int | None
+    text: str                 # short, human words ("Finished", "On Hold", "Allocated to X" ...)
+    user: str = ""
 
 
 @dataclass
@@ -81,17 +96,53 @@ class BillRow:
     area_sure: bool = True
     area_why: str = ""
     submitted_at: datetime | None = None
+    sub_day: date | None = None                        # the date the tracker shows (a Fri/Sat/holiday submission -> next working day)
+    partial_events: list = field(default_factory=list) # when the FILE became "Partially Submitted" (activity log, Dhaka time)
+    file_status: int = 0                               # dashboard status code of the file (1..8)
+    file_submitted: list = field(default_factory=list) # every SUBMITTED event of the file (activity log, Dhaka time)
+    reason: str = ""                                   # why the row is still pending (appointment / within SLA / hold ...), "" = none found
+    reason_kind: str = ""                              # appointment | hold | ongoing | partial | ""
     status: str = "Incomplete"
     status_note: str = ""
     summary: Summary = field(default_factory=Summary)
-    flags: dict = field(default_factory=dict)          # column -> reason text (yellow cells)
+    flags: dict = field(default_factory=dict)          # column -> reason text (light-blue cells)
     tat: int | None = None
     extra_tat: int | None = None
     canceled: bool = False
+    sla_days: int = 2
+    sla_breach: bool = False
+    bill_note: str = ""                                # "Out bill" / "In bill" (single-trip rows)
+    file_history: list = field(default_factory=list)   # every billing event of this file, first to last
+    history_pos: int = 0                               # index of this row inside file_history (0-based)
+    last_file: tuple | None = None                     # (when, text, user) newest log entry of the file
+    last_trips: list = field(default_factory=list)     # [(trip_id, type label, when, text, user)]
+    appointments: list = field(default_factory=list)   # [dict] appointments of this row's trips
+    views: list = field(default_factory=list)          # TripView of this row's trips (to rebuild the Done/Due text)
+    info: list = field(default_factory=list)           # notes for the Check List only (no yellow)
 
     @property
     def submitted(self) -> bool:
         return self.status == "Submitted"
+
+    @property
+    def reported_at(self) -> datetime | None:
+        """Submission date-time as the tracker shows it: the real time of day, on the reported (working) day."""
+        if not self.submitted_at:
+            return None
+        if self.sub_day and self.sub_day != self.submitted_at.date():
+            return datetime.combine(self.sub_day, self.submitted_at.time())
+        return self.submitted_at
+
+    @property
+    def rolled(self) -> bool:
+        return bool(self.submitted_at and self.sub_day and self.sub_day != self.submitted_at.date())
+
+    @property
+    def clock(self) -> time | None:
+        """Time of day used for the 3 PM cut-off: a row rolled to the next working day counts as 'Before 3 PM'."""
+        if not self.submitted_at:
+            return None
+        return time(0, 0) if self.rolled else self.submitted_at.time()
 
 
 # ------------------------------------------------------------------------------ concerns
@@ -154,7 +205,7 @@ def extra_category(trip: dict) -> str:
     code = trip.get("type_code", "")
     blob = f'{trip.get("comment") or ""} {trip.get("remarks") or ""}'.lower()
     if code == "BANK":
-        return "Extra Document(Bank)"
+        return "Extra Document(BS)"
     if code in ("HOUSE", "OFFICE", "GUARANTOR_HOUSE", "GUARANTOR_OFFICE"):
         return "Extra Trip"
     if "loi" in blob:
@@ -208,6 +259,80 @@ def row_area(trips: list) -> tuple[str, bool, str]:
     return "In", sure, why
 
 
+# ------------------------------------------------------------------------------ appointments / last update
+def _trip_label(t: dict) -> str:
+    return BASE_TYPE.get(t.get("type_code", ""), t.get("type") or "Trip")
+
+
+def appointments_for(trips: list) -> list[dict]:
+    """Appointments of the trips of ONE row (oldest first) - straight from the dashboard."""
+    out = []
+    for _c, t in trips:
+        for a in t.get("appointments") or []:
+            out.append({"trip_id": t["id"], "trip_type": _trip_label(t), "time": a.get("time"),
+                        "type": a.get("type") or "", "reason": a.get("reason") or "",
+                        "created_at": a.get("created_at"), "active": a.get("active", True)})
+    out.sort(key=lambda a: (a["created_at"] or datetime.min, a["trip_id"] or 0))
+    return out
+
+
+def last_update_for(logs: "FileLogs | None", trips: list, labels: dict | None = None) -> tuple:
+    """Newest activity-log entry of the whole file, and of each trip of this row."""
+    if logs is None or not logs.ok or not logs.events:
+        return None, []
+    labels = labels or {}
+    ev = logs.events                                     # newest first
+    newest = ev[0]
+    what = newest.text
+    if newest.etype == "TRIP" and newest.entity_id:
+        what = f"Trip {newest.entity_id} ({labels.get(newest.entity_id, 'Trip')}) - {newest.text}"
+    file_last = (newest.when, what, newest.user)
+    rows = []
+    for _c, t in trips:
+        mine = next((e for e in ev if e.etype == "TRIP" and e.entity_id == t["id"]), None)
+        if mine:
+            rows.append((t["id"], _trip_label(t), mine.when, mine.text, mine.user))
+        else:
+            rows.append((t["id"], _trip_label(t), None, "", ""))
+    return file_last, rows
+
+
+def short_slab(slab: str) -> str:
+    if slab == SLAB_DOC:
+        return "Single Document"
+    if slab == SLAB_PG:
+        return "PG Verification"
+    return slab
+
+
+def fill_history(rows: list[BillRow]) -> None:
+    """Every row of a file carries the same numbered history (first to last) of that file's bills."""
+    by_file: dict = {}
+    for r in rows:
+        by_file.setdefault(r.file_id, []).append(r)
+    for rs in by_file.values():
+        rs.sort(key=lambda r: (r.receive_dt or datetime.max, r.trips[0][1]["id"] or 0))
+        rs.sort(key=lambda r: {"Package": 0, "Single": 1, "ReCpv": 2, "Extra": 2}.get(r.kind, 3))
+        # chronological by receive date, Package always first
+        pkg = [r for r in rs if r.kind == "Package"]
+        rest = sorted([r for r in rs if r.kind != "Package"],
+                      key=lambda r: (r.receive_dt or datetime.max, r.trips[0][1]["id"] or 0))
+        rs[:] = pkg + rest
+        lines = []
+        for i, r in enumerate(rs, 1):
+            when = f" - {r.receive_dt:%d-%m-%Y}" if r.receive_dt else ""
+            if r.kind == "Package":
+                what = f"Package ({len(r.trips)} trip{'s' if len(r.trips) != 1 else ''})"
+            elif r.kind == "Single":
+                what = f"{r.category.replace('Created - ', '')} - {short_slab(r.slab)}"
+            else:
+                what = f"{r.category} - {short_slab(r.slab)}"
+            lines.append(f"{i}. {what} - {r.area}{when}")
+        for pos, r in enumerate(rs):
+            r.file_history = lines
+            r.history_pos = pos
+
+
 # ------------------------------------------------------------------------------ building
 def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileLogs | None,
                history_since: datetime) -> list[BillRow]:
@@ -232,7 +357,7 @@ def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileL
     groups: list[tuple[str, list]] = []
     if same_day:
         groups.append(("Package", same_day[:PACKAGE_MAX]))
-        groups += [("Single", [ct]) for ct in same_day[PACKAGE_MAX:]]
+        groups += [("Single", [ct]) for ct in same_day[PACKAGE_MAX:]]      # 6th, 7th, 8th ... = Extra Trip 1, 2, 3 ...
     for ct in later:
         t = ct[1]
         kind = "ReCpv" if (t["id"] in recpv_by_trip or t.get("re_cpv")) else "Extra"
@@ -241,6 +366,8 @@ def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileL
     rows: list[BillRow] = []
     ftype = file_type_of(file["file_no"], file.get("type", ""))
     total_rows = len(groups)
+    single_no = 0
+    labels = {t["id"]: _trip_label(t) for _c, t in flat}
     for kind, trips in groups:
         r = BillRow(file_id=file["id"], file_no=file["file_no"], file_type=ftype, kind=kind, trips=trips)
         t0 = trips[0][1]
@@ -259,7 +386,8 @@ def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileL
         else:
             r.slab = slab_for(t0, trips[0][0]["role"].upper())
             if kind == "Single":
-                r.category = "Created"
+                single_no += 1
+                r.category = f"Created - Extra Trip {single_no}"
                 r.receive_dt = created or t0.get("created_at")
             elif kind == "ReCpv":
                 r.category = "Re-CPV"
@@ -273,12 +401,25 @@ def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileL
         r.area, r.area_sure, r.area_why = row_area(trips)
         if not r.area_sure:
             r.flags["area"] = r.area_why
+        r.sla_days = SLA_OUT if r.area == "Out" else SLA_IN
+        if kind != "Package":
+            r.bill_note = f"{r.area} bill"
+        if kind == "Package":
+            st = (file.get("station") or "").lower()
+            if st.startswith("out") and r.area == "In" or st.startswith("in ") and r.area == "Out":
+                r.info.append(f"ড্যাশবোর্ডের Station = {file.get('station')}, কিন্তু ম্যাপ অনুযায়ী {r.area}")
+        r.appointments = appointments_for(trips)
+        r.last_file, r.last_trips = last_update_for(logs, trips, labels)
         if any(t.get("status_code") == 6 for _c, t in trips):
             r.canceled = True
             r.flags["slab"] = "Canceled ট্রিপ আছে (বিলযোগ্য কি না সিদ্ধান্ত বাকি)"
         _assign_submission(r, file, logs, has_followups=total_rows > 1 and any(g[0] in ("ReCpv", "Extra") for g in groups))
+        r.partial_events = list(logs.partial) if logs is not None and logs.ok else []
+        r.file_status = int(file.get("status_code") or 0)
+        r.file_submitted = list(logs.submitted) if logs is not None and logs.ok else []
         views = [TripView(t, c["role"].upper(), info[c["id"]]["who"]) for c, t in trips]
-        r.summary = analyze(views, r.submitted, "BS" if kind == "Package" else "Bank")
+        r.views = views
+        r.summary = analyze(views, r.submitted, "BS")
         if r.summary.uncertain:
             r.flags["summary"] = "; ".join(dict.fromkeys(r.summary.reasons)) or "সংক্ষেপ নিশ্চিত নয়"
         rows.append(r)
@@ -314,48 +455,221 @@ def _assign_submission(r: BillRow, file: dict, logs: FileLogs | None, has_follow
 
 
 # ------------------------------------------------------------------------------ TAT
+def assign_sub_days(rows: list[BillRow], cap: date | None, holiday_set: set[date]) -> int:
+    """Tracker convention (checked on the sent mails and the bank's Excel: not one of 3714 rows has a Friday submission):
+    a submission that happens on a day off (Fri / Sat / holiday) is reported - and its TAT counted - on the NEXT working
+    day.  `cap` = the last day of the report (a report made for a day off keeps that day).  -> rows rolled forward."""
+    n = 0
+    for r in rows:
+        if not r.submitted_at:
+            r.sub_day = None
+            continue
+        a = r.submitted_at.date()
+        day = hol.next_working_day(a, holiday_set)
+        if cap is not None and day > max(a, cap):
+            day = max(a, cap)
+        r.sub_day = day
+        n += day != a
+    return n
+
+
 def compute_tat(r: BillRow, report_date: date, holiday_set: set[date]) -> None:
     """Same numbers as the Excel formulas (Fri+Sat off, holidays from the list)."""
     if r.receive_dt is None:
         r.tat = r.extra_tat = None
         return
-    end = r.submitted_at.date() if r.submitted_at else report_date
+    end = (r.sub_day or r.submitted_at.date()) if r.submitted_at else report_date
     start = r.receive_dt.date() + timedelta(days=1)
     r.tat = max(0, hol.count_business_days(start, end, holiday_set))
-    r.extra_tat = max(0, r.tat - (3 if r.area == "Out" else 2))
+    r.sla_days = SLA_OUT if r.area == "Out" else SLA_IN
+    r.extra_tat = max(0, r.tat - r.sla_days)
+    r.sla_breach = r.extra_tat > 0
 
 
 def before_after(r: BillRow) -> str:
     if not r.submitted_at:
         return ""
-    return "Before 3 PM" if r.submitted_at.hour < CUTOFF_HOUR else "After 3 PM"
+    return "Before 3 PM" if r.clock.hour < CUTOFF_HOUR else "After 3 PM"
 
 
 # ------------------------------------------------------------------------------ selection
+PHASE1_CUTOFF = time(CUTOFF_HOUR, 0)     # the 3:30 PM mail covers everything submitted BEFORE 3 PM
+
+
+def apply_as_of(rows: list[BillRow], cutoff: date | None, until: datetime | None = None) -> int:
+    """Roll the data back to the moment of the report.  A row submitted AFTER the last day of the report dates (or, for the
+    first-phase mail, at / after `until` = 3 PM of the report day) was still waiting then, so it is shown as Incomplete
+    ("Submitted later ...") instead of silently disappearing.  -> number of rows changed."""
+    n = 0
+    for r in rows:
+        if not r.submitted:
+            continue
+        late_day = bool(cutoff and r.submitted_at.date() > cutoff)
+        late_hour = bool(until and not late_day and not r.rolled and r.submitted_at >= until)
+        if not (late_day or late_hour):
+            continue
+        r.status_note = (f"Submitted later ({r.submitted_at:%d/%m/%Y})" if late_day
+                         else f"Submitted after 3 PM ({r.submitted_at:%I:%M %p})")
+        r.status, r.submitted_at = "Incomplete", None
+        if r.views:
+            r.summary = analyze(r.views, False, "BS")
+        n += 1
+    return n
+
+
+INCOMPLETE_SCOPES = ("sla_partial", "partial_today", "partial_open", "all_pending")
+SCOPE_TEXT = {
+    "sla_partial": "SLA পেরোনো pending সারি + Partially Submitted ফাইলের বাকি সারি",
+    "partial_today": "আজ Partially Submitted হয়েছে এমন ফাইলের বাকি সারি",
+    "partial_open": "Partially Submitted হয়ে এখনও খোলা সব ফাইলের বাকি সারি",
+    "all_pending": "Submitted না হওয়া সব সারি",
+}
+LOOKBACK_DAYS = 90                        # a pending row is looked at only if its file came in during the last 90 days
+
+
+def tracker_window(report_date: date, hset: set[date] | None) -> tuple[date, date]:
+    """The days one tracker covers: from the day after the previous working day up to the report date, so the Friday /
+    Saturday / holiday submissions come out in the next working day's tracker (Thursday's tracker covers Thursday only)."""
+    return hol.previous_working_day(report_date, hset or set()) + timedelta(days=1), report_date
+
+
+def is_partial_open(r: BillRow, hi: date, today: date | None = None) -> bool:
+    """Was the FILE of this pending row waiting as "Partially Submitted" on day `hi`?  (activity log: a Partially Submitted
+    event on or before `hi`, after the row existed, and no Submitted event after it.)  A file that is Partially Submitted
+    right now but whose log could not be read still counts when the report is for today."""
+    if r.file_status in (5, 8):
+        return False
+    events = [e for e in r.partial_events if e.date() <= hi]
+    if events:
+        last = max(events)
+        if r.receive_dt and last < r.receive_dt - timedelta(hours=1):
+            return False                                   # the row was created after the file had been partial
+        return not any(last < x and x.date() <= hi for x in r.file_submitted)
+    return r.file_status == 7 and not r.partial_events and today is not None and hi >= today
+
+
+def classify_reason(r: BillRow) -> None:
+    """Why is a pending row not submitted?  Sets r.reason / r.reason_kind (or leaves them empty = nothing found).
+    Reasons the bank accepts: a given appointment, a Hold with a written reason, an On Going file still inside its SLA,
+    and (Partially Submitted) the documents named in Due."""
+    r.reason, r.reason_kind = "", ""
+    if r.submitted:
+        return
+    appts = [a for a in r.appointments if a.get("active", True) and a.get("time")]
+    if appts:
+        r.reason_kind, r.reason = "appointment", f"Appointment {appts[-1]['time']:%d/%m/%Y %I:%M %p}"
+        return
+    open_trips = [t for _c, t in r.trips if t.get("status_code") in (1, 2, 3, 4)]
+    holds = [t for t in open_trips if t.get("status_code") == 4]
+    for t in holds:
+        text = " ".join(x for x in (clean_text(t.get("remarks")), clean_text(t.get("comment"))) if x)
+        if len(text) >= 4:
+            r.reason_kind, r.reason = "hold", f"Hold: {text[:90]}"
+            return
+    if r.file_status == 7 or r.partial_events:
+        if r.summary.due.strip() not in ("", "0", "Report not yet submitted"):
+            r.reason_kind, r.reason = "partial", "Partially Submitted: " + r.summary.due.replace("\n", " ")[:90]
+            return
+    if open_trips and not holds and not r.sla_breach:
+        r.reason_kind, r.reason = "ongoing", "On Going, within SLA"
+
+
 def select_rows(rows: list[BillRow], mode: str, report_date: date, w_from: date | None = None,
-                w_till: date | None = None) -> tuple[list[BillRow], list[BillRow]]:
-    """-> (complete rows, incomplete rows), each sorted by Receive Date then file number."""
+                w_till: date | None = None, hset: set[date] | None = None,
+                scope: str = "sla_partial", today: date | None = None,
+                after3_only: bool = False) -> tuple[list[BillRow], list[BillRow]]:
+    """-> (complete rows, incomplete rows), each sorted by Receive Date then file number.
+
+    Complete   = rows SUBMITTED inside the dates (tracker: on the report date and the days off just before it; range:
+                 from..till), whenever they were received - exactly what the dashboard's Reports page lists for Submitted.
+                 `after3_only` (second-phase mail): only the rows submitted after 3 PM, i.e. not sent in the first mail.
+    Incomplete = tracker, by `scope`:
+                   sla_partial   : (V3 default) a pending row whose own TAT is past its SLA (In 2 / Out 4 working days,
+                                   counted to the report date)  +  every pending row of a file that was waiting as
+                                   "Partially Submitted" on the report date (its Due text says which documents are missing)
+                   partial_today / partial_open : only the Partially Submitted files (checked against the sent mails)
+                   all_pending   : every row not submitted yet (received inside the look-back window)
+                 range: rows not submitted yet that were received inside the dates."""
+    if scope not in INCOMPLETE_SCOPES:
+        scope = "sla_partial"
+    t_lo, t_hi = tracker_window(report_date, hset) if mode == "tracker" else (None, None)
     complete, incomplete = [], []
     for r in rows:
         rd = r.receive_dt.date() if r.receive_dt else None
         if mode == "tracker":
-            if rd is not None and w_from and rd < w_from:      # outside the look-back window
+            if r.submitted:
+                if t_lo <= r.submitted_at.date() <= t_hi:
+                    if after3_only and r.clock.hour < CUTOFF_HOUR:
+                        continue
+                    complete.append(r)
                 continue
-            if r.submitted and r.submitted_at.date() == report_date:
-                complete.append(r)
-            elif not r.submitted:
+            if r.file_status in (5, 8):                                # canceled / withdrawn files are not pending
+                continue
+            if rd is not None and rd > report_date:                    # not even received on that day
+                continue
+            if rd is not None and w_from and rd < w_from:              # outside the look-back window
+                continue
+            if scope == "all_pending":
                 incomplete.append(r)
+            elif scope == "sla_partial":
+                if (r.extra_tat or 0) > 0 or is_partial_open(r, t_hi, today):
+                    incomplete.append(r)
+            else:
+                days = [e.date() for e in r.partial_events]
+                if scope == "partial_today" and any(t_lo <= x <= t_hi for x in days):
+                    incomplete.append(r)
+                elif scope == "partial_open" and any(x <= t_hi for x in days):
+                    incomplete.append(r)
         else:
-            if rd is None or (w_from and rd < w_from) or (w_till and rd > w_till):
-                continue
-            (complete if r.submitted else incomplete).append(r)
+            if r.submitted:
+                sd = r.sub_day or r.submitted_at.date()
+                if (w_from is None or sd >= w_from) and (w_till is None or sd <= w_till):
+                    complete.append(r)
+            elif rd is not None and (w_from is None or rd >= w_from) and (w_till is None or rd <= w_till):
+                incomplete.append(r)
     key = lambda r: (r.receive_dt or datetime.max, r.file_no, r.trips[0][1]["id"] or 0)   # noqa: E731
     complete.sort(key=key)
     incomplete.sort(key=key)
     for lst in (complete, incomplete):
         for i, r in enumerate(lst, 1):
             r.sl = i
+    for r in incomplete:
+        classify_reason(r)
+        if not r.reason and mode == "tracker":
+            r.flags["reason"] = "কোনো কারণ পাওয়া যায়নি (Appointment / Hold reason / SLA-র মধ্যে On Going নেই)"
     return complete, incomplete
+
+
+def dashboard_check(d) -> dict:
+    """Compare the dashboard's own Submitted list (same dates) with the Complete Report, file by file.
+    -> {dashboard, report_files, matched, extra, partial, missing: [(file no, why)]}"""
+    dash = d.dash
+    ids = dict(dash.get("submitted") or {})
+    in_report = {r.file_id for r in d.complete}
+    files = {f["id"] for f in d.files}
+    missing, other = [], []
+    after3 = bool(getattr(d, "after3_only", False))
+    for fid in sorted(set(ids) - in_report, key=lambda i: ids[i]):
+        mine = [r for r in d.all_rows if r.file_id == fid]
+        if mine and d.mode == "tracker" and d.slot == "3pm" and any(r.status_note.startswith("Submitted after 3 PM") for r in mine):
+            other.append(ids[fid])                         # submitted after 3 PM: belongs to the 2nd-phase mail, not "missing"
+            continue
+        if mine and after3 and all(r.submitted and r.clock and r.clock.hour < CUTOFF_HOUR for r in mine if r.submitted) \
+                and any(r.submitted for r in mine):
+            other.append(ids[fid])                         # submitted before 3 PM: already sent in the 1st-phase mail
+            continue
+        if fid not in files:
+            why = "ফাইলের তথ্য পড়া যায়নি"
+        elif not mine:
+            why = "কোনো বিল-সারি তৈরি হয়নি"
+        else:
+            subs = sorted({r.submitted_at for r in mine if r.submitted_at})
+            why = ("Activity log-এ Submitted: " + ", ".join(f"{t:%d/%m/%Y %H:%M}" for t in subs[:3])) if subs else \
+                  "Activity log-এ এই সময়ের Submitted ঘটনা নেই"
+        missing.append((ids[fid], why))
+    return {"from": dash.get("from"), "till": dash.get("till"), "dashboard": len(ids), "report_files": len(in_report),
+            "matched": len(set(ids) & in_report), "extra": len(in_report - set(ids)), "partial": len(dash.get("partial") or {}),
+            "missing": missing, "other_phase": other}
 
 
 def reconcile(rows: list[BillRow], files: list[dict]) -> dict:
