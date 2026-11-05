@@ -19,7 +19,7 @@ from datetime import date, datetime, timedelta
 
 from . import config, holidays as hol
 from .activity import parse_logs
-from .billing import BillRow, FileLogs, build_rows, compute_tat, fill_history, reconcile, select_rows
+from .billing import apply_as_of, dashboard_check, BillRow, FileLogs, build_rows, compute_tat, fill_history, reconcile, select_rows
 from .client import ApiError, AuthError, Cancelled, ReadOnlyClient
 from .collect import Progress, RunConfig, _noop
 from .model import normalize_file
@@ -27,6 +27,7 @@ from .recpv import fetch_tracker, index
 
 HISTORY_DAYS = 365
 TRIP_ID_MARGIN = 2500          # safety margin when guessing which older files may hold new trips
+SUBMITTED, PARTIAL = 6, 7                 # file status codes of "Submitted" / "Partially Submitted"
 LOG_STATUSES = {1, 2, 3, 4, 5, 6, 7, 8}  # every file: the log gives Submitted time AND the Last Update column
 
 
@@ -58,6 +59,7 @@ class PrimeData:
     notes: list = field(default_factory=list)
     recon: dict = field(default_factory=dict)
     holidays: dict = field(default_factory=dict)
+    dash: dict = field(default_factory=dict)       # the dashboard's own Submitted list for the same dates + the match result
     site_total: int = 0
     old_files: int = 0
     tracker_total: int = 0
@@ -106,9 +108,13 @@ def _pool_map(workers, cancel, fn, keys, progress=None, label=""):
     return results, errors
 
 
-def _list_files(client, org_uuid, d_from: date, d_till: date, workers, cancel, progress_cb) -> tuple[dict, int]:
+def _list_files(client, org_uuid, d_from: date, d_till: date, workers, cancel, progress_cb,
+                statuses=None) -> tuple[dict, int]:
     """All list items for a date window. Paging with sort ties can drop rows, so if the unique count is
-    short of the server total we sweep again with another sort and merge."""
+    short of the server total we sweep again with another sort and merge.
+    `statuses` = file status codes (default: all).  With only Submitted (6) the dashboard's Reports page
+    returns the files SUBMITTED inside the window - the same list the person sees after pressing "Submit"."""
+    codes = list(statuses) if statuses else config.ALL_FILE_STATUS_CODES
     found: dict = {}
     total = 0
     sweeps = [("application_id", "ASC"), ("start_date", "DESC"), ("end_date", "ASC")]
@@ -116,7 +122,7 @@ def _list_files(client, org_uuid, d_from: date, d_till: date, workers, cancel, p
         def params(page):
             p = [("dateFrom", d_from.isoformat()), ("dateTill", d_till.isoformat()), ("page", page),
                  ("sort_by", sort_by), ("sort_order", order), ("org_id[]", org_uuid)]
-            return p + [("status[]", s) for s in config.ALL_FILE_STATUS_CODES]
+            return p + [("status[]", s) for s in codes]
         try:
             first = client.get("/api/v2/manager/applications", params(1))["applications"]
         except ApiError:
@@ -181,6 +187,26 @@ def collect_prime(cfg: PrimeConfig, progress: Progress = _noop, cancel: threadin
     if len(items) != site_total:
         d.notes.append(f"সতর্কতা: সাইটের মোট ফাইল {site_total}, তালিকায় পাওয়া গেছে {len(items)}।")
     progress("list", 1, 1, f"মোট {len(items)} টি ফাইল (সাইটের মোট: {site_total})")
+
+    # 2b. the dashboard's own "Submitted" list for the same dates ------------------------------------
+    # Files are listed above by their START date, but a file is Submitted days after it started. The Reports
+    # page (status = Submitted + the same dates + "Submit") lists files by when they were submitted, so the
+    # same list is read here, the files are added, and the result is compared with the report at the end.
+    dash_from, dash_till = (d.report_date, d.report_date) if d.mode == "tracker" else (d.w_from, d.w_till)
+    d.dash = {"from": dash_from, "till": dash_till, "ok": False, "submitted": {}, "partial": {}}
+    progress("list", 0, 1, "ড্যাশবোর্ডের Submitted তালিকা পড়া হচ্ছে…")
+    try:
+        sub, _t = _list_files(client, org_uuid, dash_from, dash_till, workers, cancel, lambda a, b: None, statuses=[SUBMITTED])
+        par, _t = _list_files(client, org_uuid, dash_from, dash_till, workers, cancel, lambda a, b: None, statuses=[PARTIAL])
+        d.dash.update(ok=True, submitted={fid: it.get("application_id") or str(fid) for fid, it in sub.items()},
+                      partial={fid: it.get("application_id") or str(fid) for fid, it in par.items()})
+        for fid, it in list(sub.items()) + list(par.items()):
+            items.setdefault(fid, it)
+    except (AuthError, Cancelled):
+        raise
+    except Exception as exc:                              # noqa: BLE001 - the report still works without the cross-check
+        d.notes.append(f"সতর্কতা: ড্যাশবোর্ডের Submitted তালিকা পড়া যায়নি ({exc}); ড্যাশবোর্ডের সঙ্গে মেলানো যায়নি।")
+    progress("list", 1, 1, f"ড্যাশবোর্ডে Submitted: {len(d.dash['submitted'])} টি ফাইল ({dash_from:%d-%m-%Y} – {dash_till:%d-%m-%Y})")
 
     def fetch(fid):
         return client.get(f"/api/v2/manager/applications/{fid}")
@@ -282,12 +308,20 @@ def collect_prime(cfg: PrimeConfig, progress: Progress = _noop, cancel: threadin
     for f in d.files:
         rows.extend(build_rows(f, recpv_by_trip, recpv_by_file, logs.get(f["id"]), since))
     report_date = d.report_date
+    later = apply_as_of(rows, d.w_till)                   # submitted after the last day of the dates = still waiting on that day
     for r in rows:
         compute_tat(r, report_date, hset)
     fill_history(rows)
     d.all_rows = rows
     d.complete, d.incomplete = select_rows(rows, d.mode, d.report_date, d.w_from, d.w_till)
     d.recon = reconcile(rows, d.files)
+    d.recon["submitted_later"] = later
+    if d.dash.get("ok"):
+        d.dash["check"] = dashboard_check(d)
+        ck = d.dash["check"]
+        if ck["missing"]:
+            d.notes.append(f"ড্যাশবোর্ডের Submitted তালিকায় {ck['dashboard']} টি ফাইল, রিপোর্টের Complete-এ মিলেছে {ck['matched']} টি। "
+                           "মেলেনি: " + "; ".join(f"{no} ({why})" for no, why in ck["missing"][:6]) + ("…" if len(ck["missing"]) > 6 else ""))
     if hol.needs_update(today):
         d.notes.append(f"ছুটির তালিকা {hol.last_date():%d-%m-%Y} পর্যন্ত আছে; নতুন ছুটি যোগ করুন।")
     progress("rows", 1, 1, "সম্পন্ন।")

@@ -565,8 +565,12 @@ class App(tk.Tk):
                         txt = f"সম্পন্ন!  Complete {len(d.complete)} · Incomplete {len(d.incomplete)} · SLA Breach {br}"
                     else:
                         txt = f"সম্পন্ন!  মোট {len(d.all_rows)} সারি · ফাইল {len(d.files)} টি"
+                    ck = (d.dash or {}).get("check")
+                    if ck:
+                        txt += (f"\nড্যাশবোর্ডের Submitted: {ck['dashboard']} টি ফাইল · রিপোর্টে মিলেছে: {ck['matched']} টি"
+                                + ("  ✓" if not ck["missing"] else f"  ⚠ মেলেনি {len(ck['missing'])} টি (Summary শিটে)"))
                     if d.notes:
-                        txt += "\n" + " ".join(d.notes[:2])
+                        txt += "\n" + " ".join(n for n in d.notes[:2] if not n.startswith("ড্যাশবোর্ডের Submitted তালিকায়"))
                     self.status.set(txt)
                     self._show_results(paths, d.mode == "tracker")
                 elif kind == "hist_done":

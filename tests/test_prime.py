@@ -37,7 +37,9 @@ def test_rows_and_selection(data):
         ("PL-20261026000001", "ReCpv"), ("CC-20261101000002", "Package"), ("CC-20260115000004", "Extra"),
         ("CC--20261027000006", "Package"), ("CC--20261027000006", "Single"), ("CC--20261027000006", "Single")])
     assert sorted(map(key, d.incomplete)) == sorted([("PL-20261020000003", "Package"), ("PL-20250901000005", "ReCpv")])
-    assert d.old_files == 2                                            # F4 (found by trip id) and F5 (by tracker)
+    assert d.old_files == 1                                            # F5 (by tracker); F4 is already in the dashboard's Submitted list
+    ck = d.dash["check"]
+    assert (ck["dashboard"], ck["matched"], ck["missing"], ck["extra"]) == (4, 4, [], 0) and ck["partial"] == 0
     assert title_for(d) == "Prime Bank PLC 2-11-2026 3pm Submission Tracker"
 
 
@@ -247,3 +249,45 @@ def test_report_cells_done_due_colours_and_last_update(data, tmp_path):
                         assert col[-6:].upper() not in banned, (sh.title, c.coordinate, col)
     assert any(c.fill.fgColor.rgb[-6:] == "BFE3FF" for sh in (wb["Complete Report"], wb["Incomplete Report"])
                for row in sh.iter_rows() for c in row if c.fill and c.fill.fill_type and isinstance(c.fill.fgColor.rgb, str))
+
+
+def test_range_mode_lists_what_the_dashboard_lists(tmp_path):
+    """The bank pressed Submit on the Reports page (status Submitted, 02-Nov..02-Nov): 4 files.  The range report used to
+    keep only rows RECEIVED inside the dates and returned almost none of them.  Now Complete = rows SUBMITTED inside the dates."""
+    import prime_scenario as ps
+    srv = mock_server.start_scenario(0)
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+    f7 = ps.application(500007, "PL-20261020000007", "2026-10-20 09:00:00", 6, [
+        ps.concern(5000071, 500007, "APPLICANT", "THETA SEVEN", [ps.trip(700070, 5000071, "HOUSE", 5, "2026-10-20 09:00:00", ps.OK)])])
+    ps.LOGS[500007] = [ps._log("APPLICATION", 500007, "Application : 500007 status updated to SUBMITTED by Mgr", "HOLD", "SUBMITTED", "2026-11-01 15:00:00"),
+                       ps._log("APPLICATION", 500007, "Application : 500007 status updated to SUBMITTED by Mgr", "HOLD", "SUBMITTED", "2026-11-02 12:00:00")]
+    mock_server.STATE["files"].append(f7)
+    try:
+        cfg = PrimeConfig(web=base, api=base, server_label="mock", email="test@example.com", password="secret", days=30,
+                          mode="range", date_from=date(2026, 11, 2), date_till=date(2026, 11, 2))
+        d = collect_prime(cfg, lambda *a: None, threading.Event())
+        key = lambda r: (r.file_no, r.kind)                            # noqa: E731
+        assert sorted(map(key, d.complete)) == sorted([
+            ("PL-20261026000001", "ReCpv"), ("CC-20261101000002", "Package"), ("CC-20260115000004", "Extra"),
+            ("CC--20261027000006", "Package"), ("CC--20261027000006", "Single"), ("CC--20261027000006", "Single")])
+        ck = d.dash["check"]
+        assert ck["dashboard"] == 5 and ck["matched"] == 4 and ck["extra"] == 0
+        # F7 is in the dashboard's list (submitted again on 02-Nov) but its first Submitted event was 01-Nov: it is reported, not hidden
+        assert [no for no, _why in ck["missing"]] == ["PL-20261020000007"] and "01/11/2026" in ck["missing"][0][1]
+        assert any("PL-20261020000007" in n for n in d.notes)
+        # a wider range keeps working: rows received inside it that are still open stay in Incomplete
+        cfg2 = PrimeConfig(web=base, api=base, server_label="mock", email="test@example.com", password="secret", days=30,
+                           mode="range", date_from=date(2026, 10, 1), date_till=date(2026, 11, 3))
+        d2 = collect_prime(cfg2, lambda *a: None, threading.Event())
+        assert {r.file_no for r in d2.incomplete} >= {"PL-20261020000003", "PL-20250901000005"}
+        assert d2.dash["check"]["missing"] == []                       # the full range: every Submitted file has a Complete row
+        # a range that ENDS before a later submission: that row was still waiting on its last day
+        cfg3 = PrimeConfig(web=base, api=base, server_label="mock", email="test@example.com", password="secret", days=30,
+                           mode="range", date_from=date(2026, 10, 25), date_till=date(2026, 10, 31))
+        d3 = collect_prime(cfg3, lambda *a: None, threading.Event())
+        later = [r for r in d3.incomplete if r.file_no == "PL-20261026000001" and r.kind == "ReCpv"]
+        assert later and later[0].status_note.startswith("Submitted later (02/11/2026)") and d3.recon["submitted_later"] >= 1
+    finally:
+        mock_server.STATE["files"].remove(f7)
+        ps.LOGS.pop(500007, None)
+        srv.shutdown()

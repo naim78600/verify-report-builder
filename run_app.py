@@ -65,6 +65,11 @@ def cli(argv):
         d = collect_prime(pc, lambda s, n, t, m: print(m, flush=True), threading.Event())
         for p_ in write_prime_outputs(d, Path(a.outdir), email=True):
             print("Saved", p_)
+        ck = (d.dash or {}).get("check")
+        if ck:
+            print(f"Dashboard Submitted files: {ck['dashboard']}  matched in Complete: {ck['matched']}  not matched: {len(ck['missing'])}")
+            for no, why in ck["missing"]:
+                print(f"  not matched: {no} - {why}")
         return
 
     def progress(stage, done, total, msg):

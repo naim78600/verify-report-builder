@@ -111,6 +111,7 @@ class BillRow:
     last_file: tuple | None = None                     # (when, text, user) newest log entry of the file
     last_trips: list = field(default_factory=list)     # [(trip_id, type label, when, text, user)]
     appointments: list = field(default_factory=list)   # [dict] appointments of this row's trips
+    views: list = field(default_factory=list)          # TripView of this row's trips (to rebuild the Done/Due text)
     info: list = field(default_factory=list)           # notes for the Check List only (no yellow)
 
     @property
@@ -388,6 +389,7 @@ def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileL
             r.flags["slab"] = "Canceled ট্রিপ আছে (বিলযোগ্য কি না সিদ্ধান্ত বাকি)"
         _assign_submission(r, file, logs, has_followups=total_rows > 1 and any(g[0] in ("ReCpv", "Extra") for g in groups))
         views = [TripView(t, c["role"].upper(), info[c["id"]]["who"]) for c, t in trips]
+        r.views = views
         r.summary = analyze(views, r.submitted, "BS")
         if r.summary.uncertain:
             r.flags["summary"] = "; ".join(dict.fromkeys(r.summary.reasons)) or "সংক্ষেপ নিশ্চিত নয়"
@@ -444,9 +446,27 @@ def before_after(r: BillRow) -> str:
 
 
 # ------------------------------------------------------------------------------ selection
+def apply_as_of(rows: list[BillRow], cutoff: date | None) -> int:
+    """A row submitted AFTER the last day of the report dates was still waiting on that day, so it is shown as
+    Incomplete ("Submitted later ...") instead of silently disappearing.  -> number of rows changed."""
+    n = 0
+    for r in rows:
+        if cutoff and r.submitted and r.submitted_at.date() > cutoff:
+            r.status_note = f"Submitted later ({r.submitted_at:%d/%m/%Y})"
+            r.status, r.submitted_at = "Incomplete", None
+            if r.views:
+                r.summary = analyze(r.views, False, "BS")
+            n += 1
+    return n
+
+
 def select_rows(rows: list[BillRow], mode: str, report_date: date, w_from: date | None = None,
                 w_till: date | None = None) -> tuple[list[BillRow], list[BillRow]]:
-    """-> (complete rows, incomplete rows), each sorted by Receive Date then file number."""
+    """-> (complete rows, incomplete rows), each sorted by Receive Date then file number.
+
+    Complete   = rows SUBMITTED inside the dates (tracker: on the report date; range: from..till), whenever they were
+                 received - exactly what the dashboard's Reports page lists for status = Submitted.
+    Incomplete = rows not submitted yet (tracker: received inside the look-back window; range: received inside the dates)."""
     complete, incomplete = [], []
     for r in rows:
         rd = r.receive_dt.date() if r.receive_dt else None
@@ -458,9 +478,12 @@ def select_rows(rows: list[BillRow], mode: str, report_date: date, w_from: date 
             elif not r.submitted:
                 incomplete.append(r)
         else:
-            if rd is None or (w_from and rd < w_from) or (w_till and rd > w_till):
-                continue
-            (complete if r.submitted else incomplete).append(r)
+            if r.submitted:
+                sd = r.submitted_at.date()
+                if (w_from is None or sd >= w_from) and (w_till is None or sd <= w_till):
+                    complete.append(r)
+            elif rd is not None and (w_from is None or rd >= w_from) and (w_till is None or rd <= w_till):
+                incomplete.append(r)
     key = lambda r: (r.receive_dt or datetime.max, r.file_no, r.trips[0][1]["id"] or 0)   # noqa: E731
     complete.sort(key=key)
     incomplete.sort(key=key)
@@ -468,6 +491,30 @@ def select_rows(rows: list[BillRow], mode: str, report_date: date, w_from: date 
         for i, r in enumerate(lst, 1):
             r.sl = i
     return complete, incomplete
+
+
+def dashboard_check(d) -> dict:
+    """Compare the dashboard's own Submitted list (same dates) with the Complete Report, file by file.
+    -> {dashboard, report_files, matched, extra, partial, missing: [(file no, why)]}"""
+    dash = d.dash
+    ids = dict(dash.get("submitted") or {})
+    in_report = {r.file_id for r in d.complete}
+    files = {f["id"] for f in d.files}
+    missing = []
+    for fid in sorted(set(ids) - in_report, key=lambda i: ids[i]):
+        mine = [r for r in d.all_rows if r.file_id == fid]
+        if fid not in files:
+            why = "ফাইলের তথ্য পড়া যায়নি"
+        elif not mine:
+            why = "কোনো বিল-সারি তৈরি হয়নি"
+        else:
+            subs = sorted({r.submitted_at for r in mine if r.submitted_at})
+            why = ("Activity log-এ Submitted: " + ", ".join(f"{t:%d/%m/%Y %H:%M}" for t in subs[:3])) if subs else \
+                  "Activity log-এ এই সময়ের Submitted ঘটনা নেই"
+        missing.append((ids[fid], why))
+    return {"from": dash.get("from"), "till": dash.get("till"), "dashboard": len(ids), "report_files": len(in_report),
+            "matched": len(set(ids) & in_report), "extra": len(in_report - set(ids)), "partial": len(dash.get("partial") or {}),
+            "missing": missing}
 
 
 def reconcile(rows: list[BillRow], files: list[dict]) -> dict:

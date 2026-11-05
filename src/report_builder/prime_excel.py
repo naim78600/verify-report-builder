@@ -173,7 +173,8 @@ def _banner(ws, d: PrimeData, name: str, rows, internal: bool, is_incomplete: bo
     sg = sum(1 for x in rows if x.kind == "Single")
     rc = sum(1 for x in rows if x.kind == "ReCpv")
     ex = sum(1 for x in rows if x.kind == "Extra")
-    items = [(("Incomplete" if is_incomplete else "Complete") + " files", len(rows), accent),
+    n_files = len({x.file_id for x in rows})
+    items = [(("Incomplete" if is_incomplete else "Complete") + f" rows · {n_files} files", len(rows), accent),
              ("Package", pk, T.NAVY), ("Extra Trip", sg, T.NAVY), ("Re-CPV", rc, T.NAVY), ("Extra Doc / Trip", ex, T.NAVY),
              ("Area In", sum(1 for x in rows if x.area == "In"), T.IN), ("Area Out", sum(1 for x in rows if x.area == "Out"), T.OUT),
              ("SLA Breach", sum(1 for x in rows if x.sla_breach), T.NEG)]
@@ -360,6 +361,27 @@ def _sum_sheet(wb: Workbook, d: PrimeData, internal: bool) -> None:
     for i, (label, flag) in enumerate((("Within SLA", False), ("SLA Breach", True))):
         line(r, label, sum(1 for x in d.complete if x.sla_breach == flag), sum(1 for x in d.incomplete if x.sla_breach == flag), i % 2)
         r += 1
+    ck = (d.dash or {}).get("check")
+    if ck:
+        r += 1
+        _put(s, r, 1, f"Dashboard check  (status Submitted, {ck['from']:%d/%m/%Y} – {ck['till']:%d/%m/%Y})",
+             font=Font(name=FONT, bold=True, color=T.WHITE), fill=_fill(T.NAVY_DARK))
+        for j in (2, 3, 4):
+            s.cell(r, j).fill = _fill(T.NAVY_DARK)
+        r += 1
+        for i, (label, val) in enumerate((("Files in the dashboard's Submitted list", ck["dashboard"]),
+                                          ("Of these, in the Complete Report", ck["matched"]),
+                                          ("Not matched", len(ck["missing"])),
+                                          ("Files in Complete Report (all rows)", ck["report_files"]))):
+            line_f = _fill(T.ZEBRA) if i % 2 else None
+            _put(s, r, 1, label, border=BOX, **({"fill": line_f} if line_f else {}))
+            _put(s, r, 2, val, alignment=cen, border=BOX, **({"fill": line_f} if line_f else {}),
+                 font=Font(name=FONT, bold=True, color=T.POS if (label == "Not matched" and val == 0) or label.startswith("Of these") and val == ck["dashboard"] else T.TEXT))
+            r += 1
+        if internal:
+            for no, why in ck["missing"]:
+                _put(s, r, 1, f"{no}  -  {why}", font=Font(name=FONT, color=T.NEG, size=9))
+                r += 1
     if internal:
         r += 1
         rc = d.recon
