@@ -17,14 +17,14 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
 from . import geo, holidays as hol
-from .summary import Summary, TripView, analyze
+from .summary import Summary, TripView, analyze, clean_text
 
 PACKAGE_MAX = 5
 CUTOFF_HOUR = 15          # "before / after 3 PM"
-SLA_IN = 2                # working days allowed, In area (Dhaka / Gazipur / Narayanganj city)
+SLA_IN = 2                # working days allowed, In area (Dhaka / Chattogram city corporation)
 SLA_OUT = 4               # working days allowed, Out area
 
 BASE_TYPE = {
@@ -98,6 +98,10 @@ class BillRow:
     submitted_at: datetime | None = None
     sub_day: date | None = None                        # the date the tracker shows (a Fri/Sat/holiday submission -> next working day)
     partial_events: list = field(default_factory=list) # when the FILE became "Partially Submitted" (activity log, Dhaka time)
+    file_status: int = 0                               # dashboard status code of the file (1..8)
+    file_submitted: list = field(default_factory=list) # every SUBMITTED event of the file (activity log, Dhaka time)
+    reason: str = ""                                   # why the row is still pending (appointment / within SLA / hold ...), "" = none found
+    reason_kind: str = ""                              # appointment | hold | ongoing | partial | ""
     status: str = "Incomplete"
     status_note: str = ""
     summary: Summary = field(default_factory=Summary)
@@ -132,6 +136,13 @@ class BillRow:
     @property
     def rolled(self) -> bool:
         return bool(self.submitted_at and self.sub_day and self.sub_day != self.submitted_at.date())
+
+    @property
+    def clock(self) -> time | None:
+        """Time of day used for the 3 PM cut-off: a row rolled to the next working day counts as 'Before 3 PM'."""
+        if not self.submitted_at:
+            return None
+        return time(0, 0) if self.rolled else self.submitted_at.time()
 
 
 # ------------------------------------------------------------------------------ concerns
@@ -404,6 +415,8 @@ def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileL
             r.flags["slab"] = "Canceled ট্রিপ আছে (বিলযোগ্য কি না সিদ্ধান্ত বাকি)"
         _assign_submission(r, file, logs, has_followups=total_rows > 1 and any(g[0] in ("ReCpv", "Extra") for g in groups))
         r.partial_events = list(logs.partial) if logs is not None and logs.ok else []
+        r.file_status = int(file.get("status_code") or 0)
+        r.file_submitted = list(logs.submitted) if logs is not None and logs.ok else []
         views = [TripView(t, c["role"].upper(), info[c["id"]]["who"]) for c, t in trips]
         r.views = views
         r.summary = analyze(views, r.submitted, "BS")
@@ -476,30 +489,42 @@ def compute_tat(r: BillRow, report_date: date, holiday_set: set[date]) -> None:
 def before_after(r: BillRow) -> str:
     if not r.submitted_at:
         return ""
-    return "Before 3 PM" if r.submitted_at.hour < CUTOFF_HOUR else "After 3 PM"
+    return "Before 3 PM" if r.clock.hour < CUTOFF_HOUR else "After 3 PM"
 
 
 # ------------------------------------------------------------------------------ selection
-def apply_as_of(rows: list[BillRow], cutoff: date | None) -> int:
-    """A row submitted AFTER the last day of the report dates was still waiting on that day, so it is shown as
-    Incomplete ("Submitted later ...") instead of silently disappearing.  -> number of rows changed."""
+PHASE1_CUTOFF = time(CUTOFF_HOUR, 0)     # the 3:30 PM mail covers everything submitted BEFORE 3 PM
+
+
+def apply_as_of(rows: list[BillRow], cutoff: date | None, until: datetime | None = None) -> int:
+    """Roll the data back to the moment of the report.  A row submitted AFTER the last day of the report dates (or, for the
+    first-phase mail, at / after `until` = 3 PM of the report day) was still waiting then, so it is shown as Incomplete
+    ("Submitted later ...") instead of silently disappearing.  -> number of rows changed."""
     n = 0
     for r in rows:
-        if cutoff and r.submitted and r.submitted_at.date() > cutoff:
-            r.status_note = f"Submitted later ({r.submitted_at:%d/%m/%Y})"
-            r.status, r.submitted_at = "Incomplete", None
-            if r.views:
-                r.summary = analyze(r.views, False, "BS")
-            n += 1
+        if not r.submitted:
+            continue
+        late_day = bool(cutoff and r.submitted_at.date() > cutoff)
+        late_hour = bool(until and not late_day and not r.rolled and r.submitted_at >= until)
+        if not (late_day or late_hour):
+            continue
+        r.status_note = (f"Submitted later ({r.submitted_at:%d/%m/%Y})" if late_day
+                         else f"Submitted after 3 PM ({r.submitted_at:%I:%M %p})")
+        r.status, r.submitted_at = "Incomplete", None
+        if r.views:
+            r.summary = analyze(r.views, False, "BS")
+        n += 1
     return n
 
 
-INCOMPLETE_SCOPES = ("partial_today", "partial_open", "all_pending")
+INCOMPLETE_SCOPES = ("sla_partial", "partial_today", "partial_open", "all_pending")
 SCOPE_TEXT = {
+    "sla_partial": "SLA পেরোনো pending সারি + Partially Submitted ফাইলের বাকি সারি",
     "partial_today": "আজ Partially Submitted হয়েছে এমন ফাইলের বাকি সারি",
     "partial_open": "Partially Submitted হয়ে এখনও খোলা সব ফাইলের বাকি সারি",
     "all_pending": "Submitted না হওয়া সব সারি",
 }
+LOOKBACK_DAYS = 90                        # a pending row is looked at only if its file came in during the last 90 days
 
 
 def tracker_window(report_date: date, hset: set[date] | None) -> tuple[date, date]:
@@ -508,21 +533,65 @@ def tracker_window(report_date: date, hset: set[date] | None) -> tuple[date, dat
     return hol.previous_working_day(report_date, hset or set()) + timedelta(days=1), report_date
 
 
+def is_partial_open(r: BillRow, hi: date, today: date | None = None) -> bool:
+    """Was the FILE of this pending row waiting as "Partially Submitted" on day `hi`?  (activity log: a Partially Submitted
+    event on or before `hi`, after the row existed, and no Submitted event after it.)  A file that is Partially Submitted
+    right now but whose log could not be read still counts when the report is for today."""
+    if r.file_status in (5, 8):
+        return False
+    events = [e for e in r.partial_events if e.date() <= hi]
+    if events:
+        last = max(events)
+        if r.receive_dt and last < r.receive_dt - timedelta(hours=1):
+            return False                                   # the row was created after the file had been partial
+        return not any(last < x and x.date() <= hi for x in r.file_submitted)
+    return r.file_status == 7 and not r.partial_events and today is not None and hi >= today
+
+
+def classify_reason(r: BillRow) -> None:
+    """Why is a pending row not submitted?  Sets r.reason / r.reason_kind (or leaves them empty = nothing found).
+    Reasons the bank accepts: a given appointment, a Hold with a written reason, an On Going file still inside its SLA,
+    and (Partially Submitted) the documents named in Due."""
+    r.reason, r.reason_kind = "", ""
+    if r.submitted:
+        return
+    appts = [a for a in r.appointments if a.get("active", True) and a.get("time")]
+    if appts:
+        r.reason_kind, r.reason = "appointment", f"Appointment {appts[-1]['time']:%d/%m/%Y %I:%M %p}"
+        return
+    open_trips = [t for _c, t in r.trips if t.get("status_code") in (1, 2, 3, 4)]
+    holds = [t for t in open_trips if t.get("status_code") == 4]
+    for t in holds:
+        text = " ".join(x for x in (clean_text(t.get("remarks")), clean_text(t.get("comment"))) if x)
+        if len(text) >= 4:
+            r.reason_kind, r.reason = "hold", f"Hold: {text[:90]}"
+            return
+    if r.file_status == 7 or r.partial_events:
+        if r.summary.due.strip() not in ("", "0", "Report not yet submitted"):
+            r.reason_kind, r.reason = "partial", "Partially Submitted: " + r.summary.due.replace("\n", " ")[:90]
+            return
+    if open_trips and not holds and not r.sla_breach:
+        r.reason_kind, r.reason = "ongoing", "On Going, within SLA"
+
+
 def select_rows(rows: list[BillRow], mode: str, report_date: date, w_from: date | None = None,
                 w_till: date | None = None, hset: set[date] | None = None,
-                scope: str = "partial_today") -> tuple[list[BillRow], list[BillRow]]:
+                scope: str = "sla_partial", today: date | None = None,
+                after3_only: bool = False) -> tuple[list[BillRow], list[BillRow]]:
     """-> (complete rows, incomplete rows), each sorted by Receive Date then file number.
 
     Complete   = rows SUBMITTED inside the dates (tracker: on the report date and the days off just before it; range:
                  from..till), whenever they were received - exactly what the dashboard's Reports page lists for Submitted.
-    Incomplete = tracker, by `scope` (checked against the mails sent 25/10-05/11/2026 and the live activity logs):
-                   partial_today : rows still not Submitted of the files that became "Partially Submitted" inside the
-                                   tracker window  - this is what the bank's tracker lists (4 of 9 days matched row for row)
-                   partial_open  : the same, plus every file that is still waiting in "Partially Submitted" from before
+                 `after3_only` (second-phase mail): only the rows submitted after 3 PM, i.e. not sent in the first mail.
+    Incomplete = tracker, by `scope`:
+                   sla_partial   : (V3 default) a pending row whose own TAT is past its SLA (In 2 / Out 4 working days,
+                                   counted to the report date)  +  every pending row of a file that was waiting as
+                                   "Partially Submitted" on the report date (its Due text says which documents are missing)
+                   partial_today / partial_open : only the Partially Submitted files (checked against the sent mails)
                    all_pending   : every row not submitted yet (received inside the look-back window)
                  range: rows not submitted yet that were received inside the dates."""
     if scope not in INCOMPLETE_SCOPES:
-        scope = "partial_today"
+        scope = "sla_partial"
     t_lo, t_hi = tracker_window(report_date, hset) if mode == "tracker" else (None, None)
     complete, incomplete = [], []
     for r in rows:
@@ -530,20 +599,27 @@ def select_rows(rows: list[BillRow], mode: str, report_date: date, w_from: date 
         if mode == "tracker":
             if r.submitted:
                 if t_lo <= r.submitted_at.date() <= t_hi:
+                    if after3_only and r.clock.hour < CUTOFF_HOUR:
+                        continue
                     complete.append(r)
                 continue
-            if rd is not None and w_from and rd < w_from and scope == "all_pending":   # outside the look-back window
+            if r.file_status in (5, 8):                                # canceled / withdrawn files are not pending
                 continue
             if rd is not None and rd > report_date:                    # not even received on that day
                 continue
+            if rd is not None and w_from and rd < w_from:              # outside the look-back window
+                continue
             if scope == "all_pending":
                 incomplete.append(r)
-                continue
-            days = [e.date() for e in r.partial_events]
-            if scope == "partial_today" and any(t_lo <= x <= t_hi for x in days):
-                incomplete.append(r)
-            elif scope == "partial_open" and any(x <= t_hi for x in days):
-                incomplete.append(r)
+            elif scope == "sla_partial":
+                if (r.extra_tat or 0) > 0 or is_partial_open(r, t_hi, today):
+                    incomplete.append(r)
+            else:
+                days = [e.date() for e in r.partial_events]
+                if scope == "partial_today" and any(t_lo <= x <= t_hi for x in days):
+                    incomplete.append(r)
+                elif scope == "partial_open" and any(x <= t_hi for x in days):
+                    incomplete.append(r)
         else:
             if r.submitted:
                 sd = r.sub_day or r.submitted_at.date()
@@ -557,6 +633,10 @@ def select_rows(rows: list[BillRow], mode: str, report_date: date, w_from: date 
     for lst in (complete, incomplete):
         for i, r in enumerate(lst, 1):
             r.sl = i
+    for r in incomplete:
+        classify_reason(r)
+        if not r.reason and mode == "tracker":
+            r.flags["reason"] = "কোনো কারণ পাওয়া যায়নি (Appointment / Hold reason / SLA-র মধ্যে On Going নেই)"
     return complete, incomplete
 
 
@@ -567,9 +647,17 @@ def dashboard_check(d) -> dict:
     ids = dict(dash.get("submitted") or {})
     in_report = {r.file_id for r in d.complete}
     files = {f["id"] for f in d.files}
-    missing = []
+    missing, other = [], []
+    after3 = bool(getattr(d, "after3_only", False))
     for fid in sorted(set(ids) - in_report, key=lambda i: ids[i]):
         mine = [r for r in d.all_rows if r.file_id == fid]
+        if mine and d.mode == "tracker" and d.slot == "3pm" and any(r.status_note.startswith("Submitted after 3 PM") for r in mine):
+            other.append(ids[fid])                         # submitted after 3 PM: belongs to the 2nd-phase mail, not "missing"
+            continue
+        if mine and after3 and all(r.submitted and r.clock and r.clock.hour < CUTOFF_HOUR for r in mine if r.submitted) \
+                and any(r.submitted for r in mine):
+            other.append(ids[fid])                         # submitted before 3 PM: already sent in the 1st-phase mail
+            continue
         if fid not in files:
             why = "ফাইলের তথ্য পড়া যায়নি"
         elif not mine:
@@ -581,7 +669,7 @@ def dashboard_check(d) -> dict:
         missing.append((ids[fid], why))
     return {"from": dash.get("from"), "till": dash.get("till"), "dashboard": len(ids), "report_files": len(in_report),
             "matched": len(set(ids) & in_report), "extra": len(in_report - set(ids)), "partial": len(dash.get("partial") or {}),
-            "missing": missing}
+            "missing": missing, "other_phase": other}
 
 
 def reconcile(rows: list[BillRow], files: list[dict]) -> dict:

@@ -24,7 +24,7 @@ def data():
     port = srv.server_address[1]
     base = f"http://127.0.0.1:{port}"
     cfg = PrimeConfig(web=base, api=base, server_label="mock", email="test@example.com", password="secret",
-                      days=30, mode="tracker", report_date=date(2026, 11, 2), slot="3pm", incomplete_scope="all_pending")
+                      days=30, mode="tracker", report_date=date(2026, 11, 2), slot="7pm", incomplete_scope="all_pending")
     d = collect_prime(cfg, lambda *a: None, threading.Event())
     yield d, srv
     srv.shutdown()
@@ -40,7 +40,7 @@ def test_rows_and_selection(data):
     assert d.old_files == 1                                            # F5 (by tracker); F4 is already in the dashboard's Submitted list
     ck = d.dash["check"]
     assert (ck["dashboard"], ck["matched"], ck["missing"], ck["extra"]) == (4, 4, [], 0) and ck["partial"] == 0
-    assert title_for(d) == "Prime Bank PLC 2-11-2026 3pm Submission Tracker"
+    assert title_for(d) == "Prime Bank PLC · Submission Tracker · 02 Nov 2026 · 2nd Phase · 7:00 PM"
 
 
 def test_trip_count_never_changes(data):
@@ -98,23 +98,25 @@ def test_read_only(data):
 
 
 def test_outputs(data, tmp_path):
+    """V3: ONE editable Excel (the file that is e-mailed) + an optional PDF; no bank / internal split, no e-mail html page."""
     d, _ = data
-    paths = write_prime_outputs(d, tmp_path, excel=True, pdf=True, internal=True, bank=True, email=True)
-    names = sorted(p.name for p in paths)
-    assert len(names) == 5 and any(n.endswith("_INTERNAL.pdf") for n in names)
-    wb = load_workbook(tmp_path / "Prime_Bank_2026-11-02_3pm_Submission_Tracker.xlsx")
-    assert wb.sheetnames == ["Complete Report", "Incomplete Report", "Summary", "Holidays"]   # bank copy: no check list
+    paths = write_prime_outputs(d, tmp_path, excel=True, pdf=True)
+    assert sorted(p.name for p in paths) == ["Prime_Bank_Submission_Tracker_2026-11-02_Phase2.pdf",
+                                             "Prime_Bank_Submission_Tracker_2026-11-02_Phase2.xlsx"]
+    assert not list(tmp_path.glob("*INTERNAL*")) and not list(tmp_path.glob("*email*"))
+    xlsx = tmp_path / "Prime_Bank_Submission_Tracker_2026-11-02_Phase2.xlsx"
+    wb = load_workbook(xlsx)
+    assert wb.sheetnames == ["Complete Report", "Incomplete Report", "Summary", "Holidays", "Check List"]   # check list: blue cells exist
     ws = wb["Complete Report"]
     assert str(ws["K5"].value).startswith("=MAX(0,NETWORKDAYS.INTL(")
-    # filter buttons only on File No (B) and Last Update Date (P); every other button is hidden
-    for sh in (wb["Complete Report"], wb["Incomplete Report"]):
+    # filter buttons only on File No (B) and Last Update Date; every other button is hidden
+    for sh, ncols, date_col in ((wb["Complete Report"], 18, 15), (wb["Incomplete Report"], 19, 16)):
         hidden = {fc.colId for fc in sh.auto_filter.filterColumn if fc.hiddenButton}
-        assert hidden == set(range(18)) - {1, 15}, hidden
-        assert sh["P4"].value == "Last Update Date" and sh["Q4"].value == "Last Update Details"
-    wb2 = load_workbook(tmp_path / "Prime_Bank_2026-11-02_3pm_Submission_Tracker_INTERNAL.xlsx")
-    assert "Check List" in wb2.sheetnames
-    html = (tmp_path / "Prime_Bank_2026-11-02_3pm_Submission_Tracker_email.html").read_text(encoding="utf-8")
-    assert "Dear Concern," in html and "Incomplete Report" in html
+        assert hidden == set(range(ncols)) - {1, date_col}, (sh.title, hidden)
+        assert sh.cell(4, date_col + 1).value == "Last Update Date" and sh.cell(4, date_col + 2).value == "Last Update Details"
+    heads = [c.value for c in wb["Incomplete Report"][4]]
+    assert heads[13:16] == ["Report Status", "Pending Reason", "Report Summary"]            # the internal copy's reason column
+    assert "Pending Reason" not in [c.value for c in wb["Complete Report"][4]]
     w = write_recpv_workbook(d, tmp_path)
     wb3 = load_workbook(w)
     assert {"File Report", "Billing Rows", "Calculation"} <= set(wb3.sheetnames)
@@ -234,8 +236,8 @@ def test_report_cells_done_due_colours_and_last_update(data, tmp_path):
     d_ok, due_ok = summary_lines(ok)
     assert due_ok == [("Due-", "gb"), ("0", "g")]
     assert last_update_date(ok) == ok.last_file[0]
-    paths = write_prime_outputs(d, tmp_path, excel=True, pdf=False, internal=True, bank=True, email=False)
-    wb = load_workbook(next(p for p in paths if p.name.endswith("Tracker_INTERNAL.xlsx")))
+    paths = write_prime_outputs(d, tmp_path, excel=True, pdf=False)
+    wb = load_workbook(paths[0])
     ws = wb["Complete Report"]
     heads = [c.value for c in ws[4]]
     assert heads.index("Last Update Date") == 15 and heads[16] == "Last Update Details"
@@ -320,9 +322,9 @@ def test_tracker_window_rollover_and_incomplete_scope():
     ps.LOGS[500009] = [ps._log("APPLICATION", 500009, "Application : 500009 status updated to PARTIAL_SUBMITTED by Mgr", "HOLD", "PARTIAL_SUBMITTED", "2026-11-02 12:00:00")]
     mock_server.STATE["files"].extend([f8, f9])
 
-    def run(day, scope=None, mode_kwargs=None):
+    def run(day, scope=None):
         kw = dict(web=base, api=base, server_label="mock", email="test@example.com", password="secret", days=30,
-                  mode="tracker", report_date=day)
+                  mode="tracker", report_date=day, slot="7pm")
         if scope:
             kw["incomplete_scope"] = scope
         return collect_prime(PrimeConfig(**kw), lambda *a: None, threading.Event())
@@ -336,7 +338,12 @@ def test_tracker_window_rollover_and_incomplete_scope():
         assert r8.reported_at == datetime(2026, 11, 1, 15, 0)
         assert (r8.tat, r8.extra_tat) == (3, 0)                        # Wed 28, Thu 29, Sun 01 - counted up to the reported day
         assert d1.dash["check"]["missing"] == [] and d1.dash["check"]["matched"] == 1
-        assert nos(d1.incomplete) == ["PL-20261020000003"]             # F3 became Partially Submitted on Fri 30-Oct
+        assert nos(run(date(2026, 11, 1), "partial_today").incomplete) == ["PL-20261020000003"]   # F3 became Partially Submitted on Fri 30-Oct
+        # V3 default (SLA breach + Partially Submitted): F3 (partial, appointment given) + the two In-area Single rows of F6
+        # that were still waiting on Sunday and are past the 2-day In SLA (F6 was submitted on Monday)
+        assert d1.incomplete_scope == "sla_partial"
+        assert nos(d1.incomplete) == ["CC--20261027000006", "PL-20261020000003"]
+        assert all((r.extra_tat or 0) > 0 or r.file_status == 7 for r in d1.incomplete)
         assert any("পরের কর্মদিবস" in n for n in d1.notes)
         # Saturday 31-Oct (a day off, report made anyway): that day stays that day
         d0 = run(date(2026, 10, 31))
@@ -345,9 +352,14 @@ def test_tracker_window_rollover_and_incomplete_scope():
         # Monday 02-Nov: F8 was already in Sunday's tracker; only F9 became Partially Submitted today
         d2 = run(date(2026, 11, 2))
         assert d2.track_from == date(2026, 11, 2) and "CC-20261027000008" not in nos(d2.complete)
-        assert nos(d2.incomplete) == ["PL-20261028000009"] and d2.incomplete_scope == "partial_today"
-        f9r = d2.incomplete[0]
-        assert f9r.status == "Incomplete" and f9r.status_note == "Partially Submitted"
+        assert d2.incomplete_scope == "sla_partial"
+        assert nos(d2.incomplete) == ["PL-20250901000005", "PL-20261020000003", "PL-20261028000009"]
+        by = {r.file_no: r for r in d2.incomplete}
+        f9r = by["PL-20261028000009"]
+        assert f9r.status == "Incomplete" and f9r.status_note == "Partially Submitted" and f9r.reason_kind == "partial"
+        assert by["PL-20261020000003"].reason_kind == "appointment" and "reason" not in by["PL-20261020000003"].flags
+        assert by["PL-20250901000005"].reason == "" and "reason" in by["PL-20250901000005"].flags        # nothing found -> light-blue cell
+        assert nos(run(date(2026, 11, 2), "partial_today").incomplete) == ["PL-20261028000009"]
         # the wider lists
         assert nos(run(date(2026, 11, 2), "partial_open").incomplete) == ["PL-20261020000003", "PL-20261028000009"]
         assert nos(run(date(2026, 11, 2), "all_pending").incomplete) == ["PL-20250901000005", "PL-20261020000003", "PL-20261028000009"]

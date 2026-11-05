@@ -1,16 +1,18 @@
-"""Prime Bank Report - Excel (two copies: internal with light-blue "please check" cells, bank copy clean).
+"""Prime Bank Report - Excel (ONE editable workbook: this is what goes to the bank).
 
-Workbook:   Complete Report | Incomplete Report | Summary | Holidays | (Check List - internal copy only)
+Workbook:   Complete Report | Incomplete Report | Summary | Holidays | (Check List - only when something needs a look)
 
 Each report sheet has: banner, info line, KPI tiles, one header row and the table.  The only filter buttons are on
-**File No** and **Last Update Date** (all other columns have their button hidden - bankers asked for this).
-"Last Update Date" is a real date (filterable); "Last Update Details" holds the file / trip lines (not filterable).
+**File No** and **Last Update Date** (all other columns have their button hidden).
+A light sky-blue cell means "no reason / detail could be found for this cell" - fill it in (the file is editable) or leave it.
+The Incomplete sheet has a "Pending Reason" column: an Appointment, an On Going file still inside its SLA, a Hold with a
+written reason, or the documents named in Due for a Partially Submitted file.
 
 TAT and Extra TAT are LIVE Excel formulas:
     TAT       = MAX(0, NETWORKDAYS.INTL(Receive+1, Submission, "0000110", Holidays))      (Fri + Sat off)
     Extra TAT = MAX(0, TAT - 4) when Area = Out,  MAX(0, TAT - 2) when Area = In          (SLA 4 / 2 working days)
     SLA       = "SLA Breach" when Extra TAT > 0
-For an Incomplete row the end date is the report date (running TAT), as in the e-mail.
+For an Incomplete row the end date is the report date (running TAT).
 """
 from __future__ import annotations
 
@@ -47,11 +49,28 @@ COLS = [  # title, width
     ("Before / After 3 PM", 10.5), ("TAT", 5), ("Extra TAT", 6.5), ("SLA", 10.5), ("Report Status", 11),
     ("Report Summary", 44), ("Last Update Date", 11), ("Last Update Details", 32), ("Appointment", 26),
 ]
-COL = {t: i for i, (t, _w) in enumerate(COLS, 1)}
+REASON_COL = ("Pending Reason", 30)
+
+
+def cols_for(incomplete: bool) -> list:
+    """Incomplete sheet = the same columns + "Pending Reason" right after "Report Status"."""
+    if not incomplete:
+        return list(COLS)
+    out = list(COLS)
+    out.insert([t for t, _w in out].index("Report Status") + 1, REASON_COL)
+    return out
+
+
+def col_index(cols: list) -> dict:
+    return {t: i for i, (t, _w) in enumerate(cols, 1)}
+
+
+COL = col_index(COLS)
 FILTER_ONLY = ("File No", "Last Update Date")
 HOLIDAY_RANGE = "Holidays!$A$2:$A$3000"
 CENTER_COLS = ("SL", "Type", "Area", "Receive Date", "Submission Date-Time", "Before / After 3 PM", "Report Status",
                "SLA", "TAT", "Extra TAT", "Last Update Date")
+WRAP_REASON = ("Pending Reason",)
 HEADER_ROW, FIRST_ROW = 4, 5
 
 _STYLE = {   # style code -> (bold, colour, size)
@@ -96,9 +115,9 @@ def _fill(hexv: str) -> PatternFill:
 
 
 # ------------------------------------------------------------------------------------ banner + tiles
-def _tile_spans(n: int) -> list[tuple[int, int]]:
+def _tile_spans(n: int, cols: list) -> list[tuple[int, int]]:
     """Split the columns into n groups of about the same width (for the KPI tiles)."""
-    widths = [w for _t, w in COLS]
+    widths = [w for _t, w in cols]
     total, out, start = sum(widths), [], 0
     for k in range(1, n + 1):
         target = total * k / n
@@ -113,8 +132,8 @@ def _tile_spans(n: int) -> list[tuple[int, int]]:
     return out
 
 
-def _tiles(ws, r: int, items) -> None:
-    spans = _tile_spans(len(items))
+def _tiles(ws, r: int, items, cols: list) -> None:
+    spans = _tile_spans(len(items), cols)
     for (c1, c2), (label, value, color) in zip(spans, items):
         if c2 > c1:
             ws.merge_cells(start_row=r, start_column=c1, end_row=r, end_column=c2)
@@ -132,8 +151,8 @@ def _tiles(ws, r: int, items) -> None:
     ws.row_dimensions[r].height = 42
 
 
-def _banner(ws, d: PrimeData, name: str, rows, internal: bool, is_incomplete: bool) -> None:
-    n = len(COLS)
+def _banner(ws, d: PrimeData, name: str, rows, is_incomplete: bool, cols: list) -> None:
+    n = len(cols)
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=n)
     accent = T.POS if not is_incomplete else T.NEG
     _put(ws, 1, 1, f"{title_for(d)}   ·   {name}  ({len(rows)})",
@@ -161,8 +180,7 @@ def _banner(ws, d: PrimeData, name: str, rows, internal: bool, is_incomplete: bo
             f"Out area {SLA_OUT} working days (Fri, Sat and holidays excluded)")
     if is_incomplete:
         note += "   |   TAT is counted up to the Report Date"
-    if internal:
-        note += "   |   Light-blue cell = please check (internal copy)"
+    note += "   |   Light-blue cell = reason / detail not found"
     ws.merge_cells(start_row=2, start_column=5, end_row=2, end_column=n)
     _put(ws, 2, 5, note, font=Font(name=FONT, size=9, italic=True, color=T.MUTED),
          alignment=Alignment(vertical="center", indent=1))
@@ -178,21 +196,22 @@ def _banner(ws, d: PrimeData, name: str, rows, internal: bool, is_incomplete: bo
              ("Package", pk, T.NAVY), ("Extra Trip", sg, T.NAVY), ("Re-CPV", rc, T.NAVY), ("Extra Doc / Trip", ex, T.NAVY),
              ("Area In", sum(1 for x in rows if x.area == "In"), T.IN), ("Area Out", sum(1 for x in rows if x.area == "Out"), T.OUT),
              ("SLA Breach", sum(1 for x in rows if x.sla_breach), T.NEG)]
-    _tiles(ws, 3, items)
+    _tiles(ws, 3, items, cols)
 
 
-def _header(ws, r):
-    for i, (t, _w) in enumerate(COLS, 1):
+def _header(ws, r, cols: list):
+    for i, (t, _w) in enumerate(cols, 1):
         _put(ws, r, i, t, font=Font(name=FONT, bold=True, color=T.WHITE, size=10), fill=_fill(T.NAVY_DARK), border=BOX,
              alignment=Alignment(horizontal="center", vertical="center", wrap_text=True))
     ws.row_dimensions[r].height = 34
 
 
 # ------------------------------------------------------------------------------------ rows
-def _write_rows(ws, r0: int, rows, internal: bool, checks: list, section: str) -> int:
+def _write_rows(ws, r0: int, rows, checks: list, section: str, cols: list) -> int:
+    col = col_index(cols)
     top = Alignment(vertical="top", wrap_text=True)
     mid = Alignment(vertical="top", horizontal="center", wrap_text=True)
-    widths = {t: w for t, w in COLS}
+    widths = {t: w for t, w in cols}
     r = r0
     for n, row in enumerate(rows):
         sub = row.submitted
@@ -210,78 +229,82 @@ def _write_rows(ws, r0: int, rows, internal: bool, checks: list, section: str) -
             "Report Status": row.status + (f"\n({row.status_note})" if row.status_note and not sub else ""),
             "Last Update Date": lu.date() if lu else "N/A",
         }
-        for t in COL:
-            c = ws.cell(r, COL[t])
+        for t in col:
+            c = ws.cell(r, col[t])
             c.border = BOX
             c.alignment = mid if t in CENTER_COLS else top
             c.font = Font(name=FONT, size=10, color=T.TEXT)
             if zebra:
                 c.fill = zebra
         for t, v in base.items():
-            c = _put(ws, r, COL[t], v)
+            c = _put(ws, r, col[t], v)
             if t in ("Receive Date", "Last Update Date") and not isinstance(v, str):
                 c.number_format = "dd/mm/yyyy"
             elif t == "Submission Date-Time" and sub:
                 c.number_format = "dd/mm/yyyy hh:mm"
         kc = T.KIND_TX.get(row.kind)
         for t, lines in (("Bill Slab", slab_l), ("Report Summary", sum_l), ("Last Update Details", upd_l), ("Appointment", app_l)):
-            ws.cell(r, COL[t]).value = _rich(lines, kc)
+            ws.cell(r, col[t]).value = _rich(lines, kc)
         # live formulas ------------------------------------------------------
-        rc = get_column_letter(COL["Receive Date"])
-        sc = get_column_letter(COL["Submission Date-Time"])
-        tc = get_column_letter(COL["TAT"])
-        ec = get_column_letter(COL["Extra TAT"])
-        ac = get_column_letter(COL["Area"])
+        rc = get_column_letter(col["Receive Date"])
+        sc = get_column_letter(col["Submission Date-Time"])
+        tc = get_column_letter(col["TAT"])
+        ec = get_column_letter(col["Extra TAT"])
+        ac = get_column_letter(col["Area"])
         end = f"INT({sc}{r})" if sub else "ReportDate"
-        _put(ws, r, COL["TAT"], f'=MAX(0,NETWORKDAYS.INTL({rc}{r}+1,{end},"0000110",{HOLIDAY_RANGE}))', formula=True)
-        _put(ws, r, COL["Extra TAT"], f'=IF({ac}{r}="Out",MAX(0,{tc}{r}-{SLA_OUT}),MAX(0,{tc}{r}-{SLA_IN}))', formula=True)
-        _put(ws, r, COL["SLA"], f'=IF({ec}{r}>0,"SLA Breach","Within SLA")', formula=True)
+        _put(ws, r, col["TAT"], f'=MAX(0,NETWORKDAYS.INTL({rc}{r}+1,{end},"0000110",{HOLIDAY_RANGE}))', formula=True)
+        _put(ws, r, col["Extra TAT"], f'=IF({ac}{r}="Out",MAX(0,{tc}{r}-{SLA_OUT}),MAX(0,{tc}{r}-{SLA_IN}))', formula=True)
+        _put(ws, r, col["SLA"], f'=IF({ec}{r}>0,"SLA Breach","Within SLA")', formula=True)
         # look ---------------------------------------------------------------
-        ws.cell(r, COL["Bill Slab"]).fill = _fill(T.KIND_BG.get(row.kind, "FFFFFF"))
+        ws.cell(r, col["Bill Slab"]).fill = _fill(T.KIND_BG.get(row.kind, "FFFFFF"))
         out = row.area == "Out"
-        ws.cell(r, COL["Area"]).font = Font(name=FONT, bold=True, color=T.OUT if out else T.IN)
-        ws.cell(r, COL["Area"]).fill = _fill(T.OUT_BG if out else T.IN_BG)
-        ws.cell(r, COL["Report Status"]).font = Font(name=FONT, bold=True, color=T.POS if sub else T.NEG)
-        ws.cell(r, COL["Report Status"]).fill = _fill(T.POS_BG if sub else T.NEG_BG)
-        ws.cell(r, COL["File No"]).font = Font(name=FONT, bold=True, color=T.NAVY)
-        ws.cell(r, COL["Extra TAT"]).font = Font(name=FONT, bold=True, color=T.NEG if (row.extra_tat or 0) > 0 else T.POS)
-        ws.cell(r, COL["SLA"]).font = Font(name=FONT, bold=True, color=T.NEG if row.sla_breach else T.POS)
+        ws.cell(r, col["Area"]).font = Font(name=FONT, bold=True, color=T.OUT if out else T.IN)
+        ws.cell(r, col["Area"]).fill = _fill(T.OUT_BG if out else T.IN_BG)
+        ws.cell(r, col["Report Status"]).font = Font(name=FONT, bold=True, color=T.POS if sub else T.NEG)
+        ws.cell(r, col["Report Status"]).fill = _fill(T.POS_BG if sub else T.NEG_BG)
+        ws.cell(r, col["File No"]).font = Font(name=FONT, bold=True, color=T.NAVY)
+        ws.cell(r, col["Extra TAT"]).font = Font(name=FONT, bold=True, color=T.NEG if (row.extra_tat or 0) > 0 else T.POS)
+        ws.cell(r, col["SLA"]).font = Font(name=FONT, bold=True, color=T.NEG if row.sla_breach else T.POS)
         if has_due(row):
-            ws.cell(r, COL["Report Summary"]).fill = _fill(T.DUE_CELL_BG)
-        # light-blue "please check" cells (internal copy only) ----------------
-        if internal:
-            marks = {"area": "Area", "slab": "Bill Slab", "summary": "Report Summary", "status": "Report Status"}
-            for key, reason in row.flags.items():
-                col = marks.get(key)
-                if col:
-                    ws.cell(r, COL[col]).fill = CHECK
-                    checks.append((section, row.sl, row.file_no, col, reason))
-            for note in row.info:
-                checks.append((section, row.sl, row.file_no, "(info)", note))
-            if row.canceled:
-                ws.cell(r, COL["Bill Slab"]).fill = CHECK
+            ws.cell(r, col["Report Summary"]).fill = _fill(T.DUE_CELL_BG)
+        # light sky-blue cells: nothing could be found for this cell (kept in the file, listed in the Check List) -----------
+        marks = {"area": "Area", "slab": "Bill Slab", "summary": "Report Summary", "status": "Report Status",
+                 "reason": "Pending Reason"}
+        for key, why in row.flags.items():
+            cname = marks.get(key)
+            if cname and cname in col:
+                ws.cell(r, col[cname]).fill = CHECK
+                checks.append((section, row.sl, row.file_no, cname, why))
+        for note in row.info:
+            checks.append((section, row.sl, row.file_no, "(info)", note))
+        if row.canceled:
+            ws.cell(r, col["Bill Slab"]).fill = CHECK
+        if "Pending Reason" in col and row.reason:
+            ws.cell(r, col["Pending Reason"]).value = row.reason
         texts = {"Concerns": concerns, "Re-CPV / Extra Trip (ID)": history, "Bill Slab": plain(slab_l),
                  "Report Summary": plain(sum_l), "Last Update Details": plain(upd_l), "Appointment": plain(app_l),
-                 "Report Status": base["Report Status"]}
-        height = max([_lines(v, widths[k]) for k, v in texts.items()] + [2])
+                 "Report Status": base["Report Status"], "Pending Reason": row.reason}
+        height = max([_lines(v, widths[k]) for k, v in texts.items() if k in widths] + [2])
         ws.row_dimensions[r].height = min(409, 13.2 * height + 6)
         r += 1
     return r
 
 
-def _report_sheet(wb: Workbook, d: PrimeData, name: str, rows, internal: bool, checks: list, is_incomplete: bool):
+def _report_sheet(wb: Workbook, d: PrimeData, name: str, rows, checks: list, is_incomplete: bool):
+    cols = cols_for(is_incomplete)
+    col = col_index(cols)
     ws = wb.create_sheet(name)
     ws.sheet_view.showGridLines = False
     ws.sheet_properties.tabColor = T.NEG if is_incomplete else T.POS
-    for i, (_t, w) in enumerate(COLS, 1):
+    for i, (_t, w) in enumerate(cols, 1):
         ws.column_dimensions[get_column_letter(i)].width = w
-    _banner(ws, d, name, rows, internal, is_incomplete)
-    _header(ws, HEADER_ROW)
-    end = _write_rows(ws, FIRST_ROW, rows, internal, checks, "Incomplete" if is_incomplete else "Complete")
+    _banner(ws, d, name, rows, is_incomplete, cols)
+    _header(ws, HEADER_ROW, cols)
+    end = _write_rows(ws, FIRST_ROW, rows, checks, "Incomplete" if is_incomplete else "Complete", cols)
     last = end - 1
-    lastcol = get_column_letter(len(COLS))
+    lastcol = get_column_letter(len(cols))
     if not rows:
-        ws.merge_cells(start_row=FIRST_ROW, start_column=1, end_row=FIRST_ROW, end_column=len(COLS))
+        ws.merge_cells(start_row=FIRST_ROW, start_column=1, end_row=FIRST_ROW, end_column=len(cols))
         _put(ws, FIRST_ROW, 1, "No incomplete files." if is_incomplete else "No submitted files for this report.",
              font=Font(name=FONT, italic=True, color=T.MUTED), alignment=Alignment(horizontal="center", vertical="center"))
         ws.row_dimensions[FIRST_ROW].height = 28
@@ -289,10 +312,10 @@ def _report_sheet(wb: Workbook, d: PrimeData, name: str, rows, internal: bool, c
     else:
         dv = DataValidation(type="list", formula1='"In,Out"', allow_blank=False)
         ws.add_data_validation(dv)
-        dv.add(f"{get_column_letter(COL['Area'])}{FIRST_ROW}:{get_column_letter(COL['Area'])}{last}")
+        dv.add(f"{get_column_letter(col['Area'])}{FIRST_ROW}:{get_column_letter(col['Area'])}{last}")
     # filter buttons ONLY on File No and Last Update Date -------------------------------------
     ws.auto_filter.ref = f"A{HEADER_ROW}:{lastcol}{max(last, FIRST_ROW)}"
-    for i, (t, _w) in enumerate(COLS):
+    for i, (t, _w) in enumerate(cols):
         if t not in FILTER_ONLY:
             ws.auto_filter.filterColumn.append(FilterColumn(colId=i, hiddenButton=True, showButton=False))
     ws.freeze_panes = f"C{FIRST_ROW}"
@@ -309,7 +332,7 @@ def _report_sheet(wb: Workbook, d: PrimeData, name: str, rows, internal: bool, c
 
 
 # ------------------------------------------------------------------------------------ workbook
-def _sum_sheet(wb: Workbook, d: PrimeData, internal: bool) -> None:
+def _sum_sheet(wb: Workbook, d: PrimeData) -> None:
     s = wb.create_sheet("Summary")
     s.sheet_view.showGridLines = False
     s.sheet_properties.tabColor = T.NAVY
@@ -369,32 +392,32 @@ def _sum_sheet(wb: Workbook, d: PrimeData, internal: bool) -> None:
         for j in (2, 3, 4):
             s.cell(r, j).fill = _fill(T.NAVY_DARK)
         r += 1
-        for i, (label, val) in enumerate((("Files in the dashboard's Submitted list", ck["dashboard"]),
-                                          ("Of these, in the Complete Report", ck["matched"]),
-                                          ("Not matched", len(ck["missing"])),
-                                          ("Files in Complete Report (all rows)", ck["report_files"]))):
+        lines_ = [("Files in the dashboard's Submitted list", ck["dashboard"]), ("Of these, in the Complete Report", ck["matched"])]
+        if ck.get("other_phase"):
+            lines_.append(("Of these, belong to the other phase's mail", len(ck["other_phase"])))
+        lines_ += [("Not matched", len(ck["missing"])), ("Files in Complete Report (all rows)", ck["report_files"])]
+        for i, (label, val) in enumerate(lines_):
             line_f = _fill(T.ZEBRA) if i % 2 else None
             _put(s, r, 1, label, border=BOX, **({"fill": line_f} if line_f else {}))
             _put(s, r, 2, val, alignment=cen, border=BOX, **({"fill": line_f} if line_f else {}),
-                 font=Font(name=FONT, bold=True, color=T.POS if (label == "Not matched" and val == 0) or label.startswith("Of these") and val == ck["dashboard"] else T.TEXT))
+                 font=Font(name=FONT, bold=True, color=T.POS if (label == "Not matched" and val == 0) or label.startswith("Of these, in") and val + len(ck.get("other_phase") or []) == ck["dashboard"] else T.TEXT))
             r += 1
-        if internal:
-            for no, why in ck["missing"]:
-                _put(s, r, 1, f"{no}  -  {why}", font=Font(name=FONT, color=T.NEG, size=9))
-                r += 1
-    if internal:
+    if d.incomplete and d.mode == "tracker":
         r += 1
-        rc = d.recon
-        _put(s, r, 1, "Trip count check (internal)", font=Font(name=FONT, bold=True, color=T.NAVY))
+        _put(s, r, 1, "Incomplete rows - reason for pending", font=Font(name=FONT, bold=True, color=T.WHITE), fill=_fill(T.NAVY_DARK))
+        for j in (2, 3, 4):
+            s.cell(r, j).fill = _fill(T.NAVY_DARK)
+        _put(s, r, 2, "Rows", font=Font(name=FONT, bold=True, color=T.WHITE), fill=_fill(T.NAVY_DARK), alignment=cen)
         r += 1
-        for label, val in (("Trips in all report rows", rc.get("row_trips")), ("Trips in the files", rc.get("file_trips")),
-                           ("Match", "Yes" if rc.get("row_trips") == rc.get("file_trips") else "NO - check")):
-            _put(s, r, 1, label)
-            _put(s, r, 2, val, alignment=cen)
+        kinds = (("appointment", "Appointment given"), ("hold", "Hold (reason written)"), ("ongoing", "On Going, within SLA"),
+                 ("partial", "Partially Submitted (documents due)"), ("", "Reason not found (light-blue cell)"))
+        for i, (k, label) in enumerate(kinds):
+            n = sum(1 for x in d.incomplete if x.reason_kind == k)
+            line_f = _fill(T.ZEBRA) if i % 2 else None
+            _put(s, r, 1, label, border=BOX, **({"fill": line_f} if line_f else {}))
+            _put(s, r, 2, n, alignment=cen, border=BOX, **({"fill": line_f} if line_f else {}),
+                 font=Font(name=FONT, bold=True, color=T.NEG if (k == "" and n) else T.TEXT))
             r += 1
-        for n in d.notes:
-            r += 1
-            _put(s, r, 1, n, font=Font(name=FONT, color=T.NEG))
 
 
 def _holidays_sheet(wb: Workbook, d: PrimeData) -> None:
@@ -411,32 +434,59 @@ def _holidays_sheet(wb: Workbook, d: PrimeData) -> None:
     h.freeze_panes = "A2"
 
 
-def _check_sheet(wb: Workbook, checks: list) -> None:
+def _check_items(d: PrimeData, checks: list) -> list:
+    items = list(checks)
+    ck = (d.dash or {}).get("check") or {}
+    for no, why in ck.get("missing", []):
+        items.append(("Dashboard", "", no, "(not matched)", why))
+    for n in d.notes:
+        if n.startswith("Incomplete তালিকা:"):                # the standing rule note, not something to check
+            continue
+        items.append(("Run note", "", "", "", n))
+    rc = d.recon or {}
+    if rc and rc.get("row_trips") != rc.get("file_trips"):
+        items.append(("Trip count", "", "", "", f"Trips in rows {rc.get('row_trips')} / trips in files {rc.get('file_trips')} - please check"))
+    for f in d.failed:
+        items.append(("Failed file", "", f.get("file_no", ""), "", f.get("reason", "")))
+    return items
+
+
+def _check_sheet(wb: Workbook, items: list) -> None:
     k = wb.create_sheet("Check List")
     k.sheet_properties.tabColor = T.CHECK
-    for i, (t, w) in enumerate((("Report", 12), ("SL", 6), ("File No", 26), ("Column", 18), ("Why (light-blue cell / note)", 90)), 1):
+    for i, (t, w) in enumerate((("Report", 12), ("SL", 6), ("File No", 26), ("Column", 18), ("Why (light-blue cell / note) - internal, remove before sending", 90)), 1):
         k.column_dimensions[get_column_letter(i)].width = w
         _put(k, 1, i, t, font=Font(name=FONT, bold=True, color=T.WHITE), fill=HEAD)
-    for i, row in enumerate(checks, 2):
+    for i, row in enumerate(items, 2):
         for j, v in enumerate(row, 1):
             _put(k, i, j, v, alignment=Alignment(wrap_text=True, vertical="top"))
     k.freeze_panes = "A2"
-    if not checks:
-        _put(k, 2, 1, "কোনো নীল চিহ্নিত ঘর নেই।")
 
 
-def build_prime_excel(d: PrimeData, path: Path, internal: bool) -> Path:
+def build_prime_excel(d: PrimeData, path: Path, with_checklist: bool = True) -> Path:
+    """-> the workbook.  `with_checklist=False` builds the clean copy (no internal Check List sheet) for e-mailing."""
     wb = Workbook()
     wb.remove(wb.active)
     checks: list = []
-    _report_sheet(wb, d, "Complete Report", d.complete, internal, checks, False)
-    _report_sheet(wb, d, "Incomplete Report", d.incomplete, internal, checks, True)
+    _report_sheet(wb, d, "Complete Report", d.complete, checks, False)
+    _report_sheet(wb, d, "Incomplete Report", d.incomplete, checks, True)
     wb.defined_names["ReportDate"] = DefinedName("ReportDate", attr_text="'Incomplete Report'!$C$2")
-    _sum_sheet(wb, d, internal)
+    _sum_sheet(wb, d)
     _holidays_sheet(wb, d)
-    if internal:
-        _check_sheet(wb, checks)
+    items = _check_items(d, checks)
+    if with_checklist and items:
+        _check_sheet(wb, items)
     wb.active = 0
     path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(path)
     return path
+
+
+def checklist_count(d: PrimeData) -> int:
+    """How many light-blue cells the workbook has (rows whose reason / detail was not found)."""
+    n = 0
+    for lst in (d.complete, d.incomplete):
+        for row in lst:
+            n += sum(1 for k in row.flags if k in ("area", "slab", "summary", "status", "reason"))
+            n += 1 if row.canceled and "slab" not in row.flags else 0
+    return n

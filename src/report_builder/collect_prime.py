@@ -19,8 +19,8 @@ from datetime import date, datetime, timedelta
 
 from . import config, holidays as hol
 from .activity import parse_logs
-from .billing import (INCOMPLETE_SCOPES, SCOPE_TEXT, apply_as_of, assign_sub_days, build_rows, compute_tat, dashboard_check, fill_history,
-                      reconcile, select_rows, tracker_window, BillRow, FileLogs)
+from .billing import (INCOMPLETE_SCOPES, LOOKBACK_DAYS, PHASE1_CUTOFF, SCOPE_TEXT, apply_as_of, assign_sub_days, build_rows, compute_tat,
+                      dashboard_check, fill_history, reconcile, select_rows, tracker_window, BillRow, FileLogs)
 from .client import ApiError, AuthError, Cancelled, ReadOnlyClient
 from .collect import Progress, RunConfig, _noop
 from .model import normalize_file
@@ -38,9 +38,10 @@ class PrimeConfig(RunConfig):
     report_date: date | None = None        # tracker: the date in the title (default today)
     date_from: date | None = None          # period start / end (None = use `days`)
     date_till: date | None = None
-    slot: str = "3pm"                      # "3pm" | "7pm"
+    slot: str = "3pm"                      # "3pm" (1st phase, 3:30 PM mail) | "7pm" (2nd phase, full day)
     find_old_extras: bool = True
-    incomplete_scope: str = "partial_today"   # tracker Incomplete list: "partial_today" | "partial_open" | "all_pending" (billing.SCOPE_TEXT)
+    incomplete_scope: str = "sla_partial"  # tracker Incomplete list: "sla_partial" (V3) | "partial_today" | "partial_open" | "all_pending"
+    after3_only: bool = False              # 2nd phase only: Complete = just the rows submitted after 3 PM (not in the 1st mail)
 
 
 @dataclass
@@ -51,7 +52,8 @@ class PrimeData:
     generated_at: datetime | None = None
     report_date: date | None = None
     slot: str = "3pm"
-    incomplete_scope: str = "partial_today"
+    incomplete_scope: str = "sla_partial"
+    after3_only: bool = False
     track_from: date | None = None          # tracker: first day it covers (the day after the previous working day)
     rolled: int = 0                         # rows submitted on a day off and reported on the next working day
     w_from: date | None = None
@@ -77,9 +79,12 @@ def slot_for(now: datetime | None = None) -> str:
     return "3pm" if now.hour < 17 else "7pm"
 
 
+PHASE_TEXT = {"3pm": "1st Phase · 3:30 PM", "7pm": "2nd Phase · 7:00 PM"}
+
+
 def title_for(d: PrimeData) -> str:
     if d.mode == "tracker":
-        return f"Prime Bank PLC {d.report_date.day}-{d.report_date.month}-{d.report_date.year} {d.slot} Submission Tracker"
+        return f"Prime Bank PLC · Submission Tracker · {d.report_date:%d %b %Y} · {PHASE_TEXT.get(d.slot, d.slot)}"
     a, b = d.w_from, d.w_till
     return f"Prime Bank PLC {a.day}-{a.month}-{a.year} to {b.day}-{b.month}-{b.year} Report"
 
@@ -130,7 +135,7 @@ def _list_files(client, org_uuid, d_from: date, d_till: date, workers, cancel, p
     codes = [] if statuses == NO_STATUS else (list(statuses) if statuses else config.ALL_FILE_STATUS_CODES)
     found: dict = {}
     total = 0
-    sweeps = [("application_id", "ASC"), ("start_date", "DESC"), ("end_date", "ASC")]
+    sweeps = [("start_date", "DESC"), ("end_date", "ASC")]            # the only sort fields the live API accepts
     for n, (sort_by, order) in enumerate(sweeps):
         def params(page):
             p = [("dateFrom", d_from.isoformat()), ("dateTill", d_till.isoformat()), ("page", page),
@@ -170,7 +175,7 @@ def collect_prime(cfg: PrimeConfig, progress: Progress = _noop, cancel: threadin
     if cfg.mode == "tracker":
         d.report_date = cfg.report_date or today
         d.w_till = d.report_date
-        d.w_from = cfg.date_from or (d.report_date - timedelta(days=int(cfg.days)))
+        d.w_from = cfg.date_from or (d.report_date - timedelta(days=LOOKBACK_DAYS))     # tracker: fixed 90-day look-back
     else:
         d.w_till = cfg.date_till or today
         d.w_from = cfg.date_from or (d.w_till - timedelta(days=int(cfg.days)))
@@ -178,7 +183,8 @@ def collect_prime(cfg: PrimeConfig, progress: Progress = _noop, cancel: threadin
     if d.w_from > d.w_till:
         raise ApiError("শুরুর তারিখ শেষ তারিখের পরে হতে পারে না।")
     d.mode = "tracker" if cfg.mode == "tracker" else "range"
-    d.incomplete_scope = cfg.incomplete_scope if cfg.incomplete_scope in INCOMPLETE_SCOPES else "partial_today"
+    d.incomplete_scope = cfg.incomplete_scope if cfg.incomplete_scope in INCOMPLETE_SCOPES else "sla_partial"
+    d.after3_only = bool(cfg.after3_only and d.slot == "7pm")
     hist_from = d.w_from - timedelta(days=HISTORY_DAYS)
     holiday_map = hol.load()
     hset = set(holiday_map)
@@ -336,13 +342,15 @@ def collect_prime(cfg: PrimeConfig, progress: Progress = _noop, cancel: threadin
     for f in d.files:
         rows.extend(build_rows(f, recpv_by_trip, recpv_by_file, logs.get(f["id"]), since))
     report_date = d.report_date
-    later = apply_as_of(rows, d.w_till)                   # submitted after the last day of the dates = still waiting on that day
+    until = datetime.combine(d.report_date, PHASE1_CUTOFF) if (d.mode == "tracker" and d.slot == "3pm") else None
+    later = apply_as_of(rows, d.w_till, until)             # submitted after the report moment (last day / 3 PM) = still waiting then
     d.rolled = assign_sub_days(rows, d.w_till, hset)       # Fri / Sat / holiday submissions are reported on the next working day
     for r in rows:
         compute_tat(r, report_date, hset)
     fill_history(rows)
     d.all_rows = rows
-    d.complete, d.incomplete = select_rows(rows, d.mode, d.report_date, d.w_from, d.w_till, hset, d.incomplete_scope)
+    d.complete, d.incomplete = select_rows(rows, d.mode, d.report_date, d.w_from, d.w_till, hset, d.incomplete_scope,
+                                           today=today, after3_only=d.after3_only)
     for r in d.complete:
         if r.rolled:
             r.info.append(f"আসল সাবমিশন {r.submitted_at:%a %d/%m/%Y %I:%M %p} (ছুটির দিন); ট্র্যাকারে পরের কর্মদিবস {r.sub_day:%d/%m/%Y}-এ দেখানো হয়েছে")

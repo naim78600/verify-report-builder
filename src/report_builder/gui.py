@@ -15,9 +15,10 @@ from . import __version__, config
 from . import holidays as hol
 from .client import ApiError, AuthError, Cancelled
 from .collect import RunConfig, collect
-from .collect_prime import PrimeConfig, collect_prime, slot_for
-from .email_copy import build_email_html, load_signature, save_signature
+from .collect_prime import PHASE_TEXT, PrimeConfig, collect_prime, slot_for
+from .mail_templates import facts_from
 from .excel import build_workbook
+from .gui_mail import MailDialog, SentLogDialog, SignatureDialog
 from .file_history import HistoryConfig, collect_history, parse_ids_file, parse_ids_text
 from .history_excel import write_history_outputs
 from .reports import write_prime_outputs, write_recpv_workbook
@@ -54,6 +55,7 @@ class App(tk.Tk):
         self.worker: threading.Thread | None = None
         self.out_dir = Path(self.settings.get("out_dir") or config.default_output_dir())
         self.last_prime = None
+        self.smtp_password = ""                     # kept in memory only (never written to disk)
         self.out_files: list[Path] = []
         self._build()
         self._sync_ui()
@@ -118,7 +120,8 @@ class App(tk.Tk):
         tk.Label(note, text="🔒 শুধু তথ্য পড়ে\nকিছু বদলায় না, পাসওয়ার্ড সংরক্ষণ হয় না", bg=P["side_hi"], fg=P["side_tx"],
                  font=f.tiny, justify="left", anchor="w", padx=10, pady=8).pack(fill="x")
         tk.Frame(side, bg=P["side"], height=14).pack()
-        for text, cmd in (("📅  ছুটির তালিকা", self._holiday_dialog), ("✉  ইমেইল সিগনেচার", self._signature_dialog),
+        for text, cmd in (("✉  ইমেইল পাঠান", self._open_mail), ("📨  পাঠানো ইমেইল", lambda: SentLogDialog(self)),
+                          ("🖋  ইমেইল সিগনেচার", lambda: SignatureDialog(self)), ("📅  ছুটির তালিকা", self._holiday_dialog),
                           ("📂  ফোল্ডার খুলুন", lambda: open_path(self.out_dir))):
             Button(side, text, cmd, kind="ghost", font=f.body, anchor="w", padx=20, pady=9).pack(fill="x")
         tk.Label(side, text="সেভের জায়গা", bg=P["side"], fg=P["side_mute"], font=f.tiny).pack(anchor="w", padx=20, pady=(20, 0))
@@ -172,7 +175,7 @@ class App(tk.Tk):
         d_row = tk.Frame(b, bg=P["card"])
         d_row.pack(fill="x", pady=2)
         tk.Label(d_row, text="শেষ", bg=P["card"], fg=P["text"], font=f.body).pack(side="left")
-        self.days = tk.StringVar(value=str(self.settings.get("days", 60)))
+        self.days = tk.StringVar(value=str(self.settings.get("days", config.DEFAULT_DAYS)))
         self.days_entry = Entry(d_row, f, self.days, width=5, justify="center")
         self.days_entry.pack(side="left", padx=6, ipady=4)
         tk.Label(d_row, text="দিনের ফাইল", bg=P["card"], fg=P["text"], font=f.body).pack(side="left")
@@ -205,19 +208,32 @@ class App(tk.Tk):
                 ("v1", "সাধারণ বিস্তারিত এক্সেল", "ফাইল ও ট্রিপের পুরো রিপোর্ট (আগের ভার্সনের মতো)"),
                 ("history", "ফাইল হিস্টরি", "ফাইল নম্বরের Excel/CSV দিন: প্রতিটি ফাইলের শুরু থেকে শেষ পর্যন্ত পুরো ইতিহাস")):
             Tile(b, f, val, title, help_, self.rtype, self._sync_ui).pack(fill="x", pady=3)
+
+        # ---- 2 (tracker only): date + phase --------------------------------------
+        ct = Card(colA, f, "তারিখ ও ফেজ", "২")
+        self.c_trk = ct
+        b = ct.body
         self.track_row = tk.Frame(b, bg=P["card"])
-        self.track_row.pack(fill="x", pady=(8, 0))
+        self.track_row.pack(fill="x")
         tk.Label(self.track_row, text="রিপোর্টের তারিখ", bg=P["card"], fg=P["text"], font=f.small).pack(side="left")
         self.rdate = DateField(self.track_row, f, today)
         self.rdate.pack(side="left", padx=(6, 12))
+        self.rdate.var.trace_add("write", lambda *_a: self.after_idle(self._sync_ui))
+        self.phase_row = tk.Frame(b, bg=P["card"])
+        self.phase_row.pack(fill="x", pady=(8, 0))
+        tk.Label(self.phase_row, text="ফেজ", bg=P["card"], fg=P["text"], font=f.small).pack(side="left")
         self.slot = tk.StringVar(value="auto")
-        Segmented(self.track_row, f, [("auto", f"অটো ({slot_for()})"), ("3pm", "3pm"), ("7pm", "7pm")], self.slot).pack(side="left")
-        self.scope_row = tk.Frame(b, bg=P["card"])
-        self.scope_row.pack(fill="x", pady=(8, 0))
-        tk.Label(self.scope_row, text="Incomplete তালিকা", bg=P["card"], fg=P["text"], font=f.small).pack(side="left")
-        self.scope = tk.StringVar(value=self.settings.get("incomplete_scope", "partial_today"))
-        Segmented(self.scope_row, f, [("partial_today", "আজকের Partial"), ("partial_open", "চলমান Partial সহ"),
-                                      ("all_pending", "সব Pending")], self.scope).pack(side="left", padx=(8, 0))
+        Segmented(self.phase_row, f, [("auto", f"অটো ({'1st' if slot_for() == '3pm' else '2nd'})"), ("3pm", "1st · 3:30 PM"),
+                                      ("7pm", "2nd · 7:00 PM")], self.slot, self._sync_ui).pack(side="left", padx=(8, 0))
+        self.after3_var = tk.BooleanVar(value=bool(self.settings.get("after3_only", False)))
+        self.after3_cb = tk.Checkbutton(b, text="২য় ফেজে শুধু বিকেল ৩টার পরের সাবমিশন দেখান\n(১ম ফেজে যা গেছে তা বাদ)", variable=self.after3_var,
+                                        bg=P["card"], activebackground=P["card"], font=f.tiny, fg=P["text"], anchor="w", justify="left",
+                                        highlightthickness=0, selectcolor="white")
+        self.day_warn = tk.Label(b, text="", bg=P["card"], fg=P["warn"], font=f.tiny, anchor="w", justify="left", wraplength=380)
+        self.rule_hint = tk.Label(b, text="Incomplete = SLA পার (In ২ / Out ৪ কর্মদিবস) + Partially Submitted। "
+                                          "প্রতিটি সারিতে কারণ থাকে; না পেলে ঘর হালকা নীল। লুক-ব্যাক ৯০ দিন।",
+                                  bg=P["card"], fg=P["mute"], font=f.tiny, anchor="w", justify="left", wraplength=380)
+        self.rule_hint.pack(fill="x", pady=(8, 0))
 
         # ---- 4 outputs -----------------------------------------------------------
         c4 = Card(colA, f, "যা তৈরি হবে", "৪")
@@ -226,9 +242,9 @@ class App(tk.Tk):
         b = c4.body
         self.opts = {}
         self.opt_boxes = []
-        for key, text, dflt in (("excel", "Excel", True), ("pdf", "PDF", True), ("email", "ইমেইলের জন্য পেজ", True),
-                                ("bank", "ব্যাংক কপি (পরিষ্কার)", True), ("internal", "অভ্যন্তরীণ কপি (নীল চিহ্ন সহ)", True)):
-            self.opts[key] = tk.BooleanVar(value=dflt)
+        for key, text, dflt in (("excel", "Excel (সম্পাদনাযোগ্য — ইমেইলে এটিই যায়)", True), ("pdf", "PDF (ঐচ্ছিক)", False),
+                                ("mail", "তৈরির পর ইমেইল উইন্ডো খুলুন", True)):
+            self.opts[key] = tk.BooleanVar(value=self.settings.get("opt_" + key, dflt))
             cbx = tk.Checkbutton(b, text=text, variable=self.opts[key], bg=P["card"], activebackground=P["card"], font=f.body,
                                  fg=P["text"], anchor="w", highlightthickness=0, selectcolor="white", command=self._sync_ui)
             cbx.pack(fill="x", anchor="w")
@@ -304,12 +320,13 @@ class App(tk.Tk):
 
     def _sync_ui(self):
         hist = self.rtype.get() == "history"
-        for w in (self.c2, self.c_hist, self.c4):
+        rt = self.rtype.get()
+        for w in (self.c2, self.c_trk, self.c_hist, self.c4):
             w.pack_forget()
         if hist:
             self.c_hist.pack(fill="x")
         else:
-            self.c2.pack(fill="x")
+            (self.c_trk if rt == "tracker" else self.c2).pack(fill="x")
             self.c4.pack(fill="x", pady=(10, 0))
         self.go_btn.config(text="ইতিহাস তৈরি করুন" if hist else "রিপোর্ট তৈরি করুন")
         rng = self.period.get() == "range"
@@ -318,22 +335,23 @@ class App(tk.Tk):
             ch.enable(not rng)
         self.d_from.enable(rng)
         self.d_till.enable(rng)
-        rt = self.rtype.get()
         pb = rt in ("tracker", "range")
-        if rt == "tracker":
-            self.track_row.pack(fill="x", pady=(8, 0))
-            self.scope_row.pack(fill="x", pady=(8, 0))
+        slot = self.slot.get()
+        if slot == "7pm" or (slot == "auto" and slot_for() == "7pm"):
+            self.after3_cb.pack(fill="x", pady=(6, 0), after=self.phase_row)
         else:
-            self.track_row.pack_forget()
-            self.scope_row.pack_forget()
-        self.rdate.enable(not rng)
+            self.after3_cb.pack_forget()
+        rd = self.rdate.get()
+        if rd and rd.weekday() in (4, 5):
+            self.day_warn.config(text="⚠ এই তারিখটি সাপ্তাহিক ছুটির দিন (শুক্র/শনি)। ছুটির দিনের সাবমিশন পরের কর্মদিবসের ট্র্যাকারে যায়।")
+            self.day_warn.pack(fill="x", pady=(6, 0), before=self.rule_hint)
+        else:
+            self.day_warn.pack_forget()
         self.period_hint.config(text=(
-            "তারিখ বাছলে ‘শেষ কয়েক দিন’ বন্ধ থাকে। ট্র্যাকারে ‘পর্যন্ত’ তারিখই রিপোর্টের তারিখ।" if rng else
+            "তারিখ বাছলে ‘শেষ কয়েক দিন’ বন্ধ থাকে। ‘পর্যন্ত’ তারিখই রিপোর্টের শেষ তারিখ।" if rng else
             "‘শেষ কয়েক দিন’ থেকে আজ পর্যন্ত। নির্দিষ্ট তারিখ চাইলে ‘তারিখ বাছুন’ চাপুন।"))
         for key, cbx in self.opt_boxes:
-            on = pb and (key != "email" or rt == "tracker")
-            if key in ("bank", "internal"):
-                on = on and (self.opts["excel"].get() or self.opts["pdf"].get())
+            on = pb and (key != "mail" or rt == "tracker")
             cbx.config(state="normal" if on else "disabled")
 
     # ================================================================== run
@@ -349,8 +367,8 @@ class App(tk.Tk):
             messagebox.showwarning("তথ্য ঠিক নেই", "ইমেইল ও পাসওয়ার্ড দিন।")
             return None
         days, d_from, d_till = None, None, None
-        if self.rtype.get() == "history":
-            days = int(self.settings.get("days", 60))
+        if self.rtype.get() in ("history", "tracker"):
+            days = int(self.settings.get("days", config.DEFAULT_DAYS))
         elif self.period.get() == "range":
             d_from, d_till = self.d_from.get(), self.d_till.get()
             if not d_from or not d_till:
@@ -370,8 +388,9 @@ class App(tk.Tk):
                 return None
         config.save_settings({
             "server": self.server.get(), "web": self.web.get().strip(), "api": self.api.get().strip(), "email": email,
-            "days": days if not d_from else int(self.settings.get("days", 60)), "out_dir": str(self.out_dir),
-            "rtype": self.rtype.get(), "incomplete_scope": self.scope.get()})
+            "days": days if not d_from else int(self.settings.get("days", config.DEFAULT_DAYS)), "out_dir": str(self.out_dir),
+            "rtype": self.rtype.get(), "after3_only": self.after3_var.get(),
+            **{"opt_" + k: v.get() for k, v in self.opts.items()}})
         return {"web": web, "api": api, "email": email, "pw": pw, "days": days, "from": d_from, "till": d_till}
 
     def _resolve_urls(self):
@@ -406,22 +425,20 @@ class App(tk.Tk):
             return
         if rt in ("tracker", "range", "recpv"):
             mode = "tracker" if rt == "tracker" else "range"
-            rdate = inp["till"] if (rt == "tracker" and inp["till"]) else (self.rdate.get() or date.today())
+            rdate = self.rdate.get() or date.today() if rt == "tracker" else (inp["till"] or date.today())
             slot = self.slot.get()
+            slot = slot_for() if slot == "auto" else slot
             cfg = PrimeConfig(web=inp["web"], api=inp["api"], server_label=self.server.get(), email=inp["email"],
                               password=inp["pw"], days=inp["days"], mode=mode, report_date=rdate,
-                              slot=slot_for() if slot == "auto" else slot, date_from=inp["from"],
+                              slot=slot, date_from=inp["from"],
                               date_till=inp["till"] if mode == "range" else None, workers=workers, org_name=org,
-                              incomplete_scope=self.scope.get())
+                              after3_only=bool(self.after3_var.get() and slot == "7pm" and rt == "tracker"))
             opts = {k: v.get() for k, v in self.opts.items()}
             if rt in ("tracker", "range"):
-                if not (opts["excel"] or opts["pdf"] or (opts["email"] and rt == "tracker")):
-                    messagebox.showwarning("তথ্য ঠিক নেই", "Excel, PDF বা ইমেইল পেজ—অন্তত একটি বাছুন।")
+                if not (opts["excel"] or opts["pdf"]):
+                    messagebox.showwarning("তথ্য ঠিক নেই", "Excel বা PDF—অন্তত একটি বাছুন।")
                     return
-                if (opts["excel"] or opts["pdf"]) and not (opts["bank"] or opts["internal"]):
-                    messagebox.showwarning("তথ্য ঠিক নেই", "ব্যাংক কপি বা অভ্যন্তরীণ কপি—অন্তত একটি বাছুন।")
-                    return
-                opts["email"] = opts["email"] and rt == "tracker"
+                opts["mail"] = opts["mail"] and rt == "tracker" and opts["excel"]
             target = self._work_prime if rt != "recpv" else self._work_recpv
             args = (cfg, opts) if rt != "recpv" else (cfg,)
         else:
@@ -447,9 +464,8 @@ class App(tk.Tk):
         try:
             d = collect_prime(cfg, lambda *a: self.q.put(("progress", *a)), self.cancel)
             self.q.put(("progress", "write", 0, 1, "Excel / PDF তৈরি হচ্ছে…"))
-            paths = write_prime_outputs(d, self.out_dir, excel=opts["excel"], pdf=opts["pdf"], internal=opts["internal"],
-                                        bank=opts["bank"], email=opts["email"])
-            self.q.put(("prime_done", paths, d))
+            paths = write_prime_outputs(d, self.out_dir, excel=opts["excel"], pdf=opts["pdf"])
+            self.q.put(("prime_done", paths, d, bool(opts.get("mail"))))
         except Cancelled:
             self.q.put(("cancelled",))
         except (AuthError, ApiError, PermissionError) as exc:
@@ -502,7 +518,7 @@ class App(tk.Tk):
         try:
             d = collect_prime(cfg, lambda *a: self.q.put(("progress", *a)), self.cancel)
             self.q.put(("progress", "write", 0, 1, "Re-CPV সহ এক্সেল তৈরি হচ্ছে…"))
-            self.q.put(("prime_done", [write_recpv_workbook(d, self.out_dir)], d))
+            self.q.put(("prime_done", [write_recpv_workbook(d, self.out_dir)], d, False))
         except Cancelled:
             self.q.put(("cancelled",))
         except (AuthError, ApiError, PermissionError) as exc:
@@ -532,24 +548,39 @@ class App(tk.Tk):
         self.cancel_btn.enable(False)
         self.password.set("")
 
-    def _show_results(self, paths: list[Path], extra_email: bool):
+    def _show_results(self, paths: list[Path], mail_ok: bool, d=None):
         for w in self.result.winfo_children():
             w.destroy()
         f = self.fonts
+        if d is not None and d.mode == "tracker":
+            fa = facts_from(d)
+            kp = tk.Frame(self.result, bg=P["card"])
+            kp.pack(fill="x", pady=(0, 6))
+            for label, big, small, bg, fg in (
+                    ("Complete", f"{fa.complete_files}", f"ফাইল · {fa.complete_rows} সারি", P["ok_bg"], P["ok"]),
+                    ("Incomplete", f"{fa.incomplete_files}", f"ফাইল · {fa.incomplete_rows} সারি", P["warn_bg"], P["warn"]),
+                    ("SLA পার", f"{fa.sla_breach_rows}", "সারি", P["warn_bg"], P["warn"]),
+                    ("Partial", f"{fa.partial_files}", "ফাইল", P["accent_soft"], P["accent_hi"]),
+                    ("কারণ নেই", f"{fa.reason_missing}", "সারি (নীল ঘর)", "#E3F1FD", P["navy"])):
+                t = tk.Frame(kp, bg=bg, padx=10, pady=4)
+                t.pack(side="left", padx=(0, 6))
+                tk.Label(t, text=label, bg=bg, fg=fg, font=f.tiny).pack(anchor="w")
+                tk.Label(t, text=big, bg=bg, fg=fg, font=f.h2).pack(side="left")
+                tk.Label(t, text=" " + small, bg=bg, fg=fg, font=f.tiny).pack(side="left", anchor="s", pady=(0, 3))
         row = tk.Frame(self.result, bg=P["card"])
         row.pack(fill="x")
+        if mail_ok:
+            Button(row, "✉  ইমেইল পাঠান", self._open_mail, kind="primary", font=f.small, padx=12, pady=5).pack(side="left", padx=(0, 8), pady=2)
         for p in paths:
             Button(row, f"{p.suffix[1:].upper()}  {p.stem[-26:]}", lambda p=p: open_path(p), kind="secondary", font=f.tiny,
                    padx=8, pady=4).pack(side="left", padx=(0, 6), pady=2)
-        if extra_email:
-            Button(row, "✉ ইমেইলের জন্য কপি", self._email_copy, kind="primary", font=f.tiny, padx=8, pady=4).pack(side="left", padx=(6, 0))
 
-    def _email_copy(self):
+    def _open_mail(self):
         d = self.last_prime
-        if d is None or d.mode != "tracker":
-            messagebox.showinfo("ইমেইল কপি", "আগে ‘দৈনিক সাবমিশন ট্র্যাকার’ তৈরি করুন।")
+        if d is None or d.mode != "tracker" or not any(p.suffix.lower() == ".xlsx" for p in self.out_files):
+            messagebox.showinfo("ইমেইল পাঠান", "আগে ‘দৈনিক সাবমিশন ট্র্যাকার’ তৈরি করুন (Excel সহ)।\nতারপর এখান থেকে ইমেইল পাঠানো যাবে।")
             return
-        open_path(build_email_html(d, self.out_dir / f"Prime_Bank_{d.report_date:%Y-%m-%d}_{d.slot}_email.html"))
+        MailDialog(self, d, list(self.out_files))
 
     def _poll(self):
         try:
@@ -563,15 +594,14 @@ class App(tk.Tk):
                     self.bar.set((idx + (done / total if total else 0)) / len(STAGES))
                     self.status.set(text)
                 elif kind == "prime_done":
-                    _, paths, d = msg
+                    _, paths, d, open_mail = msg
                     self.last_prime = d
                     self.out_files = paths
                     self._finish_ui()
                     self.bar.set(1)
                     self.stepper.set(len(STAGES))
-                    br = sum(1 for r in d.complete + d.incomplete if r.sla_breach)
                     if d.mode == "tracker":
-                        txt = f"সম্পন্ন!  Complete {len(d.complete)} · Incomplete {len(d.incomplete)} · SLA Breach {br}"
+                        txt = f"সম্পন্ন!  {PHASE_TEXT.get(d.slot, d.slot)} · {d.report_date:%d-%m-%Y}  —  Complete {len(d.complete)} · Incomplete {len(d.incomplete)}"
                     else:
                         txt = f"সম্পন্ন!  মোট {len(d.all_rows)} সারি · ফাইল {len(d.files)} টি"
                     ck = (d.dash or {}).get("check")
@@ -581,7 +611,9 @@ class App(tk.Tk):
                     if d.notes:
                         txt += "\n" + " ".join(n for n in d.notes[:2] if not n.startswith("ড্যাশবোর্ডের Submitted তালিকায়"))
                     self.status.set(txt)
-                    self._show_results(paths, d.mode == "tracker")
+                    self._show_results(paths, d.mode == "tracker" and any(p.suffix.lower() == ".xlsx" for p in paths), d)
+                    if open_mail:
+                        self.after(300, self._open_mail)
                 elif kind == "hist_done":
                     _, paths, h = msg
                     self.out_files = paths
@@ -679,19 +711,6 @@ class App(tk.Tk):
         for text, cmd, kind in (("যোগ করুন", add, "primary"), ("ফাইল থেকে ইমপোর্ট", import_csv, "secondary"),
                                 ("নির্বাচিত মুছুন", remove, "secondary"), ("বন্ধ", dlg.destroy, "secondary")):
             Button(row, text, cmd, kind=kind, font=f.small, padx=10, pady=6).pack(side="left", padx=4)
-
-    def _signature_dialog(self):
-        f = self.fonts
-        dlg = self._dialog("ইমেইল সিগনেচার")
-        tk.Label(dlg, text="‘Regards,’ এর নিচে যা থাকবে (নাম, পদবি, ফোন…):", bg=P["card"], fg=P["text"], font=f.body).pack(anchor="w")
-        txt = tk.Text(dlg, width=48, height=7, font=f.body, relief="flat", highlightthickness=1, highlightbackground=P["line"])
-        txt.pack(pady=8)
-        txt.insert("1.0", load_signature())
-
-        def save():
-            save_signature(txt.get("1.0", "end").strip())
-            dlg.destroy()
-        Button(dlg, "সংরক্ষণ", save, kind="primary", font=f.body, padx=18, pady=7).pack()
 
 
 def run() -> None:

@@ -1,9 +1,57 @@
-# Verify Report Builder v2.3.0 (ভেরিফাই রিপোর্ট বিল্ডার)
+# Verify Report Builder v3.0.0 (ভেরিফাই রিপোর্ট বিল্ডার)
 
-Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্যার। লগইন করে শেষ N দিনের (আদিতে ৯০) Prime Bank PLC-এর সব ফাইল সংগ্রহ করে একটি এক্সেল রিপোর্ট বানায়।
-**শুধু তথ্য পড়ে (GET); কোনো তথ্য বদলায় না।** পাসওয়ার্ড কোডে বা ফাইলে সংরক্ষণ হয় না।
+Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্যার। Verify ড্যাশবোর্ড থেকে Prime Bank PLC-এর ফাইল সংগ্রহ করে **দৈনিক সাবমিশন ট্র্যাকার** (Complete + Incomplete) বানায় এবং **সরাসরি ব্যাংককে ইমেইল** পাঠায়।
+**Verify থেকে শুধু তথ্য পড়ে (GET); কোনো তথ্য বদলায় না।** লগইন পাসওয়ার্ড ও ইমেইলের App Password কোথাও সংরক্ষণ হয় না।
 
-## ব্যবহার (ব্যবহারকারীর জন্য)
+## ইনস্টল
+
+| সিস্টেম | ফাইল | কীভাবে |
+|---|---|---|
+| Windows 64-bit | `VerifyReportBuilder-Setup-Windows-64bit.exe` | ডাবল ক্লিক → Next → Install (অ্যাডমিন পাসওয়ার্ড লাগে না); ডেস্কটপ শর্টকাট থাকে |
+| Windows 32-bit | `VerifyReportBuilder-Setup-Windows-32bit.exe` | একই |
+| Mac (Apple Silicon M1–M4) | `VerifyReportBuilder-Mac-AppleSilicon.dmg` | খুলে অ্যাপটি **Applications**-এ টেনে আনুন |
+| Mac (Intel) | `VerifyReportBuilder-Mac-Intel.dmg` | একই |
+
+ইনস্টলার না চাইলে `.zip` (portable) ফাইলও আছে। রিপোজিটরি **প্রাইভেট** — ডাউনলোডের জন্য GitHub-এ সাইন-ইন লাগবে (Releases পাতা)।
+প্রথমবার খুললে ডিজিটাল স্বাক্ষর নেই বলে সতর্কতা আসে: **Windows:** More info → Run anyway। **Mac:** System Settings → Privacy & Security → *Open Anyway* (অথবা `xattr -dr com.apple.quarantine /Applications/VerifyReportBuilder.app`)।
+
+## V3-এর সম্পূর্ণ ওয়ার্কফ্লো (দিনে দুইবার)
+
+1. **৩:০০ PM-এর পর (১ম ফেজ, মেইল ৩:৩০ PM):** অ্যাপ খুলুন → ইমেইল/পাসওয়ার্ড → *দৈনিক সাবমিশন ট্র্যাকার* → ফেজ **অটো/1st** → **রিপোর্ট তৈরি করুন**।
+2. তৈরি হলে **ইমেইল উইন্ডো** খোলে (বন্ধ রাখা যায়)। আগে **Excel খুলে দেখুন**: যেসব ঘর **হালকা আকাশি নীল** — সেখানে কারণ পাওয়া যায়নি; Excel-এ লিখে সেভ করুন (বা নীল রেখেই পাঠান)। উইন্ডোতে **‘আবার যাচাই করুন’** চাপলে নীল ঘরের সংখ্যা নতুন করে গোনে।
+3. ইমেইল উইন্ডোতে: **To / Cc / Bcc** (ডিফল্ট To = ব্যাংকের ৩ জন, বদলালে মনে থাকে) · **বার্তার ৩টি নমুনা** (Formal / Concise / Executive; সংখ্যা নিজে থেকে বসে, কোনো টেবিল নেই; চাইলে বার্তা এডিট করুন) · সিগনেচার (**Saikat Francis Gomes · Executive-Client Operation · Phone · Barikoi Technologies Limited · লোগো**) · সংযুক্তি = আপনার সর্বশেষ **সম্পাদনাযোগ্য Excel** (পাঠানোর মুহূর্তের ফাইল; অভ্যন্তরীণ *Check List* শিট স্বয়ংক্রিয়ভাবে বাদ যায়)।
+4. নিচে **Zoho App Password** দিন (প্রতিবার; চাইলে প্রোগ্রাম খোলা থাকা পর্যন্ত মনে রাখে — ফাইলে সেভ হয় না) → আগে **‘নিজেকে টেস্ট পাঠান’** (শুধু verify@barikoi.com-এ যায়) → তারপর **পাঠান** → নিশ্চিত করুন। `verify@barikoi.com` থেকে মেইল যায়।
+5. **৭:০০ PM (২য় ফেজ):** একই ভাবে ফেজ **2nd**। চাইলে ‘শুধু ৩টার পরের সাবমিশন’ টিক দিন (১ম ফেজে যা গেছে তা বাদ)। একই তারিখ+ফেজের মেইল আগে গেলে সতর্ক করে (ভুল করে দুইবার না যাওয়ার জন্য)। সাইডবারে **‘পাঠানো ইমেইল’**-এ তালিকা।
+
+**Zoho App Password:** Zoho Mail → My Account → Security → **App Passwords** → নতুন (নাম: Verify Report Builder) → যে পাসওয়ার্ড দেখায় সেটি এখানে বসান (সাধারণ লগইন পাসওয়ার্ড চলবে না; ২-ফ্যাক্টর চালু থাকলে এটিই লাগে)। সার্ভার ডিফল্ট `smtp.zoho.com`, SSL ৪৬৫ — অ্যাকাউন্ট অন্য ডেটা সেন্টারে হলে (`.in` / `.eu` / `.com.au`) ‘সার্ভার সেটিং…’-এ বদলান।
+
+### রিপোর্টের নিয়ম (V3)
+
+- **Complete =** ফাইলের activity log-এ `status updated to SUBMITTED` ঘটনার দিন। শুক্র/শনি/ছুটির সাবমিশন পরের কর্মদিবসের ট্র্যাকারে যায় (তারিখও সেই দিনের)।
+- **Incomplete =** (ক) **SLA পেরোনো Pending সারি** — In ২ / Out ৪ কর্মদিবস; Extra TAT = TAT − SLA; TAT রিপোর্টের তারিখ পর্যন্ত গোনা — **এবং** (খ) **Partially Submitted ফাইল** (Due-এ লেখা থাকে কোন ডকুমেন্ট বাকি, ব্যাংক সেই অনুযায়ী ব্যবস্থা নেয়)। Canceled / Withdrawn ফাইল বাদ। **লুক-ব্যাক ৯০ দিন** (নির্দিষ্ট)।
+- **In** = শুধু Dhaka (DNCC, DSCC) ও Chattogram সিটি কর্পোরেশন; বাকি সব Out।
+- **ফেজ:** *1st (3:30 PM)* = বিকেল ৩টা পর্যন্ত অবস্থা (৩টার পর Submitted হওয়া ফাইল তখনও Pending); *2nd (7:00 PM)* = পুরো দিন। Excel-এ ‘Before / After 3 PM’ কলাম; ছুটির দিন থেকে সরে আসা সারি ‘Before 3 PM’ ধরা হয়।
+- **Pending Reason কলাম (Incomplete শিটে):** Appointment (তারিখ-সময়) · Hold (লেখা রিমার্ক) · Partially Submitted (Due-এর ডকুমেন্ট) · On Going, within SLA। **কিছু না পেলে ঘরটি হালকা আকাশি নীল** থাকে এবং *Check List* শিটে কারণ লেখা হয়।
+- ‘ব্যাংক কপি’ / ‘অভ্যন্তরীণ কপি’ / ইমেইল-পেজ আর নেই — **একটিই সম্পাদনাযোগ্য Excel** (Complete Report · Incomplete Report · Summary · Holidays · Check List)। ফাইলের নাম `Prime_Bank_Submission_Tracker_YYYY-MM-DD_Phase1|Phase2.xlsx`।
+- ড্যাশবোর্ডের Submitted তালিকার সঙ্গে স্বয়ংক্রিয় মিলান (ফেজ অনুযায়ী: ১ম ফেজে ৩টার পরের ফাইল ‘অন্য ফেজ’ ধরা হয়, ‘মেলেনি’ নয়)। শুক্র/শনি তারিখ বাছলে সতর্কতা দেখায়।
+
+### স্বয়ংক্রিয় (কমান্ড লাইন) — Task Scheduler / cron
+
+```
+set VERIFY_PASSWORD=...      (Verify-এর পাসওয়ার্ড)      set VERIFY_SMTP_PASSWORD=...   (Zoho App Password)
+python run_app.py --cli --email you@barikoi.com --prime --mode tracker --slot 3pm --outdir C:\Reports --send-mail
+python run_app.py --cli --email you@barikoi.com --prime --mode tracker --slot 7pm --after3 --outdir C:\Reports --send-mail
+```
+`--to/--cc/--bcc` না দিলে সংরক্ষিত প্রাপক; `--template formal|concise|executive`; `--keep-checklist`; `--pdf`; একই ফেজ আগে গেলে থামে (`--force` দিলে আবার)। সতর্কতা: নীল ঘর থাকলেও CLI পাঠিয়ে দেয় — নিয়মিত অটো-সেন্ডের আগে হাতে কিছুদিন দেখে নিন।
+
+### কী কী যাচাই হয়েছে
+
+- ৫৫+ স্বয়ংক্রিয় টেস্ট (CI-তে প্রতিবার): রিপোর্টের নিয়ম, ফেজ/৩টা কাট-অফ, কারণ-শ্রেণি, Excel কাঠামো, Check List বাদ দেওয়া (এডিট সহ রাউন্ডট্রিপ), মেইলের গঠন (লোগো, সিগনেচার, সংযুক্তি), লোকাল নকল SMTP সার্ভারে পাঠানো/ভুল পাসওয়ার্ড/ডুপ্লিকেট রোধ, ১০৬০ ফাইল × ৯০ দিনের বাল্ক সিনারিও (স্বতন্ত্র নিয়মে হিসাব করা প্রত্যাশার সাথে হুবহু মেলে)।
+- লাইভ ড্যাশবোর্ড (শুধু GET): ৯০ দিনের সব ফাইল (১০৩১টি) ও তাদের activity log ত্রুটি ছাড়া পড়া যায় (~৯০ সেকেন্ড); ১৪ দিনের প্রতিটি দিনে ড্যাশবোর্ডের Submitted তালিকার প্রতিটি ফাইল log-ভিত্তিক Complete-এ আছে (অতিরিক্ত যেগুলো, সেগুলো পরে আবার Submitted/Hold হয়ে বর্তমান স্ট্যাটাস বদলেছে)।
+
+---
+
+## পুরোনো ব্যবহার-নির্দেশ (zip ফাইল)
 
 1. ফাইল ডাউনলোড করুন (নিচে "GitHub থেকে ডাউনলোড") এবং unzip করুন।
 2. অ্যাপ খুলুন → সার্ভার বাছুন → ইমেইল ও পাসওয়ার্ড দিন → **রিপোর্ট তৈরি করুন**।
@@ -16,7 +64,7 @@ Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্�
   (পুরনো macOS-এ অ্যাপে ডান ক্লিক → Open কাজ করে। নতুন macOS-এ সাধারণত Open Anyway লাগে।)
   বিকল্প: Terminal এ `xattr -dr com.apple.quarantine ~/Downloads/VerifyReportBuilder.app`
 
-## v2.3.0 — চলমান ট্র্যাকারের Complete / Incomplete নিয়ম (পাঠানো মেইল ও লাইভ ডেটা মিলিয়ে)
+## v2.3.0 — চলমান ট্র্যাকারের Complete / Incomplete নিয়ম (ইতিহাস; V3-এ Incomplete-এর নিয়ম বদলেছে — উপরে দেখুন)
 
 Zoho Sent-এর ট্র্যাকার মেইল (১৮/১০ – ০৫/১১/২০২৬), ব্যাংকের Excel (মে–অক্টোবর, ৩৭১৪ সারি) এবং লাইভ Verify ফাইলের activity log পাশাপাশি মিলিয়ে যা পাওয়া গেছে:
 

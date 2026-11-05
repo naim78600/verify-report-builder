@@ -4,7 +4,7 @@ Rules (agreed with the bank users): no pure red and no yellow anywhere.
   teal / green  = good (Submitted, Done, Within SLA, In)
   soft orange   = not good (Incomplete, Due, SLA breach)  - calm, never alarming
   indigo        = Out area
-  light sky-blue = "please check" cell in the INTERNAL copy only
+  light sky-blue = "please check" cell (no reason / detail found) - fill it in, or leave it as a flag for the team
 """
 NAVY = "1F3A5F"
 NAVY_DARK = "14284A"
@@ -34,4 +34,4 @@ BAND_NO_BG, BAND_NO_TX = "FDE8D3", "9A3412"
 
 KIND_BG = {"Package": "EEF2F7", "Single": "F3F4F6", "ReCpv": "FFF0E3", "Extra": "F1ECFA"}
 KIND_TX = {"Package": "1D4ED8", "Single": "475569", "ReCpv": "C2410C", "Extra": "6D28D9"}
-CHECK = "BFE3FF"        # internal copy only: light sky-blue = "please check this cell"
+CHECK = "BFE3FF"        # light sky-blue = "please check this cell" (reason / detail not found)

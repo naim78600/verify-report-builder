@@ -120,7 +120,7 @@ def _markup(lines, kind_color: str | None = None) -> str:
     return "<br/>".join(out)
 
 
-def build_prime_pdf(d: PrimeData, path: Path, internal: bool) -> Path:
+def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
     _fonts()
     title = title_for(d)
     page = landscape(A3)

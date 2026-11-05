@@ -82,12 +82,17 @@ def load_settings() -> dict:
         return {}
 
 
+SECRET_WORDS = ("password", "passwd", "secret", "token", "pass_")
+
+
 def save_settings(data: dict) -> None:
-    """Persist non-secret settings. The password is never passed here."""
-    data = {k: v for k, v in data.items() if "password" not in k.lower()}
+    """Persist non-secret settings (merged into what is already saved).  Passwords / tokens are never written."""
+    merged = load_settings()
+    merged.update(data)
+    merged = {k: v for k, v in merged.items() if not any(w in k.lower() for w in SECRET_WORDS)}
     try:
         SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
-        SETTINGS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        SETTINGS_FILE.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception:
         pass
 
