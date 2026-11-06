@@ -121,6 +121,8 @@ class BillRow:
     appointments: list = field(default_factory=list)   # [dict] appointments of this row's trips
     views: list = field(default_factory=list)          # TripView of this row's trips (to rebuild the Done/Due text)
     info: list = field(default_factory=list)           # notes for the Check List only (no yellow)
+    folded: list = field(default_factory=list)         # [(kind, first trip id)] rows of the SAME file shown inside this one (Bill Slab history)
+    mates: list = field(default_factory=list)          # Incomplete only: every pending row of the file (the reason belongs to the file)
 
     @property
     def submitted(self) -> bool:
@@ -523,7 +525,7 @@ def apply_as_of(rows: list[BillRow], cutoff: date | None, until: datetime | None
 
 INCOMPLETE_SCOPES = ("sla_partial", "partial_today", "partial_open", "all_pending")
 SCOPE_TEXT = {
-    "sla_partial": "ড্যাশবোর্ডে এখনও Submitted হয়নি এমন ফাইলের pending সারি (ফাইল SLA পেরিয়েছে: In ২ / Out ৪ কর্মদিবস) + Partially Submitted ফাইল",
+    "sla_partial": "ড্যাশবোর্ডে এখনও Submitted হয়নি এমন ফাইল, স্ট্যাটাস ধরে: Hold (কারণসহ), Finished কিন্তু Submit হয়নি, Partially Submitted সবসময়; On Going শুধু SLA পেরোলে (In ২ / Out ৪ কর্মদিবস)",
     "partial_today": "আজ Partially Submitted হয়েছে এমন ফাইলের বাকি সারি",
     "partial_open": "Partially Submitted হয়ে এখনও খোলা সব ফাইলের বাকি সারি",
     "all_pending": "Submitted না হওয়া সব সারি",
@@ -545,7 +547,8 @@ def is_test_file(file_no: str) -> bool:
     return bool(_TEST_FILE.search(file_no or ""))
 
 
-DEAD_TRIP = (6, 8)            # Canceled / Withdrawn trip: nothing left to submit for it
+DEAD_TRIP = (6, 7, 8)         # Canceled / Inactive / Withdrawn trip: nothing left to submit for it (live 05-11-2026: an Inactive extra
+                              # trip of an old, already Submitted file came back as an overdue ghost row once the file was re-opened)
 
 
 def file_state(r: BillRow, as_of: datetime | None = None) -> str:
@@ -575,34 +578,155 @@ def file_state(r: BillRow, as_of: datetime | None = None) -> str:
 
 
 def is_dead_row(r: BillRow) -> bool:
-    """A Re-CPV / Extra row whose trips are all Canceled / Withdrawn is not a pending bill."""
+    """A Re-CPV / Extra row whose trips are all Canceled / Inactive / Withdrawn is not a pending bill."""
     return r.kind in ("ReCpv", "Extra") and bool(r.trips) and all(t.get("status_code") in DEAD_TRIP for _c, t in r.trips)
 
 
-def classify_reason(r: BillRow) -> None:
-    """Why is a pending row not submitted?  Sets r.reason / r.reason_kind (or leaves them empty = nothing found).
-    Reasons the bank accepts: a given appointment, a Hold with a written reason, an On Going file still inside its SLA,
-    and (Partially Submitted) the documents named in Due."""
+KIND_RANK = {"Package": 0, "Single": 1, "ReCpv": 2, "Extra": 3}
+
+
+def _live_trips(rs: list[BillRow]) -> list[dict]:
+    return [t for r in rs for _c, t in r.trips if t.get("status_code") not in DEAD_TRIP]
+
+
+def pending_kind(rs: list[BillRow], state: str = "pending") -> str:
+    """What is the (not yet submitted) FILE doing?  The status the dashboard shows for the file decides:
+        partial   Partially Submitted (documents still due)          hold      Hold
+        ongoing   Created / On Going (the work is still running)     finished  Finished, but not Submitted
+        dead      nothing live is left (every trip Canceled / Inactive / Withdrawn)
+    A file that is Submitted NOW (or became Partially Submitted only later) but was still waiting at the report time - a report
+    made for an earlier moment - has no such status any more: then the activity log and the live trips say what it was."""
+    live = _live_trips(rs)
+    if not live:
+        return "dead"
+    fs = rs[0].file_status
+    if fs == 3:
+        return "hold"
+    if fs in (1, 2):
+        return "ongoing"
+    if fs == 4:
+        return "finished"
+    if state == "partial":                          # the activity log (as of the report time) says Partially Submitted
+        return "partial"
+    if any(t.get("status_code") == 4 for t in live):
+        return "hold"
+    return "ongoing" if any(t.get("status_code") in (1, 2, 3) for t in live) else "finished"
+
+
+def _due_text(r: BillRow, mates: list[BillRow]) -> str:
+    """The documents still due (Partially Submitted), short: the details in brackets stay in the Report Summary column."""
+    for m in [r] + list(mates):
+        due = m.summary.due.replace("\n", " ").strip()
+        if due in ("", "0", "Report not yet submitted"):
+            continue
+        short = " ".join(re.sub(r"\s*\([^)]*\)", "", due).split()).strip(" ,;")
+        short = short or " ".join(due.split())
+        if len(short) > 90:
+            short = short[:90].rsplit(" ", 1)[0].rstrip(" ,;") + "..."
+        return short
+    return ""
+
+
+def classify_reason(r: BillRow, mates: list[BillRow] | None = None, state: str = "pending") -> None:
+    """Why is the file not submitted?  Sets r.reason / r.reason_kind (empty = nothing found -> light-blue cell + Check List line).
+    `mates` = every pending row of the same file (the reason belongs to the FILE, not to one bill row).
+        Partially Submitted   the documents named in Due
+        Hold                  "Hold: <the comment written when it was put on Hold>"; without a comment the given appointment explains it,
+                              and only a Hold with neither is flagged
+        Finished              "Finished - not yet submitted"
+        Appointment           the newest given appointment (added to the above, or alone for an On Going file past its SLA)
+        On Going              only inside its SLA = a valid reason by itself ("On Going, within SLA")"""
+    mates = mates or [r]
     r.reason, r.reason_kind = "", ""
     if r.submitted:
         return
-    appts = [a for a in r.appointments if a.get("active", True) and a.get("time")]
-    if appts:
-        r.reason_kind, r.reason = "appointment", f"Appointment {appts[-1]['time']:%d/%m/%Y %I:%M %p}"
-        return
-    open_trips = [t for _c, t in r.trips if t.get("status_code") in (1, 2, 3, 4)]
-    holds = [t for t in open_trips if t.get("status_code") == 4]
-    for t in holds:
-        text = " ".join(x for x in (clean_text(t.get("remarks")), clean_text(t.get("comment"))) if x)
-        if len(text) >= 4:
-            r.reason_kind, r.reason = "hold", f"Hold: {text[:90]}"
-            return
-    if r.file_status == 7 or r.partial_events:
-        if r.summary.due.strip() not in ("", "0", "Report not yet submitted"):
-            r.reason_kind, r.reason = "partial", "Partially Submitted: " + r.summary.due.replace("\n", " ")[:90]
-            return
-    if open_trips and not holds and not r.sla_breach:
-        r.reason_kind, r.reason = "ongoing", "On Going, within SLA"
+    kind = pending_kind(mates, state)
+    due = _due_text(r, mates)
+    appts = sorted((a for m in mates for a in m.appointments if a.get("active", True) and a.get("time")),
+                   key=lambda a: a["time"])
+    parts: list[tuple[str, str]] = []
+    if kind == "partial":
+        if due:
+            parts.append(("partial", "Partially Submitted: " + due))
+    elif kind == "hold":
+        texts = []
+        for t in _live_trips(mates):
+            if t.get("status_code") == 4:
+                text = clean_text(t.get("comment")) or clean_text(t.get("remarks"))
+                if len(text) >= 3 and text not in texts:
+                    texts.append(text)
+        if texts:
+            parts.append(("hold", "Hold: " + " / ".join(texts)[:120]))
+        else:
+            parts.append(("hold", "Hold"))
+        if state == "partial" and due:
+            parts.append(("partial", "Partially Submitted: " + due))
+        if not texts and not appts and not (state == "partial" and due):
+            parts[0] = ("hold", "Hold: no reason written on the dashboard")
+            r.flags["reason"] = "Hold-এর কারণ ড্যাশবোর্ডে লেখা নেই"
+    elif kind == "finished":
+        parts.append(("finished", "Finished - not yet submitted"))
+    if appts and not (parts and parts[-1][0] == "partial" and "appointment" in parts[-1][1].lower()):
+        a = appts[-1]
+        why = " ".join(clean_text(a.get("reason")).split())
+        if len(why) > 45:                                   # a short note only, cut at a word end
+            why = why[:45].rsplit(" ", 1)[0].rstrip(" ,.;:") + "..."
+        parts.append(("appointment", f"Appointment {a['time']:%d/%m/%Y %I:%M %p}" + (f" ({why})" if why else "")))
+    if not parts and kind == "ongoing" and not any(m.sla_breach for m in mates):
+        parts.append(("ongoing", "On Going, within SLA"))
+    if parts:
+        r.reason_kind = parts[0][0]
+        r.reason = " | ".join(p[1] for p in parts)
+
+
+def _fold_into(keep: BillRow, dropped: list[BillRow]) -> None:
+    for x in dropped:
+        keep.folded.append((x.kind, x.trips[0][1].get("id")))
+
+
+def fold_complete(rows: list[BillRow]) -> list[BillRow]:
+    """ONE row per file and submission day.  The Bill Slab column already carries the whole billing history of the file, so a
+    Re-CPV / Extra row that was submitted together with (or on the same day as) the Package row is not listed a second time:
+    Package (or Single) submitted that day -> the Package row; only a Re-CPV / Extra was submitted -> that row (a Re-CPV rather
+    than an Extra, the later one if there are several).  Package + Single rows of one file stay (they are different bills)."""
+    groups: dict = {}
+    for r in rows:
+        groups.setdefault((r.file_id, r.sub_day or (r.submitted_at.date() if r.submitted_at else None)), []).append(r)
+    out: list[BillRow] = []
+    for g in groups.values():
+        main = [r for r in g if r.kind in ("Package", "Single")]
+        follow = [r for r in g if r.kind not in ("Package", "Single")]
+        if main:
+            _fold_into(main[0], follow)
+            out.extend(main)
+        else:
+            follow.sort(key=lambda r: (r.submitted_at or datetime.min, -KIND_RANK.get(r.kind, 9), r.receive_dt or datetime.min),
+                        reverse=True)
+            _fold_into(follow[0], follow[1:])
+            out.append(follow[0])
+    return out
+
+
+def fold_incomplete(rs: list[BillRow]) -> BillRow:
+    """ONE row per pending file: the row that is the most overdue (then the oldest, then Package before Re-CPV / Extra).
+    The others are shown in its Bill Slab history; the reason is worked out over all of them."""
+    keep = sorted(rs, key=lambda r: (-(r.extra_tat or 0), r.receive_dt or datetime.max, KIND_RANK.get(r.kind, 9),
+                                     r.trips[0][1].get("id") or 0))[0]
+    _fold_into(keep, [x for x in rs if x is not keep])
+    return keep
+
+
+def listed_by_status(rs: list[BillRow], state: str) -> bool:
+    """The Incomplete rule, by the status of the file (as the dashboard shows it):
+        Partially Submitted -> listed          Hold -> listed (with the written reason)
+        Finished, not Submitted -> listed ("not yet submitted")
+        On Going / Created -> listed ONLY when the SLA is already breached (a running file inside its SLA is not late)."""
+    kind = pending_kind(rs, state)
+    if kind in ("partial", "hold", "finished"):
+        return True
+    if kind == "ongoing":
+        return any((x.extra_tat or 0) > 0 for x in rs)
+    return False
 
 
 def select_rows(rows: list[BillRow], mode: str, report_date: date, w_from: date | None = None,
@@ -665,13 +789,17 @@ def select_rows(rows: list[BillRow], mode: str, report_date: date, w_from: date 
         if mode != "tracker" or scope == "all_pending":
             keep = True
         elif scope == "sla_partial":
-            keep = state_of[fid] == "partial" or any((x.extra_tat or 0) > 0 for x in rs)
+            keep = listed_by_status(rs, state_of[fid])
         else:
             days = [e.date() for e in rs[0].partial_events]
             keep = (scope == "partial_today" and any(t_lo <= x <= t_hi for x in days)) or \
                    (scope == "partial_open" and any(x <= t_hi for x in days))
         if keep:
-            incomplete.extend(rs)
+            mates = sorted(rs, key=lambda r: (r.receive_dt or datetime.max, r.trips[0][1].get("id") or 0))
+            main = fold_incomplete(mates)
+            main.mates = mates                                         # every pending row of the file (reason is per file)
+            incomplete.append(main)
+    complete = fold_complete(complete)
     key = lambda r: (r.receive_dt or datetime.max, r.file_no, r.trips[0][1]["id"] or 0)   # noqa: E731
     complete.sort(key=key)
     incomplete.sort(key=key)
@@ -679,9 +807,9 @@ def select_rows(rows: list[BillRow], mode: str, report_date: date, w_from: date 
         for i, r in enumerate(lst, 1):
             r.sl = i
     for r in incomplete:
-        classify_reason(r)
+        classify_reason(r, r.mates or None, state_of.get(r.file_id, "pending"))
         if not r.reason and mode == "tracker":
-            r.flags["reason"] = "কোনো কারণ পাওয়া যায়নি (Appointment / Hold reason / SLA-র মধ্যে On Going নেই)"
+            r.flags["reason"] = "SLA পেরিয়েছে, কিন্তু কারণ পাওয়া যায়নি (Appointment / Hold comment / Finished নয়) - কারণ লিখুন"
     return complete, incomplete
 
 

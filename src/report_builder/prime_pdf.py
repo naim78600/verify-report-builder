@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 from html import escape
 from pathlib import Path
+from types import SimpleNamespace
 
 import reportlab
 from reportlab.lib import colors
@@ -25,9 +26,10 @@ from reportlab.platypus import KeepInFrame, PageBreak, Paragraph, SimpleDocTempl
 from . import theme as T
 from .billing import SLA_IN, SLA_OUT, before_after
 from .collect_prime import PrimeData, title_for
-from .report_text import appointment_lines, bill_slab_lines, has_due, last_update_lines, summary_lines
+from .report_text import _dt, appointment_lines, bill_slab_lines, has_due, last_update_lines, summary_lines
 
-HIST_MAX = 15             # history lines shown per row in the PDF (newest); the Excel has them all
+HIST_MAX = 6              # history lines shown per row in the PDF (newest); the Excel has them all
+LINES = {"concerns": 10, "history": 18, "slab": 16, "summary": 14, "last": 14, "appt": 10, "reason": 14}   # printed lines per cell
 MAX_CELL_H = 600          # points; the page frame is ~747 pt high, minus the repeated header row and the cell padding
 
 
@@ -100,6 +102,42 @@ _FONT_TAGS = {   # style code -> (bold, colour, size delta)
 }
 
 
+SHOW_TRIPS = 3            # Last Update: newest trip updates shown per row in the PDF
+SHOW_APPTS = 2            # Appointment: appointments shown per row in the PDF
+
+
+def last_update_short(r) -> list:
+    """PDF version of the Last Update column: the file line + the newest SHOW_TRIPS trip updates; the rest is counted
+    ("+N older trip updates, M trips with no activity - see the Excel").  The Excel keeps every trip."""
+    if r.last_file is None or len(r.last_trips) <= SHOW_TRIPS:
+        return last_update_lines(r)
+    when, what, user = r.last_file
+    lines = [[("FILE ", "h"), (_dt(when), "b")], [(what + (f" \u00b7 {user}" if user else ""), "n")]]
+    active = sorted((t for t in r.last_trips if t[2] is not None), key=lambda t: t[2], reverse=True)
+    idle = len(r.last_trips) - len(active)
+    for tid, ttype, tw, text, user_t in active[:SHOW_TRIPS]:
+        lines += [[("", "n")], [(f"Trip {tid} \u00b7 {ttype}", "b")],
+                  [(f"{_dt(tw)} {text}" + (f" \u00b7 {user_t}" if user_t else ""), "n")]]
+    notes = []
+    if len(active) > SHOW_TRIPS:
+        notes.append(f"+{len(active) - SHOW_TRIPS} older trip updates")
+    if idle:
+        notes.append(f"{idle} trip{'s' if idle > 1 else ''} with no activity")
+    if notes:
+        lines += [[("", "n")], [("; ".join(notes) + " (all in the Excel)", "m")]]
+    return lines
+
+
+def appointment_short(r) -> list:
+    """PDF version of the Appointment column: the active / newest SHOW_APPTS appointments, the rest counted."""
+    if len(r.appointments) <= SHOW_APPTS:
+        return appointment_lines(r)
+    keep = sorted(r.appointments, key=lambda a: (a.get("active", True), a.get("time") or a.get("created_at")), reverse=True)[:SHOW_APPTS]
+    lines = appointment_lines(SimpleNamespace(appointments=keep))      # that function only reads .appointments
+    lines += [[("", "n")], [(f"+{len(r.appointments) - SHOW_APPTS} more appointments (all in the Excel)", "m")]]
+    return lines
+
+
 def _markup(lines, kind_color: str | None = None) -> str:
     """Lines of (text, style) -> reportlab paragraph markup."""
     out = []
@@ -130,24 +168,46 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
     page = landscape(A3)
     left = right = 9 * mm
     usable = page[0] - left - right
-    base = ParagraphStyle("b", fontName="Vera", fontSize=7.6, leading=9.6, textColor=_c(T.TEXT))
+    base = ParagraphStyle("b", fontName="Vera", fontSize=8.6, leading=10.8, textColor=_c(T.TEXT))
     center = ParagraphStyle("c", parent=base, alignment=1)
-    head = ParagraphStyle("h", parent=base, fontName="Vera-Bold", textColor=colors.white, alignment=1, fontSize=8)
-    small = ParagraphStyle("s", parent=base, fontSize=7, leading=8.6, textColor=GREY)
+    head = ParagraphStyle("h", parent=base, fontName="Vera-Bold", textColor=colors.white, alignment=1, fontSize=8.8)
+    small = ParagraphStyle("s", parent=base, fontSize=7.8, leading=9.6, textColor=GREY)
 
     heads = ["SL", "File No", "Concerns", "Re-CPV / Extra Trip (ID)", "Bill Slab", "Area", "Receive Date",
              "Submission Date-Time", "TAT", "Extra TAT / SLA", "Report Status", "Report Summary", "Last Update", "Appointment"]
-    widths_mm = [8, 37, 40, 34, 52, 11, 18, 22, 10, 17, 21, 50, 50, 40]
-    scale = usable / (sum(widths_mm) * mm)
-    widths = [w * mm * scale for w in widths_mm]
+    widths_mm = [8, 44, 31, 27, 43, 11, 23, 24, 10, 18, 23, 41, 39, 34]
+    REASON_MM = 36                       # Incomplete table only: "Pending Reason" right after "Report Status"
+    cur = {"w": []}
 
-    def cap(flow, col: int):
-        """A row can never be taller than a page (reportlab stops with a LayoutError).  A very long cell - e.g. the whole
-        history of a file with dozens of trips - is shrunk to fit instead of being cut: nothing is lost, the Excel has it too."""
-        return KeepInFrame(widths[col] - 6, MAX_CELL_H, [flow], mode="shrink", hAlign="LEFT", vAlign="TOP")
+    def set_layout(reason: bool):
+        w_mm = list(widths_mm)
+        if reason:
+            w_mm.insert(11, REASON_MM)
+        scale = usable / (sum(w_mm) * mm)
+        cur["w"] = [w * mm * scale for w in w_mm]
+        return cur["w"]
 
-    def table_for(rows) -> Table:
-        data = [[Paragraph(h, head) for h in heads]]
+    def cap(flow, col: int, max_lines: int):
+        """Keep every cell readable.  A long cell (a file with dozens of trips) is cut to `max_lines` printed lines at the
+        normal font size and ends with "+N more lines (full text in the Excel)" - the font is never made tiny.  Whatever
+        is left is still forced to fit one page (shrink) so reportlab can never stop with a LayoutError."""
+        w = cur["w"][col] - 6
+        flow.wrap(w, 10 ** 6)
+        n = len(flow.blPara.lines)
+        parts = [flow]
+        if n > max_lines:
+            first = flow.split(w, max_lines * flow.style.leading)
+            if first:
+                parts = [first[0], Paragraph(f"<font color='#{T.MUTED}'><i>... +{n - max_lines} more lines (full text in the Excel)</i></font>", small)]
+        return KeepInFrame(w, MAX_CELL_H, parts, mode="shrink", hAlign="LEFT", vAlign="TOP")
+
+    def table_for(rows, reason: bool = False) -> Table:
+        widths = set_layout(reason)
+        o = 1 if reason else 0                                   # columns right of "Report Status" move one place
+        hs = list(heads)
+        if reason:
+            hs.insert(11, "Pending Reason")
+        data = [[Paragraph(h, head) for h in hs]]
         style = [
             ("BACKGROUND", (0, 0), (-1, 0), NAVY),
             ("GRID", (0, 0), (-1, -1), 0.4, _c(T.BORDER)),
@@ -172,12 +232,12 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
                 hl = [f"... {len(hl) - HIST_MAX} earlier events (full list in the Excel)"] + hl[-HIST_MAX:]
             hist = "\n".join(hl)
             kc = T.KIND_TX.get(r.kind)
-            data.append([
+            row_cells = [
                 _p(r.sl, center),
                 Paragraph(f"<b><font color='#{T.NAVY}'>{escape(_safe(r.file_no))}</font></b><br/><font color='#{T.MUTED}'>{escape(r.file_type)}</font>", base),
-                cap(_p("\n".join(r.concern_lines), base), 2),
-                cap(_p(hist, base), 3),
-                cap(Paragraph(_markup(bill_slab_lines(r), kc), base), 4),
+                cap(_p("\n".join(r.concern_lines), base), 2, LINES["concerns"]),
+                cap(_p(hist, base), 3, LINES["history"]),
+                cap(Paragraph(_markup(bill_slab_lines(r), kc), base), 4, LINES["slab"]),
                 Paragraph(f'<font color="#{T.OUT if out else T.IN}"><b>{r.area}</b></font>', center),
                 _p(f"{r.receive_dt:%d/%m/%Y}" if r.receive_dt else "", center),
                 Paragraph(when, center),
@@ -185,20 +245,25 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
                 Paragraph(f"<b><font color='#{sla_col}'>{xt}</font></b><br/><font size='6.6' color='#{sla_col}'>{sla_txt}<br/>"
                           f"(SLA {r.sla_days} days)</font>", center),
                 Paragraph(f'<font color="#{st_color}"><b>{status}</b></font>', center),
-                cap(Paragraph(_markup(summary_lines(r)), base), 11),
-                cap(Paragraph(_markup(last_update_lines(r)), base), 12),
-                cap(Paragraph(_markup(appointment_lines(r)), base), 13),
-            ])
+                cap(Paragraph(_markup(summary_lines(r)), base), 11 + o, LINES["summary"]),
+                cap(Paragraph(_markup(last_update_short(r)), base), 12 + o, LINES["last"]),
+                cap(Paragraph(_markup(appointment_short(r)), base), 13 + o, LINES["appt"]),
+            ]
+            if reason:
+                row_cells.insert(11, cap(_reason_flow(r), 11, LINES["reason"]))
+            data.append(row_cells)
             style.append(("BACKGROUND", (4, i), (4, i), _c(T.KIND_BG.get(r.kind, "FFFFFF"))))
             style.append(("BACKGROUND", (5, i), (5, i), _c(T.OUT_BG if out else T.IN_BG)))
             style.append(("BACKGROUND", (10, i), (10, i), _c(T.POS_BG if sub else T.NEG_BG)))
             if has_due(r):
-                style.append(("BACKGROUND", (11, i), (11, i), _c(T.DUE_CELL_BG)))
+                style.append(("BACKGROUND", (11 + o, i), (11 + o, i), _c(T.DUE_CELL_BG)))
             if i % 2 == 0:
-                for col in (0, 1, 2, 3, 6, 7, 8, 9, 12, 13) + (() if has_due(r) else (11,)):
+                for col in (0, 1, 2, 3, 6, 7, 8, 9, 12 + o, 13 + o) + (() if has_due(r) else (11 + o,)) + ((11,) if reason else ()):
                     style.append(("BACKGROUND", (col, i), (col, i), _c(T.ZEBRA)))
             if internal:
-                col_for = {"area": 5, "slab": 4, "summary": 11, "status": 10}
+                col_for = {"area": 5, "slab": 4, "summary": 11 + o, "status": 10}
+                if reason:
+                    col_for["reason"] = 11
                 for key in r.flags:
                     if key in col_for:
                         style.append(("BACKGROUND", (col_for[key], i), (col_for[key], i), CHECK))
@@ -207,6 +272,17 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
         t = Table(data, colWidths=widths, repeatRows=1, splitByRow=1)
         t.setStyle(TableStyle(style))
         return t
+
+    def _reason_flow(r):
+        """Why the file is still pending, one fact per line (Hold comment / Finished - not yet submitted / Appointment ...)."""
+        if not r.reason:
+            if r.file_status in (1, 2) and r.sla_breach:
+                return Paragraph(f"<font color='#{T.NEG}'><b>On Going - SLA breached</b></font>", base)
+            return Paragraph(f"<font color='#{T.MUTED}'>-</font>", base)
+        colour = {"hold": T.NEG, "finished": T.NAVY, "partial": T.NEG, "appointment": T.NAVY, "ongoing": T.POS}.get(r.reason_kind, T.TEXT)
+        lines = [escape(_safe(x)) for x in r.reason.split(" | ")]
+        lines[0] = f"<b><font color='#{colour}'>{lines[0]}</font></b>"
+        return Paragraph("<br/>".join(lines), base)
 
     def band(text, bg, fg):
         t = Table([[Paragraph(f"<b>{escape(text)}</b>", ParagraphStyle("band", parent=base, fontSize=12, leading=14,
@@ -267,7 +343,7 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
     story.append(band(f"Incomplete Report  ({len(d.incomplete)})", T.BAND_NO_BG, T.BAND_NO_TX))
     story.append(Spacer(1, 1.5 * mm))
     if d.incomplete:
-        story.append(table_for(d.incomplete))
+        story.append(table_for(d.incomplete, reason=True))
         story.append(Spacer(1, 1.5 * mm))
         story.append(_p("For Incomplete rows TAT / Extra TAT are counted up to the report date.", small))
     else:

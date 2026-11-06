@@ -82,10 +82,11 @@ def test_submitted_file_never_has_pending_rows(extra_files):
         inc.setdefault(r.file_no, []).append(r)
     assert "PL-20261010000101" not in inc                                   # Submitted file with Canceled / Inactive extras
     assert [r.kind for r in inc["PL-20261010000102"]] == ["Extra"]          # re-opened: only the NEW row is pending, package is not
-    assert sorted(r.kind for r in inc["PL-20261026000103"]) == ["Extra", "Package"]   # canceled extra hidden, live extra listed with its file
+    assert [r.kind for r in inc["PL-20261026000103"]] == ["Package"]       # ONE row per file; the canceled extra is hidden, the live extra is folded in
+    assert [k for k, _t in inc["PL-20261026000103"][0].folded] == ["Extra"]
     assert "PL-20261102000104" not in inc                                   # received today, inside the 2-day In SLA
     # a pending file is judged by its Start Date: F-G3 started Mon 26-Oct, 5 working days later it is past the In SLA of 2
-    pkg = next(r for r in inc["PL-20261026000103"] if r.kind == "Package")
+    pkg = inc["PL-20261026000103"][0]
     assert pkg.receive_dt == datetime(2026, 10, 26, 10, 0) and (pkg.extra_tat or 0) > 0
 
 
@@ -102,6 +103,7 @@ def test_file_state_unit():
     # a live trip created after the last Submitted re-opens the file; a canceled one does not
     assert file_state(mk(2, subs=[d(2026, 10, 1, 10)], trips=[(d(2026, 10, 5), 2)])) == "pending"
     assert file_state(mk(6, subs=[d(2026, 10, 1, 10)], trips=[(d(2026, 10, 5), 6)])) == "submitted"
+    assert file_state(mk(6, subs=[d(2026, 10, 1, 10)], trips=[(d(2026, 10, 5), 7)])) == "submitted"      # an Inactive trip does not re-open it
     # partial, and as-of time travel: submitted at 16:00 was still pending at 15:00
     assert file_state(mk(7, parts=[d(2026, 10, 3, 9)], subs=[d(2026, 10, 1, 10)])) == "partial"
     sub = mk(6, subs=[d(2026, 11, 5, 16, 0)])
@@ -114,6 +116,8 @@ def test_dead_row():
     r = BillRow()
     r.kind, r.trips = "Extra", [({}, {"status_code": 6}), ({}, {"status_code": 8})]
     assert is_dead_row(r)
+    r.trips = [({}, {"status_code": 7})]
+    assert is_dead_row(r)                                                   # Inactive extra trip = no bill (05-11-2026 ghost rows)
     r.trips = [({}, {"status_code": 6}), ({}, {"status_code": 2})]
     assert not is_dead_row(r)
     r.kind, r.trips = "Package", [({}, {"status_code": 6})]
