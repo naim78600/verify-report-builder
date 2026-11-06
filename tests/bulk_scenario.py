@@ -104,9 +104,9 @@ def expected(items, report: date, slot: str, holidays: set, after3_only: bool = 
             continue
         tat = max(0, working_days(start.date() + timedelta(days=1), report, holidays))
         partial_open = bool(it["partial"]) and it["partial"].date() <= report and not (sub and it["partial"] < sub and sub.date() <= report)
-        # v3.2: by the status of the file at that moment - Partially Submitted / Hold / Finished-but-not-Submitted are always listed,
-        # a file that is still On Going (or became Partially Submitted only later) only when its SLA is breached
+        # v3.2.1: by the status of the file at that moment - ONLY Partially Submitted / Hold / Finished-but-not-Submitted are listed;
+        # a file that is still On Going / Created (or became Partially Submitted only later) is running and never listed, SLA or not
         kind = "partial" if partial_open else {HOLD: "hold", ONGOING: "ongoing", PARTIAL: "ongoing", SUBMITTED: "finished"}[it["status"]]
-        if kind in ("partial", "hold", "finished") or tat - 2 > 0:
+        if kind in ("partial", "hold", "finished"):
             incomplete.add(it["no"])
     return complete, incomplete

@@ -40,6 +40,16 @@ def srv():
     s.shutdown()
 
 
+@pytest.fixture()
+def srv_f5_hold(srv):
+    """F5 is On Going in the mock (a running file is never listed since v3.2.1); as a Hold with no written reason it is the
+    example of "listed, but no reason could be found" (light-blue cell + Check List)."""
+    f5 = next(f for f in mock_server.STATE["files"] if f["id"] == 500005)
+    f5["status"] = 3
+    yield srv
+    f5["status"] = 2
+
+
 def nos(rows):
     return sorted({r.file_no for r in rows})
 
@@ -66,11 +76,11 @@ def test_incomplete_rule_sla_plus_partial(srv):
     d = _run(srv)
     assert d.incomplete_scope == "sla_partial"
     by = {r.file_no: r for r in d.incomplete}
-    assert set(by) == {"PL-20261020000003", "PL-20250901000005"}
+    assert set(by) == {"PL-20261020000003"}                                       # Partially Submitted
     assert by["PL-20261020000003"].file_status == 7 and (by["PL-20261020000003"].extra_tat or 0) > 0
-    assert (by["PL-20250901000005"].extra_tat or 0) > 0                          # breach only: In SLA is 2 working days
-    # a row still inside its SLA is NOT listed (F1's Re-CPV was received 30-Oct, TAT 2 on the report day)
-    assert all((r.extra_tat or 0) > 0 or r.file_status == 7 for r in d.incomplete)
+    # F5 is On Going and past its SLA (In = 2 working days) but it is a running file: never listed (v3.2.1)
+    f5 = [r for r in d.all_rows if r.file_no == "PL-20250901000005"]
+    assert f5 and all((r.extra_tat or 0) > 0 for r in f5) and "PL-20250901000005" not in by
 
 
 def test_canceled_and_withdrawn_files_are_not_pending(srv):
@@ -131,8 +141,8 @@ def test_reason_kinds():
     assert past.reason == "Hold: Customer asked to wait"
 
 
-def test_pending_reason_cell_and_blue_flag(srv, tmp_path):
-    d = _run(srv)
+def test_pending_reason_cell_and_blue_flag(srv_f5_hold, tmp_path):
+    d = _run(srv_f5_hold)
     xlsx = write_prime_outputs(d, tmp_path)[0]
     wb = load_workbook(xlsx)
     ws = wb["Incomplete Report"]
@@ -140,17 +150,17 @@ def test_pending_reason_cell_and_blue_flag(srv, tmp_path):
     col = heads.index("Pending Reason") + 1
     texts = {ws.cell(r, 2).value: ws.cell(r, col).value for r in range(5, ws.max_row + 1)}
     assert texts["PL-20261020000003"].startswith("Partially Submitted: App Office | Appointment 04/11/2026 12:00 PM")
-    assert not texts["PL-20250901000005"]                                          # no reason found: cell stays empty ...
+    assert texts["PL-20250901000005"] == "Hold: no reason written on the dashboard"   # Hold without any written reason ...
     cell = next(ws.cell(r, col) for r in range(5, ws.max_row + 1) if ws.cell(r, 2).value == "PL-20250901000005")
-    assert cell.fill.fgColor.rgb[-6:] == "BFE3FF"                                  # ... and light sky-blue
+    assert cell.fill.fgColor.rgb[-6:] == "BFE3FF"                                  # ... is flagged light sky-blue
     assert count_blue_cells(xlsx) >= 1 and has_checklist(xlsx)
     chk = [[c for c in row] for row in wb["Check List"].iter_rows(values_only=True)]
     assert any(row[3] == "Pending Reason" and row[2] == "PL-20250901000005" for row in chk)
 
 
 # ----------------------------------------------------------------------------- Check List removal
-def test_strip_checklist_keeps_everything_else(srv, tmp_path):
-    d = _run(srv)
+def test_strip_checklist_keeps_everything_else(srv_f5_hold, tmp_path):
+    d = _run(srv_f5_hold)
     xlsx = write_prime_outputs(d, tmp_path)[0]
     # simulate the user's edit: fill the missing reason in Excel and save
     wb = load_workbook(xlsx, rich_text=True)
@@ -180,8 +190,8 @@ def test_strip_checklist_keeps_everything_else(srv, tmp_path):
     assert count_blue_cells(out) < count_blue_cells(xlsx) + 1
 
 
-def test_facts_from(srv):
-    d = _run(srv)
+def test_facts_from(srv_f5_hold):
+    d = _run(srv_f5_hold)
     f = facts_from(d)
     assert (f.complete_files, f.complete_rows, f.incomplete_files, f.incomplete_rows) == (4, 6, 2, 2)
     assert f.sla_breach_rows == 2 and f.partial_files == 1 and f.reason_missing == 1 and f.slot == "7pm"

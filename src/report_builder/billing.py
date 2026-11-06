@@ -525,7 +525,7 @@ def apply_as_of(rows: list[BillRow], cutoff: date | None, until: datetime | None
 
 INCOMPLETE_SCOPES = ("sla_partial", "partial_today", "partial_open", "all_pending")
 SCOPE_TEXT = {
-    "sla_partial": "ড্যাশবোর্ডে এখনও Submitted হয়নি এমন ফাইল, স্ট্যাটাস ধরে: Hold (কারণসহ), Finished কিন্তু Submit হয়নি, Partially Submitted সবসময়; On Going শুধু SLA পেরোলে (In ২ / Out ৪ কর্মদিবস)",
+    "sla_partial": "ড্যাশবোর্ডে এখনও Submitted হয়নি এমন ফাইল, স্ট্যাটাস ধরে: শুধু Hold (কারণসহ), Finished কিন্তু Submit হয়নি, আর Partially Submitted; On Going / Created (চলমান) ফাইল কখনো নয়",
     "partial_today": "আজ Partially Submitted হয়েছে এমন ফাইলের বাকি সারি",
     "partial_open": "Partially Submitted হয়ে এখনও খোলা সব ফাইলের বাকি সারি",
     "all_pending": "Submitted না হওয়া সব সারি",
@@ -741,16 +741,12 @@ def fold_incomplete(rs: list[BillRow]) -> BillRow:
 
 
 def listed_by_status(rs: list[BillRow], state: str) -> bool:
-    """The Incomplete rule, by the status of the file (as the dashboard shows it):
+    """The Incomplete rule, by the status of the file (as the dashboard shows it) - ONLY these three:
         Partially Submitted -> listed          Hold -> listed (with the written reason)
         Finished, not Submitted -> listed ("not yet submitted")
-        On Going / Created -> listed ONLY when the SLA is already breached (a running file inside its SLA is not late)."""
-    kind = pending_kind(rs, state)
-    if kind in ("partial", "hold", "finished"):
-        return True
-    if kind == "ongoing":
-        return any((x.extra_tat or 0) > 0 for x in rs)
-    return False
+    A file that is Created / On Going is still RUNNING: nobody (bank or us) wants a report on a running trip, so it is never
+    listed - not even after its SLA is crossed.  (Every file, running or not, is in the plain detailed Excel.)"""
+    return pending_kind(rs, state) in ("partial", "hold", "finished")
 
 
 def select_rows(rows: list[BillRow], mode: str, report_date: date, w_from: date | None = None,
@@ -764,13 +760,12 @@ def select_rows(rows: list[BillRow], mode: str, report_date: date, w_from: date 
                  `after3_only` (second-phase mail): only the rows submitted after 3 PM, i.e. not sent in the first mail.
     Incomplete = decided PER FILE, like the dashboard (see file_state): only files that were NOT Submitted at `as_of`
                  (default: the end of the report day) can have pending rows - a Submitted file never does.  Of such a file
-                 every live pending row is listed when, tracker, by `scope`:
-                   sla_partial   : (V3 default) the file is overdue - one of its pending rows is past its SLA, counted from
-                                   the file's Start Date (In 2 / Out 4 working days) - or it is "Partially Submitted"
-                                   (its Due text says which documents are missing)
-                   partial_today / partial_open : only the Partially Submitted files (checked against the sent mails)
-                   all_pending   : every pending file (received inside the look-back window)
-                 range: pending rows of files not submitted yet, received inside the dates."""
+                 every live pending row is folded into ONE row per file, and the file is listed when, by `scope`:
+                   sla_partial   : (default, tracker AND range) its dashboard status is Hold, Finished-not-Submitted or
+                                   Partially Submitted - a Created / On Going (running) file is never listed
+                   partial_today / partial_open : tracker only - the Partially Submitted files (checked against the sent mails)
+                   all_pending   : every pending file (received inside the look-back window), running ones too
+                 range: the same rule, for files received inside the dates."""
     if scope not in INCOMPLETE_SCOPES:
         scope = "sla_partial"
     t_lo, t_hi = tracker_window(report_date, hset) if mode == "tracker" else (None, None)
@@ -810,9 +805,9 @@ def select_rows(rows: list[BillRow], mode: str, report_date: date, w_from: date 
         pending.setdefault(r.file_id, []).append(r)
     incomplete: list[BillRow] = []
     for fid, rs in pending.items():
-        if mode != "tracker" or scope == "all_pending":
+        if scope == "all_pending":
             keep = True
-        elif scope == "sla_partial":
+        elif mode != "tracker" or scope == "sla_partial":              # range report and the tracker default: by the file's status
             keep = listed_by_status(rs, state_of[fid])
         else:
             days = [e.date() for e in rs[0].partial_events]
@@ -833,7 +828,7 @@ def select_rows(rows: list[BillRow], mode: str, report_date: date, w_from: date 
     for r in incomplete:
         classify_reason(r, r.mates or None, state_of.get(r.file_id, "pending"))
         if not r.reason and mode == "tracker":
-            r.flags["reason"] = "SLA পেরিয়েছে, কিন্তু কারণ পাওয়া যায়নি (Appointment / Hold comment / Finished নয়) - কারণ লিখুন"
+            r.flags["reason"] = "কারণ পাওয়া যায়নি (Appointment / Hold comment / Finished / বাকি ডকুমেন্ট নয়) - কারণ লিখুন"
     return complete, incomplete
 
 

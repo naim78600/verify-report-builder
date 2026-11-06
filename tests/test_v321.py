@@ -109,3 +109,47 @@ def test_a_pending_file_row_also_follows_its_latest_trip():
     keep = fold_incomplete([pk, ex])
     assert "Signatory not available" not in keep.summary.done and "LOI" in keep.summary.done
     assert "Signatory not available" not in keep.summary.due
+
+
+# ---------------------------------------------------------------- Incomplete = only Hold / Finished / Partially Submitted
+def _pending(fid, file_status, status_code=2, recv=D(2026, 10, 20, 10), extra_tat=0):
+    r = BillRow()
+    r.file_id, r.file_no, r.kind, r.file_status = fid, f"PL-{fid}", "Package", file_status
+    r.trips = [({"role": "APPLICANT"}, {"id": fid * 10, "status_code": status_code, "remarks": "", "comment": "", "appointments": [],
+                                         "created_at": recv})]
+    r.receive_dt, r.extra_tat = recv, extra_tat
+    return r
+
+
+def _select(rows, mode):
+    from datetime import date
+    from report_builder.billing import select_rows
+    kw = dict(mode=mode, report_date=date(2026, 11, 6))
+    if mode == "range":
+        kw.update(w_from=date(2026, 8, 8), w_till=date(2026, 11, 6))
+    else:
+        kw.update(w_from=date(2026, 8, 8), hset=set())
+    return select_rows(rows, **kw)[1]
+
+
+def test_running_files_are_never_in_incomplete_even_past_the_sla_in_both_modes():
+    running_late = _pending(1, file_status=2, extra_tat=5)         # On Going, SLA crossed
+    created = _pending(2, file_status=1, extra_tat=3)               # Created, SLA crossed
+    running_ok = _pending(3, file_status=2, extra_tat=0)
+    hold = _pending(4, file_status=3, status_code=4)
+    finished = _pending(5, file_status=4, status_code=5)
+    for mode in ("range", "tracker"):
+        got = sorted(r.file_no for r in _select([running_late, created, running_ok, hold, finished], mode))
+        assert got == ["PL-4", "PL-5"], (mode, got)
+
+
+def test_a_partially_submitted_file_is_listed_in_both_modes():
+    from datetime import date
+    from report_builder.billing import select_rows
+    r = _pending(6, file_status=7, status_code=5)
+    r.partial_events = [D(2026, 11, 5, 11, 0)]
+    for mode in ("range", "tracker"):
+        kw = dict(mode=mode, report_date=date(2026, 11, 6), w_from=date(2026, 8, 8), hset=set())
+        if mode == "range":
+            kw["w_till"] = date(2026, 11, 6)
+        assert [x.file_no for x in select_rows([r], **kw)[1]] == ["PL-6"], mode

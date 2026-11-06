@@ -5,8 +5,9 @@ Workbook:   Complete Report | Incomplete Report | Summary | Holidays | (Check Li
 Each report sheet has: banner, info line, KPI tiles, one header row and the table.  The only filter buttons are on
 **File No** and **Last Update Date** (all other columns have their button hidden).
 A light sky-blue cell means "no reason / detail could be found for this cell" - fill it in (the file is editable) or leave it.
-The Incomplete sheet has a "Pending Reason" column: an Appointment, an On Going file still inside its SLA, a Hold with a
-written reason, or the documents named in Due for a Partially Submitted file.
+The Incomplete sheet lists only Hold / Finished-not-submitted / Partially Submitted files (never a running On Going file) and
+has a "Pending Reason" column: a Hold with its written reason (and any Appointment), "Finished - not yet submitted", or the
+documents named in Due for a Partially Submitted file.
 
 TAT and Extra TAT are LIVE Excel formulas:
     TAT       = MAX(0, NETWORKDAYS.INTL(Receive+1, Submission, "0000110", Holidays))      (Fri + Sat off)
@@ -414,8 +415,7 @@ def _sum_sheet(wb: Workbook, d: PrimeData) -> None:
         _put(s, r, 2, "Rows", font=Font(name=FONT, bold=True, color=T.WHITE), fill=_fill(T.NAVY_DARK), alignment=cen)
         r += 1
         kinds = (("hold", "Hold (comment / appointment written)"), ("finished", "Finished, not yet submitted"),
-                 ("partial", "Partially Submitted (documents due)"), ("appointment", "On Going past its SLA, appointment given"),
-                 ("ongoing", "On Going, within SLA"), ("", "On Going past its SLA, reason not found (light-blue cell)"))
+                 ("partial", "Partially Submitted (documents due)"), ("", "Reason not found (light-blue cell)"))
         for i, (k, label) in enumerate(kinds):
             n = sum(1 for x in d.incomplete if x.reason_kind == k)
             line_f = _fill(T.ZEBRA) if i % 2 else None

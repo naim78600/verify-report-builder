@@ -36,7 +36,7 @@ def test_rows_and_selection(data):
     assert sorted(map(key, d.complete)) == sorted([
         ("PL-20261026000001", "ReCpv"), ("CC-20261101000002", "Package"), ("CC-20260115000004", "Extra"),
         ("CC--20261027000006", "Package"), ("CC--20261027000006", "Single"), ("CC--20261027000006", "Single")])
-    assert sorted(map(key, d.incomplete)) == sorted([("PL-20261020000003", "Package"), ("PL-20250901000005", "ReCpv")])
+    assert sorted(map(key, d.incomplete)) == sorted([("PL-20261020000003", "Package"), ("PL-20250901000005", "ReCpv")])      # this fixture asks for scope all_pending (running F5 included)
     assert d.old_files == 1                                            # F5 (by tracker); F4 is already in the dashboard's Submitted list
     ck = d.dash["check"]
     assert (ck["dashboard"], ck["matched"], ck["missing"], ck["extra"]) == (4, 4, [], 0) and ck["partial"] == 0
@@ -277,11 +277,11 @@ def test_range_mode_lists_what_the_dashboard_lists(tmp_path):
         # F7 is in the dashboard's list (submitted again on 02-Nov) but its first Submitted event was 01-Nov: it is reported, not hidden
         assert [no for no, _why in ck["missing"]] == ["PL-20261020000007"] and "01/11/2026" in ck["missing"][0][1]
         assert any("PL-20261020000007" in n for n in d.notes)
-        # a wider range keeps working: rows received inside it that are still open stay in Incomplete
+        # a wider range keeps working: the Partially Submitted file stays in Incomplete, the running (On Going) F5 never comes in
         cfg2 = PrimeConfig(web=base, api=base, server_label="mock", email="test@example.com", password="secret", days=30,
                            mode="range", date_from=date(2026, 10, 1), date_till=date(2026, 11, 3))
         d2 = collect_prime(cfg2, lambda *a: None, threading.Event())
-        assert {r.file_no for r in d2.incomplete} >= {"PL-20261020000003", "PL-20250901000005"}
+        assert {r.file_no for r in d2.incomplete} == {"PL-20261020000003"}
         assert d2.dash["check"]["missing"] == []                       # the full range: every Submitted file has a Complete row
         # a range that ENDS before a later submission: that row was still waiting on its last day
         cfg3 = PrimeConfig(web=base, api=base, server_label="mock", email="test@example.com", password="secret", days=30,
@@ -340,7 +340,7 @@ def test_tracker_window_rollover_and_incomplete_scope():
         assert d1.dash["check"]["missing"] == [] and d1.dash["check"]["matched"] == 1
         assert nos(run(date(2026, 11, 1), "partial_today").incomplete) == ["PL-20261020000003"]   # F3 became Partially Submitted on Fri 30-Oct
         # v3.2 default (rules by file status): F3 (Partially Submitted, appointment given), F6 / F1 / the Nov-1 file (Finished, not Submitted
-        # until Monday = "not yet submitted").  On Going files inside their SLA are NOT listed.
+        # until Monday = "not yet submitted").  On Going files (inside or past their SLA) are NOT listed.
         assert d1.incomplete_scope == "sla_partial"
         assert nos(d1.incomplete) == ["CC--20261027000006", "CC-20261101000002", "PL-20261020000003", "PL-20261026000001"]
         assert len(d1.incomplete) == 4                                  # ONE row per file
@@ -358,13 +358,13 @@ def test_tracker_window_rollover_and_incomplete_scope():
         d2 = run(date(2026, 11, 2))
         assert d2.track_from == date(2026, 11, 2) and "CC-20261027000008" not in nos(d2.complete)
         assert d2.incomplete_scope == "sla_partial"
-        assert nos(d2.incomplete) == ["PL-20250901000005", "PL-20261020000003", "PL-20261028000009"]
+        assert nos(d2.incomplete) == ["PL-20261020000003", "PL-20261028000009"]          # F5 (On Going, past its SLA) is running -> not listed
         by = {r.file_no: r for r in d2.incomplete}
         f9r = by["PL-20261028000009"]
         assert f9r.status == "Incomplete" and f9r.status_note == "Partially Submitted" and f9r.reason_kind == "partial"
         assert by["PL-20261020000003"].reason_kind == "partial" and "Appointment" in by["PL-20261020000003"].reason \
             and "reason" not in by["PL-20261020000003"].flags
-        assert by["PL-20250901000005"].reason == "" and "reason" in by["PL-20250901000005"].flags        # nothing found -> light-blue cell
+        assert "PL-20250901000005" not in by
         assert nos(run(date(2026, 11, 2), "partial_today").incomplete) == ["PL-20261028000009"]
         # the wider lists
         assert nos(run(date(2026, 11, 2), "partial_open").incomplete) == ["PL-20261020000003", "PL-20261028000009"]

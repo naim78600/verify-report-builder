@@ -77,8 +77,8 @@ def _status_paragraph(f: MailFacts, c: dict) -> str:
 def render(template_id: str, f: MailFacts) -> tuple[str, str]:
     """-> (subject, body text)."""
     c = _ctx(f)
-    reasons = ("For every pending file the Incomplete Report states the reason - an appointment given, a hold remark, "
-               "the file being within its SLA, or the documents still due for a partially submitted file.")
+    reasons = ("For every pending file the Incomplete Report states the reason - the hold remark (with any appointment given), "
+               "that the file is finished but not yet submitted, or the documents still due for a partially submitted file.")
     if template_id == "concise":
         subject = f"Verification Submission Tracker – {c['bank']} – {c['date_dmy']} – {c['ordinal']} Phase"
         body = (f"Dear Sir / Madam,\n\nPlease find attached the {c['ordinal']}-phase Submission Tracker of {c['bank']} for "
