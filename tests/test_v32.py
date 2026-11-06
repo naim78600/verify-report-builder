@@ -84,8 +84,8 @@ def test_listing_by_file_status():
     ongoing_late = [_row(6, "Package", 61, status_code=2, extra_tat=3)]
     hold = [_row(6, "Package", 61, status_code=4, extra_tat=0, file_status=3)]
     finished = [_row(6, "Package", 61, status_code=5, extra_tat=0, file_status=4)]
-    assert not listed_by_status(ongoing_ok, "pending")            # running, SLA not breached -> not late
-    assert listed_by_status(ongoing_late, "pending")
+    assert not listed_by_status(ongoing_ok, "pending")            # running -> never listed ...
+    assert not listed_by_status(ongoing_late, "pending")          # ... also after its SLA is crossed (v3.2.1: nobody wants a running trip's report)
     assert listed_by_status(hold, "pending")                      # Hold is always listed ...
     assert listed_by_status(finished, "pending")                  # ... and so is Finished-but-not-submitted
     partial = [_row(6, "Package", 61, status_code=2, extra_tat=0, file_status=6)]      # Submitted now, but "Partially Submitted" at the report time

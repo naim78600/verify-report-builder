@@ -209,6 +209,8 @@ class Summary:
     reasons: list = field(default_factory=list)
     done_parts: list = field(default_factory=list)   # [(text, style)]  style: ok | note   (for coloured output)
     due_parts: list = field(default_factory=list)
+    done_items: list = field(default_factory=list)   # the Items behind the text (apply_later re-checks the Due ones)
+    due_items: list = field(default_factory=list)
 
     def text(self) -> str:
         return f"Done-{self.done}\nDue-{self.due}"
@@ -453,6 +455,10 @@ def analyze(views: list[TripView], submitted: bool, bank_label: str = "BS") -> S
     problems = [i.problem_only(info) for i in done if i.is_problem(info)]
     due = _merge(problems + due)
 
+    return _finish(done, due, list(skipped), submitted)
+
+
+def _finish(done: list[Item], due: list[Item], skipped: list[str], submitted: bool) -> Summary:
     uncertain, reasons = bool(skipped), list(skipped)
     for it in done + due:
         if it.uncertain:
@@ -460,13 +466,32 @@ def analyze(views: list[TripView], submitted: bool, bank_label: str = "BS") -> S
             reasons.extend(it.reasons)
     reasons = list(dict.fromkeys(reasons))
     s = Summary(done=_render(done) or "0", due=_render(due) or "0", uncertain=uncertain, reasons=reasons,
-                done_parts=_parts(done) or [("0", "ok")], due_parts=_parts(due) or [("0", "ok")])
+                done_parts=_parts(done) or [("0", "ok")], due_parts=_parts(due) or [("0", "ok")],
+                done_items=done, due_items=due)
     if not submitted and not due:
         s.due = "Report not yet submitted"
         s.due_parts = [(s.due, "note")]
         s.uncertain = True
         s.reasons.append("সব ট্রিপ শেষ কিন্তু রিপোর্ট Submitted নয়")
     return s
+
+
+def apply_later(own: Summary, later: Summary, submitted: bool) -> Summary:
+    """Report Summary = the LAST update.  `own` = Done / Due of a row's own trips; `later` = the summary of trips of the same file that
+    came AFTER them (a Re-CPV / Extra trip listed inside this row).  An item that is still Due in `own` and was done again by a later
+    trip (the LOI document trip created after "signatory not available", finished and submitted with the file) takes the later outcome
+    in Done, and leaves Due - or stays Due with the later wording if that outcome is a problem again.  Items that are not Due, and
+    items the row did not have, are not touched."""
+    info = info_notes()
+    redone = {(i.who, i.label): i for i in later.done_items if i.rank == 2}
+    hit = {(i.who, i.label) for i in own.due_items if (i.who, i.label) in redone}
+    if not hit:
+        return own
+    done = [redone[(i.who, i.label)] if (i.who, i.label) in hit else i for i in own.done_items]
+    due = [i for i in own.due_items if (i.who, i.label) not in hit]
+    due += [redone[k].problem_only(info) for k in hit if redone[k].is_problem(info)]
+    skipped = [r for r in own.reasons if not any(r in i.reasons for i in own.done_items + own.due_items)]
+    return _finish(done, _merge(due), skipped, submitted)
 
 
 def _merge(items: list[Item]) -> list[Item]:

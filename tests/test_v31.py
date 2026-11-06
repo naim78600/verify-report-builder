@@ -40,19 +40,19 @@ def _sub(fid, when):
 def extra_files():
     """Four files that copy what the live dashboard showed on 05/11/2026:
        G1 Submitted file whose old extra rows are Canceled / Inactive   -> must NOT be Incomplete (dashboard: Submitted)
-       G2 Submitted, then re-opened by a new extra trip, now On Going    -> Incomplete (only the new row)
-       G3 never submitted, overdue, with a live and a canceled extra row -> Incomplete (package + live extra; canceled row hidden)
-       G4 never submitted but received on the report day (inside SLA)    -> not listed"""
+       G2 Submitted, then re-opened by a new extra trip, now on Hold     -> Incomplete (only the new row)
+       G3 never submitted, on Hold, with a live and a canceled extra row -> Incomplete (package + live extra; canceled row hidden)
+       G4 never submitted, received on the report day, On Going          -> not listed (a running file is never listed)"""
     s = mock_server.start_scenario(0)
     cid = iter(range(9100000, 9200000))
     g1 = ps.application(500101, "PL-20261010000101", "2026-10-10 10:00:00", 6, [ps.concern(next(cid), 500101, "APPLICANT", "G ONE", [
         ps.trip(710001, 0, "HOUSE", 5, "2026-10-10 10:00:00", ps.OK),
         ps.trip(710002, 0, "DOCUMENT", 6, "2026-10-13 10:00:00", "", "LOI VERIFICATION"),       # canceled extra, created before the last Submit
         ps.trip(710003, 0, "DOCUMENT", 7, "2026-10-13 11:00:00", "", "LOI VERIFICATION")])])   # inactive extra
-    g2 = ps.application(500102, "PL-20261010000102", "2026-10-10 10:00:00", 2, [ps.concern(next(cid), 500102, "APPLICANT", "G TWO", [
+    g2 = ps.application(500102, "PL-20261010000102", "2026-10-10 10:00:00", 3, [ps.concern(next(cid), 500102, "APPLICANT", "G TWO", [
         ps.trip(710011, 0, "HOUSE", 5, "2026-10-10 10:00:00", ps.OK),
         ps.trip(710012, 0, "DOCUMENT", 2, "2026-10-26 10:00:00", "", "LOI VERIFICATION")])])
-    g3 = ps.application(500103, "PL-20261026000103", T0, 2, [ps.concern(next(cid), 500103, "APPLICANT", "G THREE", [
+    g3 = ps.application(500103, "PL-20261026000103", T0, 3, [ps.concern(next(cid), 500103, "APPLICANT", "G THREE", [
         ps.trip(710021, 0, "HOUSE", 2, T0, ""),
         ps.trip(710022, 0, "DOCUMENT", 2, "2026-11-02 09:00:00", "", "LOI VERIFICATION"),
         ps.trip(710023, 0, "DOCUMENT", 6, "2026-10-28 09:00:00", "", "LOI VERIFICATION")])])

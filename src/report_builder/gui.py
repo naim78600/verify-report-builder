@@ -230,8 +230,9 @@ class App(tk.Tk):
                                         bg=P["card"], activebackground=P["card"], font=f.tiny, fg=P["text"], anchor="w", justify="left",
                                         highlightthickness=0, selectcolor="white")
         self.day_warn = tk.Label(b, text="", bg=P["card"], fg=P["warn"], font=f.tiny, anchor="w", justify="left", wraplength=380)
-        self.rule_hint = tk.Label(b, text="Incomplete = ড্যাশবোর্ডে এখনও Submitted হয়নি এমন ফাইল, যেগুলো SLA পার (In ২ / Out ৪ কর্মদিবস, ফাইলের Start Date থেকে) "
-                                          "+ Partially Submitted। Submitted ফাইল কখনো Incomplete-এ আসে না। কারণ না পেলে ঘর হালকা নীল। লুক-ব্যাক ৯০ দিন।",
+        self.rule_hint = tk.Label(b, text="Incomplete = ড্যাশবোর্ডে এখনও Submitted হয়নি এমন ফাইলের মধ্যে শুধু Hold (কারণসহ), Finished কিন্তু Submit হয়নি, "
+                                          "আর Partially Submitted। On Going / Created (চলমান) ফাইল আসে না। Submitted ফাইল কখনো Incomplete-এ আসে না। "
+                                          "কারণ না পেলে ঘর হালকা নীল। লুক-ব্যাক ৯০ দিন।",
                                   bg=P["card"], fg=P["mute"], font=f.tiny, anchor="w", justify="left", wraplength=380)
         self.rule_hint.pack(fill="x", pady=(8, 0))
 
