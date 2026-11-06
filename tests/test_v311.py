@@ -65,3 +65,16 @@ def test_pdf_long_cells_become_short_summaries(d, tmp_path):
     assert ap.count("Appointment:") == 2 and "+7 more appointments" in ap
     assert len(r.appointments) == 9                                          # the row itself is not changed
     assert build_prime_pdf(d, tmp_path / "s.pdf").exists()
+
+
+@pytest.mark.skipif(__import__("shutil").which("pdftotext") is None, reason="poppler (pdftotext) not installed")
+def test_pdf_incomplete_table_shows_the_pending_reason(d, tmp_path):
+    """The banker reads the PDF: every Incomplete row must say WHY it is pending (Hold comment, Finished - not yet submitted ...)."""
+    import subprocess
+    d.incomplete[0].reason, d.incomplete[0].reason_kind = "Hold: customer abroad until 12 Nov | Appointment 12/11/2026 11:00 AM", "hold"
+    d.incomplete[1].reason, d.incomplete[1].reason_kind = "Finished - not yet submitted", "finished"
+    out = build_prime_pdf(d, tmp_path / "r.pdf")
+    txt = subprocess.run(["pdftotext", "-raw", str(out), "-"], capture_output=True, text=True).stdout
+    txt = " ".join(txt.split())
+    assert "Pending Reason" in txt
+    assert "customer abroad until 12 Nov" in txt and "Finished - not yet submitted" in txt
