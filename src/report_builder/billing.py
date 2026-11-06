@@ -590,31 +590,43 @@ def _live_trips(rs: list[BillRow]) -> list[dict]:
 
 
 def pending_kind(rs: list[BillRow], state: str = "pending") -> str:
-    """What is the (not yet submitted) FILE doing right now?  Looks at the live trips of its pending rows and at the
-    dashboard's file status:   partial | hold | ongoing | finished | dead
-        partial   Partially Submitted (documents still due)
-        hold      the file / a live trip is on Hold
-        ongoing   a live trip is Created / Allocated / Started (the work is still running)
-        finished  every live trip is Finished, but the file was not Submitted
-        dead      nothing live is left (all Canceled / Inactive / Withdrawn)"""
-    if state == "partial":
-        return "partial"
+    """What is the (not yet submitted) FILE doing?  The status the dashboard shows for the file decides:
+        partial   Partially Submitted (documents still due)          hold      Hold
+        ongoing   Created / On Going (the work is still running)     finished  Finished, but not Submitted
+        dead      nothing live is left (every trip Canceled / Inactive / Withdrawn)
+    A file that is Submitted NOW (or became Partially Submitted only later) but was still waiting at the report time - a report
+    made for an earlier moment - has no such status any more: then the activity log and the live trips say what it was."""
     live = _live_trips(rs)
     if not live:
         return "dead"
     fs = rs[0].file_status
-    if fs == 3 or any(t.get("status_code") == 4 for t in live):
+    if fs == 3:
         return "hold"
-    if any(t.get("status_code") in (1, 2, 3) for t in live):
+    if fs in (1, 2):
         return "ongoing"
-    return "finished"
+    if fs == 4:
+        return "finished"
+    if state == "partial":                          # the activity log (as of the report time) says Partially Submitted
+        return "partial"
+    if any(t.get("status_code") == 4 for t in live):
+        return "hold"
+    return "ongoing" if any(t.get("status_code") in (1, 2, 3) for t in live) else "finished"
+
+
+def _due_text(r: BillRow, mates: list[BillRow]) -> str:
+    for m in [r] + list(mates):
+        due = m.summary.due.replace("\n", " ").strip()
+        if due not in ("", "0", "Report not yet submitted"):
+            return due[:90]
+    return ""
 
 
 def classify_reason(r: BillRow, mates: list[BillRow] | None = None, state: str = "pending") -> None:
     """Why is the file not submitted?  Sets r.reason / r.reason_kind (empty = nothing found -> light-blue cell + Check List line).
     `mates` = every pending row of the same file (the reason belongs to the FILE, not to one bill row).
         Partially Submitted   the documents named in Due
-        Hold                  "Hold: <the remark written on the dashboard>"   (always listed; a Hold without a remark is flagged)
+        Hold                  "Hold: <the comment written when it was put on Hold>"; without a comment the given appointment explains it,
+                              and only a Hold with neither is flagged
         Finished              "Finished - not yet submitted"
         Appointment           the newest given appointment (added to the above, or alone for an On Going file past its SLA)
         On Going              only inside its SLA = a valid reason by itself ("On Going, within SLA")"""
@@ -623,32 +635,35 @@ def classify_reason(r: BillRow, mates: list[BillRow] | None = None, state: str =
     if r.submitted:
         return
     kind = pending_kind(mates, state)
+    due = _due_text(r, mates)
+    appts = sorted((a for m in mates for a in m.appointments if a.get("active", True) and a.get("time")),
+                   key=lambda a: a["time"])
     parts: list[tuple[str, str]] = []
     if kind == "partial":
-        due = r.summary.due.replace("\n", " ").strip()
-        if due in ("", "0", "Report not yet submitted"):
-            due = next((m.summary.due.replace("\n", " ").strip() for m in mates
-                        if m.summary.due.strip() not in ("", "0", "Report not yet submitted")), "")
         if due:
-            parts.append(("partial", "Partially Submitted: " + due[:90]))
+            parts.append(("partial", "Partially Submitted: " + due))
     elif kind == "hold":
         texts = []
         for t in _live_trips(mates):
             if t.get("status_code") == 4:
-                text = " ".join(x for x in (clean_text(t.get("remarks")), clean_text(t.get("comment"))) if x)
-                if len(text) >= 4 and text not in texts:
+                text = clean_text(t.get("comment")) or clean_text(t.get("remarks"))
+                if len(text) >= 3 and text not in texts:
                     texts.append(text)
         if texts:
             parts.append(("hold", "Hold: " + " / ".join(texts)[:120]))
         else:
-            parts.append(("hold", "Hold: no reason written on the dashboard"))
+            parts.append(("hold", "Hold"))
+        if state == "partial" and due:
+            parts.append(("partial", "Partially Submitted: " + due))
+        if not texts and not appts and not (state == "partial" and due):
+            parts[0] = ("hold", "Hold: no reason written on the dashboard")
             r.flags["reason"] = "Hold-এর কারণ ড্যাশবোর্ডে লেখা নেই"
     elif kind == "finished":
         parts.append(("finished", "Finished - not yet submitted"))
-    appts = sorted((a for m in mates for a in m.appointments if a.get("active", True) and a.get("time")),
-                   key=lambda a: a["time"])
-    if appts and not (parts and parts[0][0] == "partial" and "appointment" in parts[0][1].lower()):
-        parts.append(("appointment", f"Appointment {appts[-1]['time']:%d/%m/%Y %I:%M %p}"))
+    if appts and not (parts and parts[-1][0] == "partial" and "appointment" in parts[-1][1].lower()):
+        a = appts[-1]
+        why = clean_text(a.get("reason"))
+        parts.append(("appointment", f"Appointment {a['time']:%d/%m/%Y %I:%M %p}" + (f" ({why[:40]})" if why else "")))
     if not parts and kind == "ongoing" and not any(m.sla_breach for m in mates):
         parts.append(("ongoing", "On Going, within SLA"))
     if parts:

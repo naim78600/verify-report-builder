@@ -98,22 +98,23 @@ def _trip(code, remarks="", comment=""):
 
 
 def test_reason_kinds():
-    ap = _row(trips=[_trip(2)], appointments=[{"active": True, "time": datetime(2026, 11, 4, 12, 0), "type": "", "reason": "x"}])
+    ap = _row(trips=[_trip(2)], appointments=[{"active": True, "time": datetime(2026, 11, 4, 12, 0), "type": "", "reason": "Not available"}], sla_breach=True)
     classify_reason(ap)
-    assert ap.reason_kind == "appointment" and "04/11/2026 12:00 PM" in ap.reason
-    hold = _row(trips=[_trip(4, "Applicant is abroad, will return next week.")])
+    assert ap.reason_kind == "appointment" and ap.reason == "Appointment 04/11/2026 12:00 PM (Not available)"
+    hold = _row(trips=[_trip(4, comment="Applicant is abroad, will return next week.")], file_status=3)
     classify_reason(hold)
-    assert hold.reason_kind == "hold" and hold.reason.startswith("Hold: Applicant is abroad")
-    hold_no_remark = _row(trips=[_trip(4, "")], sla_breach=True)
+    assert hold.reason_kind == "hold" and hold.reason == "Hold: Applicant is abroad, will return next week."
+    hold_no_remark = _row(trips=[_trip(4, "")], sla_breach=True, file_status=3)
     classify_reason(hold_no_remark)
     assert hold_no_remark.reason_kind == "hold" and hold_no_remark.reason == "Hold: no reason written on the dashboard"
-    assert "reason" in hold_no_remark.flags                                       # a Hold is always listed; no written reason -> light-blue cell
-    fin = _row(trips=[_trip(5)])
+    assert "reason" in hold_no_remark.flags                                       # a Hold is always listed; nothing explains it -> light-blue cell
+    hold_appt = _row(trips=[_trip(4, "")], file_status=3,
+                     appointments=[{"active": True, "time": datetime(2026, 11, 8, 11, 0), "type": "", "reason": ""}])
+    classify_reason(hold_appt)
+    assert hold_appt.reason == "Hold | Appointment 08/11/2026 11:00 AM" and "reason" not in hold_appt.flags   # the appointment explains the Hold
+    fin = _row(trips=[_trip(5)], file_status=4)
     classify_reason(fin)
     assert fin.reason_kind == "finished" and fin.reason == "Finished - not yet submitted"
-    hold_appt = _row(trips=[_trip(4, "Customer is out of the country")], appointments=[{"active": True, "time": datetime(2026, 11, 8, 11, 0), "type": "", "reason": "x"}])
-    classify_reason(hold_appt)
-    assert hold_appt.reason == "Hold: Customer is out of the country | Appointment 08/11/2026 11:00 AM"
     going = _row(trips=[_trip(2)], sla_breach=False)
     classify_reason(going)
     assert going.reason_kind == "ongoing" and going.reason == "On Going, within SLA"
@@ -124,6 +125,10 @@ def test_reason_kinds():
     done.status = "Submitted"
     classify_reason(done)
     assert done.reason == ""
+    # a file that is Submitted NOW but was waiting at the report time: the live trips say what it was
+    past = _row(trips=[_trip(4, comment="Customer asked to wait")], file_status=6)
+    classify_reason(past)
+    assert past.reason == "Hold: Customer asked to wait"
 
 
 def test_pending_reason_cell_and_blue_flag(srv, tmp_path):

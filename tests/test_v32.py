@@ -88,12 +88,13 @@ def test_listing_by_file_status():
     assert listed_by_status(ongoing_late, "pending")
     assert listed_by_status(hold, "pending")                      # Hold is always listed ...
     assert listed_by_status(finished, "pending")                  # ... and so is Finished-but-not-submitted
-    assert listed_by_status(ongoing_ok, "partial")                # Partially Submitted always
+    partial = [_row(6, "Package", 61, status_code=2, extra_tat=0, file_status=6)]      # Submitted now, but "Partially Submitted" at the report time
+    assert listed_by_status(partial, "partial")                   # Partially Submitted always
 
 
 def test_reason_is_worked_out_over_the_whole_file():
     pk = _row(7, "Package", 71, status_code=5, file_status=3)
     hold_row = _row(7, "Extra", 72, status_code=4, file_status=3)
-    hold_row.trips = [({}, {"id": 72, "status_code": 4, "remarks": "Applicant abroad until 12 Nov", "comment": ""})]
+    hold_row.trips = [({}, {"id": 72, "status_code": 4, "remarks": "", "comment": "Applicant abroad until 12 Nov"})]
     classify_reason(pk, [pk, hold_row])
     assert pk.reason_kind == "hold" and pk.reason == "Hold: Applicant abroad until 12 Nov"
