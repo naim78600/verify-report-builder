@@ -1,4 +1,4 @@
-# Verify Report Builder v3.1.0 (ভেরিফাই রিপোর্ট বিল্ডার)
+# Verify Report Builder v3.1.1 (ভেরিফাই রিপোর্ট বিল্ডার)
 
 Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্যার। Verify ড্যাশবোর্ড থেকে Prime Bank PLC-এর ফাইল সংগ্রহ করে **দৈনিক সাবমিশন ট্র্যাকার** (Complete + Incomplete) বানায় এবং **সরাসরি ব্যাংককে ইমেইল** পাঠায়।
 **Verify থেকে শুধু তথ্য পড়ে (GET); কোনো তথ্য বদলায় না।** লগইন পাসওয়ার্ড ও ইমেইলের App Password কোথাও সংরক্ষণ হয় না।
@@ -29,6 +29,7 @@ Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্�
 
 - **Complete =** ফাইলের activity log-এ `status updated to SUBMITTED` ঘটনার দিন। শুক্র/শনি/ছুটির সাবমিশন পরের কর্মদিবসের ট্র্যাকারে যায় (তারিখও সেই দিনের)।
 - **Incomplete = ফাইল-ভিত্তিক, ড্যাশবোর্ডের মতো (v3.1):** যে ফাইল রিপোর্টের মুহূর্তে **Submitted নয়** (On Going / Hold / Finished / Created, অথবা Submitted হওয়ার পর নতুন Re-CPV/Extra ট্রিপে আবার খোলা) এবং ফাইলের **Start Date** থেকে গুনে **SLA পেরিয়েছে** (In ২ / Out ৪ কর্মদিবস; Extra TAT = TAT − SLA > ০), **অথবা Partially Submitted** (Due-এ লেখা থাকে কোন ডকুমেন্ট বাকি)। এমন ফাইলের Submitted-না-হওয়া সব সারি তালিকায় আসে। **ড্যাশবোর্ডে Submitted ফাইলের কোনো সারি কখনো Incomplete-এ আসে না** (v3.0-তে পুরনো Canceled/Inactive Extra/Re-CPV সারির কারণে Submitted ফাইলও আসত — সেটাই ছিল অমিলের বড় কারণ)। Canceled / Withdrawn ফাইল ও Canceled ট্রিপের Extra সারি বাদ। টেস্ট ফাইল (নম্বরে `Test`, যেমন `PB-PL-Test-123456`) বাদ। **লুক-ব্যাক ৯০ দিন** (নির্দিষ্ট)।
+- **PDF (v3.1.1):** কোনো সারির লেখা এক পাতার চেয়ে লম্বা হলে ঘরটি ছোট হয়ে পাতায় ঢোকে (তথ্য বাদ যায় না; History কলামে সর্বশেষ ১৫টি, বাকিগুলো Excel-এ)। PDF কোনো কারণে না হলেও Excel তৈরি হয় এবং কারণ জানানো হয়।
 - **In** = শুধু Dhaka (DNCC, DSCC) ও Chattogram সিটি কর্পোরেশন; বাকি সব Out।
 - **ফেজ:** *1st (3:30 PM)* = বিকেল ৩টা পর্যন্ত অবস্থা (৩টার পর Submitted হওয়া ফাইল তখনও Pending); *2nd (7:00 PM)* = পুরো দিন। Excel-এ ‘Before / After 3 PM’ কলাম; ছুটির দিন থেকে সরে আসা সারি ‘Before 3 PM’ ধরা হয়।
 - **Pending Reason কলাম (Incomplete শিটে):** Appointment (তারিখ-সময়) · Hold (লেখা রিমার্ক) · Partially Submitted (Due-এর ডকুমেন্ট) · On Going, within SLA। **কিছু না পেলে ঘরটি হালকা আকাশি নীল** থাকে এবং *Check List* শিটে কারণ লেখা হয়।

@@ -20,12 +20,16 @@ from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas as rl_canvas
-from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import KeepInFrame, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from . import theme as T
 from .billing import SLA_IN, SLA_OUT, before_after
 from .collect_prime import PrimeData, title_for
 from .report_text import appointment_lines, bill_slab_lines, has_due, last_update_lines, summary_lines
+
+HIST_MAX = 15             # history lines shown per row in the PDF (newest); the Excel has them all
+MAX_CELL_H = 600          # points; the page frame is ~747 pt high, minus the repeated header row and the cell padding
+
 
 def _c(hexv: str):
     return colors.HexColor("#" + hexv)
@@ -137,6 +141,11 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
     scale = usable / (sum(widths_mm) * mm)
     widths = [w * mm * scale for w in widths_mm]
 
+    def cap(flow, col: int):
+        """A row can never be taller than a page (reportlab stops with a LayoutError).  A very long cell - e.g. the whole
+        history of a file with dozens of trips - is shrunk to fit instead of being cut: nothing is lost, the Excel has it too."""
+        return KeepInFrame(widths[col] - 6, MAX_CELL_H, [flow], mode="shrink", hAlign="LEFT", vAlign="TOP")
+
     def table_for(rows) -> Table:
         data = [[Paragraph(h, head) for h in heads]]
         style = [
@@ -158,14 +167,17 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
             xt = r.extra_tat if r.extra_tat is not None else ""
             sla_txt = "SLA Breach" if r.sla_breach else "Within SLA"
             sla_col = T.NEG if r.sla_breach else T.POS
-            hist = "\n".join(r.history_lines)
+            hl = r.history_lines
+            if len(hl) > HIST_MAX:                                   # PDF only - the Excel keeps the whole history
+                hl = [f"... {len(hl) - HIST_MAX} earlier events (full list in the Excel)"] + hl[-HIST_MAX:]
+            hist = "\n".join(hl)
             kc = T.KIND_TX.get(r.kind)
             data.append([
                 _p(r.sl, center),
                 Paragraph(f"<b><font color='#{T.NAVY}'>{escape(_safe(r.file_no))}</font></b><br/><font color='#{T.MUTED}'>{escape(r.file_type)}</font>", base),
-                _p("\n".join(r.concern_lines), base),
-                _p(hist, base),
-                Paragraph(_markup(bill_slab_lines(r), kc), base),
+                cap(_p("\n".join(r.concern_lines), base), 2),
+                cap(_p(hist, base), 3),
+                cap(Paragraph(_markup(bill_slab_lines(r), kc), base), 4),
                 Paragraph(f'<font color="#{T.OUT if out else T.IN}"><b>{r.area}</b></font>', center),
                 _p(f"{r.receive_dt:%d/%m/%Y}" if r.receive_dt else "", center),
                 Paragraph(when, center),
@@ -173,9 +185,9 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
                 Paragraph(f"<b><font color='#{sla_col}'>{xt}</font></b><br/><font size='6.6' color='#{sla_col}'>{sla_txt}<br/>"
                           f"(SLA {r.sla_days} days)</font>", center),
                 Paragraph(f'<font color="#{st_color}"><b>{status}</b></font>', center),
-                Paragraph(_markup(summary_lines(r)), base),
-                Paragraph(_markup(last_update_lines(r)), base),
-                Paragraph(_markup(appointment_lines(r)), base),
+                cap(Paragraph(_markup(summary_lines(r)), base), 11),
+                cap(Paragraph(_markup(last_update_lines(r)), base), 12),
+                cap(Paragraph(_markup(appointment_lines(r)), base), 13),
             ])
             style.append(("BACKGROUND", (4, i), (4, i), _c(T.KIND_BG.get(r.kind, "FFFFFF"))))
             style.append(("BACKGROUND", (5, i), (5, i), _c(T.OUT_BG if out else T.IN_BG)))
