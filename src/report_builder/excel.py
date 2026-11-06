@@ -14,6 +14,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
 from . import config
+from .summary import xml_safe
 from .collect import CollectResult
 from .model import file_trips
 
@@ -41,7 +42,7 @@ TRIP_STATUS_COLOR = {
 # ----------------------------------------------------------------------------- helpers
 def _clean(v):
     if isinstance(v, str):
-        return _ILLEGAL.sub("", v)
+        return xml_safe(_ILLEGAL.sub("", v))
     return v
 
 

@@ -100,6 +100,8 @@ class BillRow:
     partial_events: list = field(default_factory=list) # when the FILE became "Partially Submitted" (activity log, Dhaka time)
     file_status: int = 0                               # dashboard status code of the file (1..8)
     file_submitted: list = field(default_factory=list) # every SUBMITTED event of the file (activity log, Dhaka time)
+    logs_ok: bool = False                              # the activity log of the file was read
+    file_trips: list = field(default_factory=list)     # [(created_at, status_code)] of EVERY trip of the file (re-open detection)
     reason: str = ""                                   # why the row is still pending (appointment / within SLA / hold ...), "" = none found
     reason_kind: str = ""                              # appointment | hold | ongoing | partial | ""
     status: str = "Incomplete"
@@ -417,6 +419,8 @@ def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileL
         r.partial_events = list(logs.partial) if logs is not None and logs.ok else []
         r.file_status = int(file.get("status_code") or 0)
         r.file_submitted = list(logs.submitted) if logs is not None and logs.ok else []
+        r.logs_ok = bool(logs is not None and logs.ok)
+        r.file_trips = [(t.get("created_at"), t.get("status_code")) for _c, t in flat]
         views = [TripView(t, c["role"].upper(), info[c["id"]]["who"]) for c, t in trips]
         r.views = views
         r.summary = analyze(views, r.submitted, "BS")
@@ -519,7 +523,7 @@ def apply_as_of(rows: list[BillRow], cutoff: date | None, until: datetime | None
 
 INCOMPLETE_SCOPES = ("sla_partial", "partial_today", "partial_open", "all_pending")
 SCOPE_TEXT = {
-    "sla_partial": "SLA পেরোনো pending সারি + Partially Submitted ফাইলের বাকি সারি",
+    "sla_partial": "ড্যাশবোর্ডে এখনও Submitted হয়নি এমন ফাইলের pending সারি (ফাইল SLA পেরিয়েছে: In ২ / Out ৪ কর্মদিবস) + Partially Submitted ফাইল",
     "partial_today": "আজ Partially Submitted হয়েছে এমন ফাইলের বাকি সারি",
     "partial_open": "Partially Submitted হয়ে এখনও খোলা সব ফাইলের বাকি সারি",
     "all_pending": "Submitted না হওয়া সব সারি",
@@ -533,19 +537,46 @@ def tracker_window(report_date: date, hset: set[date] | None) -> tuple[date, dat
     return hol.previous_working_day(report_date, hset or set()) + timedelta(days=1), report_date
 
 
-def is_partial_open(r: BillRow, hi: date, today: date | None = None) -> bool:
-    """Was the FILE of this pending row waiting as "Partially Submitted" on day `hi`?  (activity log: a Partially Submitted
-    event on or before `hi`, after the row existed, and no Submitted event after it.)  A file that is Partially Submitted
-    right now but whose log could not be read still counts when the report is for today."""
+_TEST_FILE = re.compile(r"(^|[-_ ])test([-_ \d]|$)", re.IGNORECASE)
+
+
+def is_test_file(file_no: str) -> bool:
+    """Practice / test applications (e.g. "PB-PL-Test-123456") are not bank work and never belong in the bank's report."""
+    return bool(_TEST_FILE.search(file_no or ""))
+
+
+DEAD_TRIP = (6, 8)            # Canceled / Withdrawn trip: nothing left to submit for it
+
+
+def file_state(r: BillRow, as_of: datetime | None = None) -> str:
+    """What was the FILE (not one bill row) waiting for at `as_of` (None = now)?  The dashboard works per file, so the
+    Incomplete list does too:
+        "closed"     the file is Canceled / Withdrawn - it is never pending
+        "submitted"  it was Submitted and nothing was added after that - NO row of it is pending
+        "partial"    the last status event is Partially Submitted (documents still due)
+        "pending"    not submitted yet, or re-opened (a live trip - Re-CPV / extra - created after the last Submitted)
+    Activity log first; if the log could not be read the file stays "pending" (visible, flagged) instead of vanishing."""
     if r.file_status in (5, 8):
-        return False
-    events = [e for e in r.partial_events if e.date() <= hi]
-    if events:
-        last = max(events)
-        if r.receive_dt and last < r.receive_dt - timedelta(hours=1):
-            return False                                   # the row was created after the file had been partial
-        return not any(last < x and x.date() <= hi for x in r.file_submitted)
-    return r.file_status == 7 and not r.partial_events and today is not None and hi >= today
+        return "closed"
+    if not r.logs_ok:                                       # no log = no submission time: keep it visible (blue "status" cell) rather than lose it
+        return "partial" if r.file_status == 7 else "pending"
+    t = as_of or datetime.max
+    subs = [x for x in r.file_submitted if x <= t]
+    parts = [x for x in r.partial_events if x <= t]
+    last_sub = max(subs, default=None)
+    last_part = max(parts, default=None)
+    if last_part and (last_sub is None or last_part > last_sub):
+        return "partial"
+    if last_sub is None:
+        return "pending"
+    if any(ca and last_sub < ca <= t and sc not in DEAD_TRIP for ca, sc in r.file_trips):
+        return "pending"                                    # re-opened after its last submission
+    return "submitted"
+
+
+def is_dead_row(r: BillRow) -> bool:
+    """A Re-CPV / Extra row whose trips are all Canceled / Withdrawn is not a pending bill."""
+    return r.kind in ("ReCpv", "Extra") and bool(r.trips) and all(t.get("status_code") in DEAD_TRIP for _c, t in r.trips)
 
 
 def classify_reason(r: BillRow) -> None:
@@ -577,23 +608,29 @@ def classify_reason(r: BillRow) -> None:
 def select_rows(rows: list[BillRow], mode: str, report_date: date, w_from: date | None = None,
                 w_till: date | None = None, hset: set[date] | None = None,
                 scope: str = "sla_partial", today: date | None = None,
-                after3_only: bool = False) -> tuple[list[BillRow], list[BillRow]]:
+                after3_only: bool = False, as_of: datetime | None = None) -> tuple[list[BillRow], list[BillRow]]:
     """-> (complete rows, incomplete rows), each sorted by Receive Date then file number.
 
     Complete   = rows SUBMITTED inside the dates (tracker: on the report date and the days off just before it; range:
                  from..till), whenever they were received - exactly what the dashboard's Reports page lists for Submitted.
                  `after3_only` (second-phase mail): only the rows submitted after 3 PM, i.e. not sent in the first mail.
-    Incomplete = tracker, by `scope`:
-                   sla_partial   : (V3 default) a pending row whose own TAT is past its SLA (In 2 / Out 4 working days,
-                                   counted to the report date)  +  every pending row of a file that was waiting as
-                                   "Partially Submitted" on the report date (its Due text says which documents are missing)
+    Incomplete = decided PER FILE, like the dashboard (see file_state): only files that were NOT Submitted at `as_of`
+                 (default: the end of the report day) can have pending rows - a Submitted file never does.  Of such a file
+                 every live pending row is listed when, tracker, by `scope`:
+                   sla_partial   : (V3 default) the file is overdue - one of its pending rows is past its SLA, counted from
+                                   the file's Start Date (In 2 / Out 4 working days) - or it is "Partially Submitted"
+                                   (its Due text says which documents are missing)
                    partial_today / partial_open : only the Partially Submitted files (checked against the sent mails)
-                   all_pending   : every row not submitted yet (received inside the look-back window)
-                 range: rows not submitted yet that were received inside the dates."""
+                   all_pending   : every pending file (received inside the look-back window)
+                 range: pending rows of files not submitted yet, received inside the dates."""
     if scope not in INCOMPLETE_SCOPES:
         scope = "sla_partial"
     t_lo, t_hi = tracker_window(report_date, hset) if mode == "tracker" else (None, None)
-    complete, incomplete = [], []
+    if as_of is None:
+        as_of = datetime.combine(report_date if mode == "tracker" else (w_till or report_date), time(23, 59, 59))
+    complete: list[BillRow] = []
+    pending: dict[int, list[BillRow]] = {}
+    state_of: dict[int, str] = {}
     for r in rows:
         rd = r.receive_dt.date() if r.receive_dt else None
         if mode == "tracker":
@@ -603,30 +640,38 @@ def select_rows(rows: list[BillRow], mode: str, report_date: date, w_from: date 
                         continue
                     complete.append(r)
                 continue
-            if r.file_status in (5, 8):                                # canceled / withdrawn files are not pending
-                continue
             if rd is not None and rd > report_date:                    # not even received on that day
                 continue
             if rd is not None and w_from and rd < w_from:              # outside the look-back window
                 continue
-            if scope == "all_pending":
-                incomplete.append(r)
-            elif scope == "sla_partial":
-                if (r.extra_tat or 0) > 0 or is_partial_open(r, t_hi, today):
-                    incomplete.append(r)
-            else:
-                days = [e.date() for e in r.partial_events]
-                if scope == "partial_today" and any(t_lo <= x <= t_hi for x in days):
-                    incomplete.append(r)
-                elif scope == "partial_open" and any(x <= t_hi for x in days):
-                    incomplete.append(r)
         else:
             if r.submitted:
                 sd = r.sub_day or r.submitted_at.date()
                 if (w_from is None or sd >= w_from) and (w_till is None or sd <= w_till):
                     complete.append(r)
-            elif rd is not None and (w_from is None or rd >= w_from) and (w_till is None or rd <= w_till):
-                incomplete.append(r)
+                continue
+            if not (rd is not None and (w_from is None or rd >= w_from) and (w_till is None or rd <= w_till)):
+                continue
+        if is_dead_row(r):
+            continue
+        st = state_of.get(r.file_id)
+        if st is None:
+            st = state_of[r.file_id] = file_state(r, as_of)
+        if st in ("closed", "submitted"):                              # the dashboard says this file is done / withdrawn
+            continue
+        pending.setdefault(r.file_id, []).append(r)
+    incomplete: list[BillRow] = []
+    for fid, rs in pending.items():
+        if mode != "tracker" or scope == "all_pending":
+            keep = True
+        elif scope == "sla_partial":
+            keep = state_of[fid] == "partial" or any((x.extra_tat or 0) > 0 for x in rs)
+        else:
+            days = [e.date() for e in rs[0].partial_events]
+            keep = (scope == "partial_today" and any(t_lo <= x <= t_hi for x in days)) or \
+                   (scope == "partial_open" and any(x <= t_hi for x in days))
+        if keep:
+            incomplete.extend(rs)
     key = lambda r: (r.receive_dt or datetime.max, r.file_no, r.trips[0][1]["id"] or 0)   # noqa: E731
     complete.sort(key=key)
     incomplete.sort(key=key)
@@ -640,23 +685,46 @@ def select_rows(rows: list[BillRow], mode: str, report_date: date, w_from: date 
     return complete, incomplete
 
 
+FILE_STATUS_NAME = {1: "Created", 2: "On Going", 3: "Hold", 4: "Finished", 5: "Canceled", 6: "Submitted", 7: "Partially Submitted", 8: "Withdrawn"}
+
+
 def dashboard_check(d) -> dict:
     """Compare the dashboard's own Submitted list (same dates) with the Complete Report, file by file.
-    -> {dashboard, report_files, matched, extra, partial, missing: [(file no, why)]}"""
+    -> {dashboard, report_files, matched, extra, partial, missing: [(file no, why)], other_phase: [file no],
+        files: [(file no, submitted at, where it is)], reopened: [(file no, why)]}
+    `files` lists EVERY dashboard file with its submission time and where it went (this report / the other phase's mail /
+    not matched), so the dashboard number can be tied to the report number line by line.  `reopened` = files in the
+    Complete Report that the dashboard no longer lists as Submitted (they were submitted in the dates, then re-opened)."""
     dash = d.dash
-    ids = dict(dash.get("submitted") or {})
+    ids = {fid: no for fid, no in dict(dash.get("submitted") or {}).items() if not is_test_file(no)}
     in_report = {r.file_id for r in d.complete}
-    files = {f["id"] for f in d.files}
-    missing, other = [], []
+    files = {f["id"]: f for f in d.files}
+    lo, hi = dash.get("from"), dash.get("till")
+    missing, other, listing = [], [], []
     after3 = bool(getattr(d, "after3_only", False))
-    for fid in sorted(set(ids) - in_report, key=lambda i: ids[i]):
-        mine = [r for r in d.all_rows if r.file_id == fid]
+    phase_label = "2nd phase mail (after 3 PM)" if d.slot == "3pm" else "1st phase mail (before 3 PM)"
+    by_file: dict = {}
+    for r in d.all_rows:
+        by_file.setdefault(r.file_id, []).append(r)
+
+    def sub_time(fid):
+        mine = by_file.get(fid) or []
+        subs = [x for x in (mine[0].file_submitted if mine else []) if (lo is None or x.date() >= lo) and (hi is None or x.date() <= hi)]
+        return max(subs) if subs else None
+
+    for fid in sorted(ids, key=lambda i: ids[i]):
+        mine = by_file.get(fid, [])
+        if fid in in_report:
+            listing.append((ids[fid], sub_time(fid), "This report (Complete)"))
+            continue
         if mine and d.mode == "tracker" and d.slot == "3pm" and any(r.status_note.startswith("Submitted after 3 PM") for r in mine):
             other.append(ids[fid])                         # submitted after 3 PM: belongs to the 2nd-phase mail, not "missing"
+            listing.append((ids[fid], sub_time(fid), phase_label))
             continue
         if mine and after3 and all(r.submitted and r.clock and r.clock.hour < CUTOFF_HOUR for r in mine if r.submitted) \
                 and any(r.submitted for r in mine):
             other.append(ids[fid])                         # submitted before 3 PM: already sent in the 1st-phase mail
+            listing.append((ids[fid], sub_time(fid), phase_label))
             continue
         if fid not in files:
             why = "ফাইলের তথ্য পড়া যায়নি"
@@ -667,9 +735,15 @@ def dashboard_check(d) -> dict:
             why = ("Activity log-এ Submitted: " + ", ".join(f"{t:%d/%m/%Y %H:%M}" for t in subs[:3])) if subs else \
                   "Activity log-এ এই সময়ের Submitted ঘটনা নেই"
         missing.append((ids[fid], why))
-    return {"from": dash.get("from"), "till": dash.get("till"), "dashboard": len(ids), "report_files": len(in_report),
+        listing.append((ids[fid], sub_time(fid), "NOT MATCHED - " + why))
+    reopened = []
+    for fid in sorted(in_report - set(ids), key=lambda i: files.get(i, {}).get("file_no", "")):
+        f = files.get(fid) or {}
+        reopened.append((f.get("file_no", str(fid)), "now " + FILE_STATUS_NAME.get(int(f.get("status_code") or 0), "?")))
+    listing.sort(key=lambda x: (x[1] or datetime.max, x[0]))
+    return {"from": lo, "till": hi, "dashboard": len(ids), "report_files": len(in_report),
             "matched": len(set(ids) & in_report), "extra": len(in_report - set(ids)), "partial": len(dash.get("partial") or {}),
-            "missing": missing, "other_phase": other}
+            "missing": missing, "other_phase": other, "files": listing, "reopened": reopened}
 
 
 def reconcile(rows: list[BillRow], files: list[dict]) -> dict:

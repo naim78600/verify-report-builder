@@ -20,7 +20,7 @@ from datetime import date, datetime, timedelta
 from . import config, holidays as hol
 from .activity import parse_logs
 from .billing import (INCOMPLETE_SCOPES, LOOKBACK_DAYS, PHASE1_CUTOFF, SCOPE_TEXT, apply_as_of, assign_sub_days, build_rows, compute_tat,
-                      dashboard_check, fill_history, reconcile, select_rows, tracker_window, BillRow, FileLogs)
+                      dashboard_check, fill_history, is_test_file, reconcile, select_rows, tracker_window, BillRow, FileLogs)
 from .client import ApiError, AuthError, Cancelled, ReadOnlyClient
 from .collect import Progress, RunConfig, _noop
 from .model import normalize_file
@@ -80,6 +80,23 @@ def slot_for(now: datetime | None = None) -> str:
 
 
 PHASE_TEXT = {"3pm": "1st Phase · 3:30 PM", "7pm": "2nd Phase · 7:00 PM"}
+
+
+def dash_line(d: PrimeData) -> str:
+    """One line that ties the dashboard's Submitted number to the report: dashboard = this report + the other phase's mail."""
+    ck = (d.dash or {}).get("check")
+    if not ck:
+        return ""
+    other = len(ck.get("other_phase") or [])
+    txt = f"ড্যাশবোর্ডের Submitted: {ck['dashboard']} টি ফাইল = এই রিপোর্টে {ck['matched']} টি"
+    if other:
+        txt += f" + {'2nd Phase (3PM-এর পরে সাবমিট)' if d.slot == '3pm' else '1st Phase (3PM-এর আগে সাবমিট)'} মেইলে {other} টি"
+    if ck["missing"]:
+        return txt + f"  ⚠ মেলেনি {len(ck['missing'])} টি (Check List শিটে)"
+    txt += "  ✓"
+    if ck.get("reopened"):
+        txt += f"  (আবার খোলা {len(ck['reopened'])} টি ফাইলও Complete-এ আছে)"
+    return txt
 
 
 def title_for(d: PrimeData) -> str:
@@ -339,8 +356,13 @@ def collect_prime(cfg: PrimeConfig, progress: Progress = _noop, cancel: threadin
     d.holidays = holiday_map
     since = datetime.combine(d.w_till, datetime.min.time()) - timedelta(days=HISTORY_DAYS)
     rows: list[BillRow] = []
+    tests = [f["file_no"] for f in d.files if is_test_file(f["file_no"])]
     for f in d.files:
+        if is_test_file(f["file_no"]):
+            continue
         rows.extend(build_rows(f, recpv_by_trip, recpv_by_file, logs.get(f["id"]), since))
+    if tests:
+        d.notes.append(f"টেস্ট ফাইল বাদ দেওয়া হয়েছে: {', '.join(sorted(tests)[:4])}" + ("…" if len(tests) > 4 else ""))
     report_date = d.report_date
     until = datetime.combine(d.report_date, PHASE1_CUTOFF) if (d.mode == "tracker" and d.slot == "3pm") else None
     later = apply_as_of(rows, d.w_till, until)             # submitted after the report moment (last day / 3 PM) = still waiting then
@@ -349,12 +371,13 @@ def collect_prime(cfg: PrimeConfig, progress: Progress = _noop, cancel: threadin
         compute_tat(r, report_date, hset)
     fill_history(rows)
     d.all_rows = rows
+    as_of = until or datetime.combine(d.w_till, datetime.max.time().replace(microsecond=0))   # the moment the report describes
     d.complete, d.incomplete = select_rows(rows, d.mode, d.report_date, d.w_from, d.w_till, hset, d.incomplete_scope,
-                                           today=today, after3_only=d.after3_only)
+                                           today=today, after3_only=d.after3_only, as_of=as_of)
     for r in d.complete:
         if r.rolled:
             r.info.append(f"আসল সাবমিশন {r.submitted_at:%a %d/%m/%Y %I:%M %p} (ছুটির দিন); ট্র্যাকারে পরের কর্মদিবস {r.sub_day:%d/%m/%Y}-এ দেখানো হয়েছে")
-    d.recon = reconcile(rows, d.files)
+    d.recon = reconcile(rows, [f for f in d.files if not is_test_file(f["file_no"])])
     d.recon["submitted_later"] = later
     if d.dash.get("ok"):
         d.dash["check"] = dashboard_check(d)

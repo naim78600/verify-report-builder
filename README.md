@@ -1,4 +1,4 @@
-# Verify Report Builder v3.0.0 (ভেরিফাই রিপোর্ট বিল্ডার)
+# Verify Report Builder v3.1.0 (ভেরিফাই রিপোর্ট বিল্ডার)
 
 Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্যার। Verify ড্যাশবোর্ড থেকে Prime Bank PLC-এর ফাইল সংগ্রহ করে **দৈনিক সাবমিশন ট্র্যাকার** (Complete + Incomplete) বানায় এবং **সরাসরি ব্যাংককে ইমেইল** পাঠায়।
 **Verify থেকে শুধু তথ্য পড়ে (GET); কোনো তথ্য বদলায় না।** লগইন পাসওয়ার্ড ও ইমেইলের App Password কোথাও সংরক্ষণ হয় না।
@@ -28,12 +28,12 @@ Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্�
 ### রিপোর্টের নিয়ম (V3)
 
 - **Complete =** ফাইলের activity log-এ `status updated to SUBMITTED` ঘটনার দিন। শুক্র/শনি/ছুটির সাবমিশন পরের কর্মদিবসের ট্র্যাকারে যায় (তারিখও সেই দিনের)।
-- **Incomplete =** (ক) **SLA পেরোনো Pending সারি** — In ২ / Out ৪ কর্মদিবস; Extra TAT = TAT − SLA; TAT রিপোর্টের তারিখ পর্যন্ত গোনা — **এবং** (খ) **Partially Submitted ফাইল** (Due-এ লেখা থাকে কোন ডকুমেন্ট বাকি, ব্যাংক সেই অনুযায়ী ব্যবস্থা নেয়)। Canceled / Withdrawn ফাইল বাদ। **লুক-ব্যাক ৯০ দিন** (নির্দিষ্ট)।
+- **Incomplete = ফাইল-ভিত্তিক, ড্যাশবোর্ডের মতো (v3.1):** যে ফাইল রিপোর্টের মুহূর্তে **Submitted নয়** (On Going / Hold / Finished / Created, অথবা Submitted হওয়ার পর নতুন Re-CPV/Extra ট্রিপে আবার খোলা) এবং ফাইলের **Start Date** থেকে গুনে **SLA পেরিয়েছে** (In ২ / Out ৪ কর্মদিবস; Extra TAT = TAT − SLA > ০), **অথবা Partially Submitted** (Due-এ লেখা থাকে কোন ডকুমেন্ট বাকি)। এমন ফাইলের Submitted-না-হওয়া সব সারি তালিকায় আসে। **ড্যাশবোর্ডে Submitted ফাইলের কোনো সারি কখনো Incomplete-এ আসে না** (v3.0-তে পুরনো Canceled/Inactive Extra/Re-CPV সারির কারণে Submitted ফাইলও আসত — সেটাই ছিল অমিলের বড় কারণ)। Canceled / Withdrawn ফাইল ও Canceled ট্রিপের Extra সারি বাদ। টেস্ট ফাইল (নম্বরে `Test`, যেমন `PB-PL-Test-123456`) বাদ। **লুক-ব্যাক ৯০ দিন** (নির্দিষ্ট)।
 - **In** = শুধু Dhaka (DNCC, DSCC) ও Chattogram সিটি কর্পোরেশন; বাকি সব Out।
 - **ফেজ:** *1st (3:30 PM)* = বিকেল ৩টা পর্যন্ত অবস্থা (৩টার পর Submitted হওয়া ফাইল তখনও Pending); *2nd (7:00 PM)* = পুরো দিন। Excel-এ ‘Before / After 3 PM’ কলাম; ছুটির দিন থেকে সরে আসা সারি ‘Before 3 PM’ ধরা হয়।
 - **Pending Reason কলাম (Incomplete শিটে):** Appointment (তারিখ-সময়) · Hold (লেখা রিমার্ক) · Partially Submitted (Due-এর ডকুমেন্ট) · On Going, within SLA। **কিছু না পেলে ঘরটি হালকা আকাশি নীল** থাকে এবং *Check List* শিটে কারণ লেখা হয়।
 - ‘ব্যাংক কপি’ / ‘অভ্যন্তরীণ কপি’ / ইমেইল-পেজ আর নেই — **একটিই সম্পাদনাযোগ্য Excel** (Complete Report · Incomplete Report · Summary · Holidays · Check List)। ফাইলের নাম `Prime_Bank_Submission_Tracker_YYYY-MM-DD_Phase1|Phase2.xlsx`।
-- ড্যাশবোর্ডের Submitted তালিকার সঙ্গে স্বয়ংক্রিয় মিলান (ফেজ অনুযায়ী: ১ম ফেজে ৩টার পরের ফাইল ‘অন্য ফেজ’ ধরা হয়, ‘মেলেনি’ নয়)। শুক্র/শনি তারিখ বাছলে সতর্কতা দেখায়।
+- ড্যাশবোর্ডের Submitted তালিকার সঙ্গে স্বয়ংক্রিয় মিলান — স্ক্রিনে এক লাইনে: *ড্যাশবোর্ড ১৪ = এই রিপোর্টে ৩ + 2nd Phase মেইলে ১১* (১ম ফেজে ৩টার পরের ফাইল ‘অন্য ফেজ’, ‘মেলেনি’ নয়)। *Check List* শিটে ড্যাশবোর্ডের প্রতিটি ফাইল কখন সাবমিট হলো ও কোন মেইলে গেল তা লাইন ধরে লেখা থাকে; Submitted হওয়ার পর আবার খোলা ফাইল আলাদা চিহ্নিত। শুক্র/শনি তারিখ বাছলে সতর্কতা দেখায়।
 
 ### স্বয়ংক্রিয় (কমান্ড লাইন) — Task Scheduler / cron
 

@@ -128,7 +128,8 @@ def cli(argv):
             raise SystemExit(send_cli_mail(a, d, outputs))
         ck = (d.dash or {}).get("check")
         if ck:
-            print(f"Dashboard Submitted files: {ck['dashboard']}  matched in Complete: {ck['matched']}  not matched: {len(ck['missing'])}")
+            print(f"Dashboard Submitted files: {ck['dashboard']}  in this report: {ck['matched']}  other phase's mail: {len(ck.get('other_phase') or [])}"
+                  f"  not matched: {len(ck['missing'])}")
             for no, why in ck["missing"]:
                 print(f"  not matched: {no} - {why}")
         return

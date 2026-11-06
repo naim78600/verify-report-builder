@@ -17,6 +17,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from . import mailer
 from . import signature as sigmod
+from .collect_prime import dash_line
 from .mail_templates import TEMPLATES, facts_from, render
 from .reports import count_blue_cells, has_checklist, strip_checklist
 from .ui_kit import Button, Entry, P, Segmented
@@ -290,7 +291,7 @@ class MailDialog(_Base):
         ck = (self.d.dash or {}).get("check")
         if ck:
             ok = not ck["missing"]
-            items.append((ok, f"ড্যাশবোর্ডের Submitted {ck['dashboard']} টি ফাইল · রিপোর্টে মিলেছে {ck['matched']} টি"))
+            items.append((ok, dash_line(self.d).replace("  ✓", "")))
         fa = self.facts
         items.append((True, f"Complete {fa.complete_files} ফাইল ({fa.complete_rows} সারি) · Incomplete {fa.incomplete_files} ফাইল ({fa.incomplete_rows} সারি)"))
         if self.xlsx and self.xlsx.is_file():
