@@ -662,8 +662,10 @@ def classify_reason(r: BillRow, mates: list[BillRow] | None = None, state: str =
         parts.append(("finished", "Finished - not yet submitted"))
     if appts and not (parts and parts[-1][0] == "partial" and "appointment" in parts[-1][1].lower()):
         a = appts[-1]
-        why = clean_text(a.get("reason"))
-        parts.append(("appointment", f"Appointment {a['time']:%d/%m/%Y %I:%M %p}" + (f" ({why[:40]})" if why else "")))
+        why = " ".join(clean_text(a.get("reason")).split())
+        if len(why) > 45:                                   # a short note only, cut at a word end
+            why = why[:45].rsplit(" ", 1)[0].rstrip(" ,.;:") + "..."
+        parts.append(("appointment", f"Appointment {a['time']:%d/%m/%Y %I:%M %p}" + (f" ({why})" if why else "")))
     if not parts and kind == "ongoing" and not any(m.sla_breach for m in mates):
         parts.append(("ongoing", "On Going, within SLA"))
     if parts:
