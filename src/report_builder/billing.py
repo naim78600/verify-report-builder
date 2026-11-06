@@ -682,6 +682,24 @@ def classify_reason(r: BillRow, mates: list[BillRow] | None = None, state: str =
 def _fold_into(keep: BillRow, dropped: list[BillRow]) -> None:
     for x in dropped:
         keep.folded.append((x.kind, x.trips[0][1].get("id")))
+    if dropped:
+        refresh_summary(keep, dropped)
+
+
+def refresh_summary(keep: BillRow, others: list[BillRow]) -> None:
+    """Report Summary = the file's LAST update.  A row that stands for several bill rows of one file (the others are only listed in its
+    Bill Slab history) must describe ALL of their trips, oldest first, so that a later trip of the same item replaces the earlier
+    outcome: the LOI document trip created after "signatory not available" and finished / submitted with the file means LOI is done
+    and nothing is due any more (it used to stay "Due-LOI (Signatory not available)" because only the package's own trips were read)."""
+    far = datetime(2100, 1, 1)
+    views = [v for r in [keep] + list(others) for v in r.views]
+    if len(views) <= len(keep.views):
+        return
+    views.sort(key=lambda v: (v.trip.get("created_at") or far, v.trip.get("id") or 0))
+    keep.summary = analyze(views, keep.submitted, "BS")
+    keep.flags.pop("summary", None)
+    if keep.summary.uncertain:
+        keep.flags["summary"] = "; ".join(dict.fromkeys(keep.summary.reasons)) or "সংক্ষেপ নিশ্চিত নয়"
 
 
 def fold_complete(rows: list[BillRow]) -> list[BillRow]:
