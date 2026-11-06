@@ -15,7 +15,7 @@ from . import __version__, config
 from . import holidays as hol
 from .client import ApiError, AuthError, Cancelled
 from .collect import RunConfig, collect
-from .collect_prime import PHASE_TEXT, PrimeConfig, collect_prime, slot_for
+from .collect_prime import PHASE_TEXT, PrimeConfig, collect_prime, dash_line, slot_for
 from .mail_templates import facts_from
 from .excel import build_workbook
 from .gui_mail import MailDialog, SentLogDialog, SignatureDialog
@@ -230,8 +230,8 @@ class App(tk.Tk):
                                         bg=P["card"], activebackground=P["card"], font=f.tiny, fg=P["text"], anchor="w", justify="left",
                                         highlightthickness=0, selectcolor="white")
         self.day_warn = tk.Label(b, text="", bg=P["card"], fg=P["warn"], font=f.tiny, anchor="w", justify="left", wraplength=380)
-        self.rule_hint = tk.Label(b, text="Incomplete = SLA পার (In ২ / Out ৪ কর্মদিবস) + Partially Submitted। "
-                                          "প্রতিটি সারিতে কারণ থাকে; না পেলে ঘর হালকা নীল। লুক-ব্যাক ৯০ দিন।",
+        self.rule_hint = tk.Label(b, text="Incomplete = ড্যাশবোর্ডে এখনও Submitted হয়নি এমন ফাইল, যেগুলো SLA পার (In ২ / Out ৪ কর্মদিবস, ফাইলের Start Date থেকে) "
+                                          "+ Partially Submitted। Submitted ফাইল কখনো Incomplete-এ আসে না। কারণ না পেলে ঘর হালকা নীল। লুক-ব্যাক ৯০ দিন।",
                                   bg=P["card"], fg=P["mute"], font=f.tiny, anchor="w", justify="left", wraplength=380)
         self.rule_hint.pack(fill="x", pady=(8, 0))
 
@@ -601,13 +601,13 @@ class App(tk.Tk):
                     self.bar.set(1)
                     self.stepper.set(len(STAGES))
                     if d.mode == "tracker":
-                        txt = f"সম্পন্ন!  {PHASE_TEXT.get(d.slot, d.slot)} · {d.report_date:%d-%m-%Y}  —  Complete {len(d.complete)} · Incomplete {len(d.incomplete)}"
+                        cf, inf = len({r.file_id for r in d.complete}), len({r.file_id for r in d.incomplete})
+                        txt = (f"সম্পন্ন!  {PHASE_TEXT.get(d.slot, d.slot)} · {d.report_date:%d-%m-%Y}  —  "
+                               f"Complete {cf} ফাইল ({len(d.complete)} সারি) · Incomplete {inf} ফাইল ({len(d.incomplete)} সারি)")
                     else:
                         txt = f"সম্পন্ন!  মোট {len(d.all_rows)} সারি · ফাইল {len(d.files)} টি"
-                    ck = (d.dash or {}).get("check")
-                    if ck:
-                        txt += (f"\nড্যাশবোর্ডের Submitted: {ck['dashboard']} টি ফাইল · রিপোর্টে মিলেছে: {ck['matched']} টি"
-                                + ("  ✓" if not ck["missing"] else f"  ⚠ মেলেনি {len(ck['missing'])} টি (Summary শিটে)"))
+                    if dash_line(d):
+                        txt += "\n" + dash_line(d)
                     if d.notes:
                         txt += "\n" + " ".join(n for n in d.notes[:2] if not n.startswith("ড্যাশবোর্ডের Submitted তালিকায়"))
                     self.status.set(txt)

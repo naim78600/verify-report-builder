@@ -32,10 +32,21 @@ _INVIS = re.compile(r"[​-‏‪-‮⁦-⁩﻿]")
 RULES_FILE = config.SETTINGS_DIR / "summary_rules.json"
 
 
+_XML_BAD = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f\ufffe\uffff]")
+
+
+def xml_safe(s):
+    """Text for an Excel cell: characters XML 1.0 forbids (and C1 controls) are dropped - Excel / Numbers call a file with
+    one of them "damaged".  The dashboard sends a right single quote cut to a lone \x19 ("Didn\x19t"): it becomes an apostrophe."""
+    if not isinstance(s, str):
+        return s
+    return _XML_BAD.sub("", s.replace("\x19", "'").replace("\x18", "'"))
+
+
 def clean_text(s: str | None) -> str:
     if not s:
         return ""
-    s = _INVIS.sub("", str(s)).replace("\r", "\n")
+    s = xml_safe(_INVIS.sub("", str(s))).replace("\r", "\n")
     s = re.sub(r"[ \t ]+", " ", s)
     return re.sub(r"\n\s*\n+", "\n", s).strip()
 

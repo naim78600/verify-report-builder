@@ -33,6 +33,7 @@ from . import theme as T
 from .billing import SLA_IN, SLA_OUT, before_after
 from .collect_prime import PrimeData, title_for
 from .excel import _clean
+from .summary import xml_safe
 from .report_text import (appointment_lines, bill_slab_lines, has_due, last_update_date, last_update_lines, plain,
                           summary_lines)
 
@@ -89,7 +90,7 @@ def _rich(lines, kind_color: str | None = None):
             if st == "k" and kind_color:
                 color, bold = kind_color, True
             tail = "\n" if (j == len(ln) - 1 and i < len(lines) - 1) else ""
-            parts.append(TextBlock(InlineFont(rFont=FONT, b=bold, color="FF" + color, sz=size), text + tail))
+            parts.append(TextBlock(InlineFont(rFont=FONT, b=bold, color="FF" + color, sz=size), xml_safe(text) + tail))
     return CellRichText(*parts) if parts else ""
 
 
@@ -102,6 +103,7 @@ def _lines(text: str, width: float) -> int:
 def _put(ws, r, c, v, formula=False, **kw):
     cell = ws.cell(row=r, column=c)
     v = _clean(v)
+    v = xml_safe(v)
     cell.value = v
     if isinstance(v, str) and not formula:
         cell.data_type = "s"
@@ -280,7 +282,7 @@ def _write_rows(ws, r0: int, rows, checks: list, section: str, cols: list) -> in
         if row.canceled:
             ws.cell(r, col["Bill Slab"]).fill = CHECK
         if "Pending Reason" in col and row.reason:
-            ws.cell(r, col["Pending Reason"]).value = row.reason
+            ws.cell(r, col["Pending Reason"]).value = xml_safe(row.reason)
         texts = {"Concerns": concerns, "Re-CPV / Extra Trip (ID)": history, "Bill Slab": plain(slab_l),
                  "Report Summary": plain(sum_l), "Last Update Details": plain(upd_l), "Appointment": plain(app_l),
                  "Report Status": base["Report Status"], "Pending Reason": row.reason}
@@ -396,6 +398,8 @@ def _sum_sheet(wb: Workbook, d: PrimeData) -> None:
         if ck.get("other_phase"):
             lines_.append(("Of these, belong to the other phase's mail", len(ck["other_phase"])))
         lines_ += [("Not matched", len(ck["missing"])), ("Files in Complete Report (all rows)", ck["report_files"])]
+        if ck.get("reopened"):
+            lines_.append(("Of these, re-opened since (not Submitted on the dashboard now)", len(ck["reopened"])))
         for i, (label, val) in enumerate(lines_):
             line_f = _fill(T.ZEBRA) if i % 2 else None
             _put(s, r, 1, label, border=BOX, **({"fill": line_f} if line_f else {}))
@@ -439,6 +443,13 @@ def _check_items(d: PrimeData, checks: list) -> list:
     ck = (d.dash or {}).get("check") or {}
     for no, why in ck.get("missing", []):
         items.append(("Dashboard", "", no, "(not matched)", why))
+    # one line per file of the dashboard's Submitted list, so the dashboard number can be tied to the report line by line
+    for no, at, where in ck.get("files", []):
+        if where.startswith("NOT"):
+            continue                                                       # already listed above
+        items.append(("Dashboard", "", no, f"Submitted {at:%d/%m/%Y %H:%M}" if at else "Submitted", where))
+    for no, why in ck.get("reopened", []):
+        items.append(("Dashboard", "", no, "(re-opened)", f"In this report, but the dashboard no longer lists it as Submitted ({why})"))
     for n in d.notes:
         if n.startswith("Incomplete তালিকা:"):                # the standing rule note, not something to check
             continue

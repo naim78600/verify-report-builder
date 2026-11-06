@@ -343,7 +343,10 @@ def test_tracker_window_rollover_and_incomplete_scope():
         # that were still waiting on Sunday and are past the 2-day In SLA (F6 was submitted on Monday)
         assert d1.incomplete_scope == "sla_partial"
         assert nos(d1.incomplete) == ["CC--20261027000006", "PL-20261020000003"]
-        assert all((r.extra_tat or 0) > 0 or r.file_status == 7 for r in d1.incomplete)
+        # per FILE: an overdue (or partial) pending file lists all its pending rows, so check the file, not each row
+        for no in nos(d1.incomplete):
+            rs = [r for r in d1.incomplete if r.file_no == no]
+            assert any((r.extra_tat or 0) > 0 for r in rs) or rs[0].file_status == 7
         assert any("পরের কর্মদিবস" in n for n in d1.notes)
         # Saturday 31-Oct (a day off, report made anyway): that day stays that day
         d0 = run(date(2026, 10, 31))
