@@ -339,14 +339,16 @@ def test_tracker_window_rollover_and_incomplete_scope():
         assert (r8.tat, r8.extra_tat) == (3, 0)                        # Wed 28, Thu 29, Sun 01 - counted up to the reported day
         assert d1.dash["check"]["missing"] == [] and d1.dash["check"]["matched"] == 1
         assert nos(run(date(2026, 11, 1), "partial_today").incomplete) == ["PL-20261020000003"]   # F3 became Partially Submitted on Fri 30-Oct
-        # V3 default (SLA breach + Partially Submitted): F3 (partial, appointment given) + the two In-area Single rows of F6
-        # that were still waiting on Sunday and are past the 2-day In SLA (F6 was submitted on Monday)
+        # v3.2 default (rules by file status): F3 (Partially Submitted, appointment given), F6 / F1 / the Nov-1 file (Finished, not Submitted
+        # until Monday = "not yet submitted").  On Going files inside their SLA are NOT listed.
         assert d1.incomplete_scope == "sla_partial"
-        assert nos(d1.incomplete) == ["CC--20261027000006", "PL-20261020000003"]
-        # per FILE: an overdue (or partial) pending file lists all its pending rows, so check the file, not each row
-        for no in nos(d1.incomplete):
-            rs = [r for r in d1.incomplete if r.file_no == no]
-            assert any((r.extra_tat or 0) > 0 for r in rs) or rs[0].file_status == 7
+        assert nos(d1.incomplete) == ["CC--20261027000006", "CC-20261101000002", "PL-20261020000003", "PL-20261026000001"]
+        assert len(d1.incomplete) == 4                                  # ONE row per file
+        by1 = {r.file_no: r for r in d1.incomplete}
+        assert by1["PL-20261020000003"].reason_kind == "partial" and by1["PL-20261020000003"].reason.startswith("Partially Submitted:")
+        for no in ("CC--20261027000006", "CC-20261101000002", "PL-20261026000001"):
+            assert by1[no].reason_kind == "finished" and by1[no].reason == "Finished - not yet submitted"
+        assert len(by1["CC--20261027000006"].folded) == 2               # its other pending rows are folded into the one row
         assert any("পরের কর্মদিবস" in n for n in d1.notes)
         # Saturday 31-Oct (a day off, report made anyway): that day stays that day
         d0 = run(date(2026, 10, 31))
@@ -360,7 +362,8 @@ def test_tracker_window_rollover_and_incomplete_scope():
         by = {r.file_no: r for r in d2.incomplete}
         f9r = by["PL-20261028000009"]
         assert f9r.status == "Incomplete" and f9r.status_note == "Partially Submitted" and f9r.reason_kind == "partial"
-        assert by["PL-20261020000003"].reason_kind == "appointment" and "reason" not in by["PL-20261020000003"].flags
+        assert by["PL-20261020000003"].reason_kind == "partial" and "Appointment" in by["PL-20261020000003"].reason \
+            and "reason" not in by["PL-20261020000003"].flags
         assert by["PL-20250901000005"].reason == "" and "reason" in by["PL-20250901000005"].flags        # nothing found -> light-blue cell
         assert nos(run(date(2026, 11, 2), "partial_today").incomplete) == ["PL-20261028000009"]
         # the wider lists

@@ -106,7 +106,14 @@ def test_reason_kinds():
     assert hold.reason_kind == "hold" and hold.reason.startswith("Hold: Applicant is abroad")
     hold_no_remark = _row(trips=[_trip(4, "")], sla_breach=True)
     classify_reason(hold_no_remark)
-    assert hold_no_remark.reason == "" and hold_no_remark.reason_kind == ""
+    assert hold_no_remark.reason_kind == "hold" and hold_no_remark.reason == "Hold: no reason written on the dashboard"
+    assert "reason" in hold_no_remark.flags                                       # a Hold is always listed; no written reason -> light-blue cell
+    fin = _row(trips=[_trip(5)])
+    classify_reason(fin)
+    assert fin.reason_kind == "finished" and fin.reason == "Finished - not yet submitted"
+    hold_appt = _row(trips=[_trip(4, "Customer is out of the country")], appointments=[{"active": True, "time": datetime(2026, 11, 8, 11, 0), "type": "", "reason": "x"}])
+    classify_reason(hold_appt)
+    assert hold_appt.reason == "Hold: Customer is out of the country | Appointment 08/11/2026 11:00 AM"
     going = _row(trips=[_trip(2)], sla_breach=False)
     classify_reason(going)
     assert going.reason_kind == "ongoing" and going.reason == "On Going, within SLA"
@@ -127,7 +134,7 @@ def test_pending_reason_cell_and_blue_flag(srv, tmp_path):
     heads = [c.value for c in ws[4]]
     col = heads.index("Pending Reason") + 1
     texts = {ws.cell(r, 2).value: ws.cell(r, col).value for r in range(5, ws.max_row + 1)}
-    assert texts["PL-20261020000003"].startswith("Appointment 04/11/2026")
+    assert texts["PL-20261020000003"].startswith("Partially Submitted:") and "Appointment 04-11-2026" in texts["PL-20261020000003"]
     assert not texts["PL-20250901000005"]                                          # no reason found: cell stays empty ...
     cell = next(ws.cell(r, col) for r in range(5, ws.max_row + 1) if ws.cell(r, 2).value == "PL-20250901000005")
     assert cell.fill.fgColor.rgb[-6:] == "BFE3FF"                                  # ... and light sky-blue

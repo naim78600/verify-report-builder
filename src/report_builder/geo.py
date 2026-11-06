@@ -174,10 +174,15 @@ def trip_area(trip: dict) -> tuple[str, bool, str]:
         why = f"লাট-লং ({label})" + (f" - {city}" if city else "")
         if len(cands) > 1 and cands[1][0] != area:
             return area, False, "ঠিকানা ও ভিজিটের স্থানাঙ্ক আলাদা"
+        if text_hint and text_hint != area:
+            # The outlines above are rough, so an address that NAMES a place wins over a pin that lies on or
+            # near the edge, and an address that names a place outside the two cities (Keraniganj, Gazipur ...)
+            # wins over a pin that merely falls inside the rough Dhaka outline.  Always shown as "not sure".
+            if not sure or (area == "In" and text_hint == "Out"):
+                return text_hint, False, "ঠিকানার লেখা অনুযায়ী (স্থানাঙ্ক সীমানার কাছে/ভিন্ন)"
+            return area, False, "স্থানাঙ্ক ও ঠিকানার লেখা মেলেনি"
         if not sure:
             why = "সীমানার কাছাকাছি"
-        elif text_hint and text_hint != area:
-            return area, False, "স্থানাঙ্ক ও ঠিকানার লেখা মেলেনি"
         return area, sure, why
     if text_hint:
         return text_hint, False, "শুধু ঠিকানার লেখা"

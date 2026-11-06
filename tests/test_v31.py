@@ -82,10 +82,11 @@ def test_submitted_file_never_has_pending_rows(extra_files):
         inc.setdefault(r.file_no, []).append(r)
     assert "PL-20261010000101" not in inc                                   # Submitted file with Canceled / Inactive extras
     assert [r.kind for r in inc["PL-20261010000102"]] == ["Extra"]          # re-opened: only the NEW row is pending, package is not
-    assert sorted(r.kind for r in inc["PL-20261026000103"]) == ["Extra", "Package"]   # canceled extra hidden, live extra listed with its file
+    assert [r.kind for r in inc["PL-20261026000103"]] == ["Package"]       # ONE row per file; the canceled extra is hidden, the live extra is folded in
+    assert [k for k, _t in inc["PL-20261026000103"][0].folded] == ["Extra"]
     assert "PL-20261102000104" not in inc                                   # received today, inside the 2-day In SLA
     # a pending file is judged by its Start Date: F-G3 started Mon 26-Oct, 5 working days later it is past the In SLA of 2
-    pkg = next(r for r in inc["PL-20261026000103"] if r.kind == "Package")
+    pkg = inc["PL-20261026000103"][0]
     assert pkg.receive_dt == datetime(2026, 10, 26, 10, 0) and (pkg.extra_tat or 0) > 0
 
 
