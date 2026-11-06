@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 
 from . import geo, holidays as hol
-from .summary import Summary, TripView, analyze, clean_text
+from .summary import Summary, TripView, analyze, apply_later, clean_text
 
 PACKAGE_MAX = 5
 CUTOFF_HOUR = 15          # "before / after 3 PM"
@@ -688,18 +688,24 @@ def _fold_into(keep: BillRow, dropped: list[BillRow]) -> None:
 
 def refresh_summary(keep: BillRow, others: list[BillRow]) -> None:
     """Report Summary = the file's LAST update.  A row that stands for several bill rows of one file (the others are only listed in its
-    Bill Slab history) must describe ALL of their trips, oldest first, so that a later trip of the same item replaces the earlier
-    outcome: the LOI document trip created after "signatory not available" and finished / submitted with the file means LOI is done
-    and nothing is due any more (it used to stay "Due-LOI (Signatory not available)" because only the package's own trips were read)."""
-    far = datetime(2100, 1, 1)
-    views = [v for r in [keep] + list(others) for v in r.views]
-    if len(views) <= len(keep.views):
+    Bill Slab history) must not keep showing something as Due that a LATER trip of the same file completed and submitted with it:
+    the LOI document trip created after "signatory not available" means LOI is done and nothing is due any more (it used to stay
+    "Due-LOI (Signatory not available)" because only the package's own trips were read).  Only the items that are Due are re-checked,
+    only against trips created after this row's own trips; everything else in Done / Due stays as it was."""
+    if not keep.views:
         return
-    views.sort(key=lambda v: (v.trip.get("created_at") or far, v.trip.get("id") or 0))
-    keep.summary = analyze(views, keep.submitted, "BS")
+    order = lambda v: (v.trip.get("created_at") or datetime(2100, 1, 1), v.trip.get("id") or 0)      # noqa: E731
+    newest = max(order(v) for v in keep.views)
+    later = sorted((v for r in others for v in r.views if order(v) > newest), key=order)
+    if not later:
+        return
+    new = apply_later(keep.summary, analyze(later, keep.submitted, "BS"), keep.submitted)
+    if new is keep.summary:
+        return
+    keep.summary = new
     keep.flags.pop("summary", None)
-    if keep.summary.uncertain:
-        keep.flags["summary"] = "; ".join(dict.fromkeys(keep.summary.reasons)) or "সংক্ষেপ নিশ্চিত নয়"
+    if new.uncertain:
+        keep.flags["summary"] = "; ".join(dict.fromkeys(new.reasons)) or "সংক্ষেপ নিশ্চিত নয়"
 
 
 def fold_complete(rows: list[BillRow]) -> list[BillRow]:

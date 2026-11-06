@@ -84,7 +84,7 @@ ck = NEW.dash.get("check") or {}
 L.append("TIMES old %ss new %ss | files %d rows %d failed %d log_failed %d" % (t_old, t_new, len(NEW.files), len(NEW.all_rows), len(NEW.failed), NEW.log_failed))
 L.append("COMPLETE old %d new %d | INCOMPLETE old %d new %d | same row set: %s" % (len(OLD.complete), len(NEW.complete), len(OLD.incomplete),
          len(NEW.incomplete), set(old) == set(new)))
-L.append("DASH " + json.dumps({k: v for k, v in ck.items() if not isinstance(v, (dict, list))}))
+L.append("DASH " + json.dumps({k: v for k, v in ck.items() if not isinstance(v, (dict, list))}, default=str))
 L.append("DASH_MISSING " + json.dumps(ck.get("missing", [])[:10], ensure_ascii=False))
 changed = [k for k in new if k in old and (new[k]["text"] != old[k]["text"] or new[k]["reason"] != old[k]["reason"] or new[k]["flag"] != old[k]["flag"])]
 other = [k for k in new if k in old and any(new[k][f] != old[k][f] for f in ("tat", "area", "sub", "kind", "folded"))]
