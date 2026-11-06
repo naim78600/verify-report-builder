@@ -28,7 +28,10 @@ def write_prime_outputs(d: PrimeData, out_dir: Path, excel: bool = True, pdf: bo
     if excel:
         paths.append(build_prime_excel(d, out_dir / f"{_stem(d)}.xlsx"))
     if pdf:
-        paths.append(build_prime_pdf(d, out_dir / f"{_stem(d)}.pdf", False))
+        try:
+            paths.append(build_prime_pdf(d, out_dir / f"{_stem(d)}.pdf", False))
+        except Exception as exc:                  # the PDF is optional: never lose the Excel (or the run) because of it
+            d.notes.insert(0, f"PDF তৈরি হয়নি ({type(exc).__name__}: {str(exc)[:80]}); Excel ঠিকঠাক তৈরি হয়েছে।")
     return paths
 
 
