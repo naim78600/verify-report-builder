@@ -29,7 +29,7 @@ from .collect_prime import PrimeData, title_for
 from .report_text import _dt, appointment_lines, bill_slab_lines, has_due, last_update_lines, summary_lines
 
 HIST_MAX = 6              # history lines shown per row in the PDF (newest); the Excel has them all
-LINES = {"concerns": 10, "history": 18, "slab": 16, "summary": 14, "last": 14, "appt": 10, "reason": 9}   # printed lines per cell
+LINES = {"concerns": 10, "history": 18, "slab": 16, "summary": 14, "last": 14, "appt": 10, "reason": 14}   # printed lines per cell
 MAX_CELL_H = 600          # points; the page frame is ~747 pt high, minus the repeated header row and the cell padding
 
 
@@ -175,7 +175,7 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
 
     heads = ["SL", "File No", "Concerns", "Re-CPV / Extra Trip (ID)", "Bill Slab", "Area", "Receive Date",
              "Submission Date-Time", "TAT", "Extra TAT / SLA", "Report Status", "Report Summary", "Last Update", "Appointment"]
-    widths_mm = [8, 38, 34, 30, 44, 11, 20, 24, 10, 18, 23, 44, 42, 34]
+    widths_mm = [8, 40, 32, 28, 44, 11, 23, 24, 10, 18, 23, 42, 40, 34]
     REASON_MM = 36                       # Incomplete table only: "Pending Reason" right after "Report Status"
     cur = {"w": []}
 
@@ -276,6 +276,8 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
     def _reason_flow(r):
         """Why the file is still pending, one fact per line (Hold comment / Finished - not yet submitted / Appointment ...)."""
         if not r.reason:
+            if r.file_status in (1, 2) and r.sla_breach:
+                return Paragraph(f"<font color='#{T.NEG}'><b>On Going - SLA breached</b></font>", base)
             return Paragraph(f"<font color='#{T.MUTED}'>-</font>", base)
         colour = {"hold": T.NEG, "finished": T.NAVY, "partial": T.NEG, "appointment": T.NAVY, "ongoing": T.POS}.get(r.reason_kind, T.TEXT)
         lines = [escape(_safe(x)) for x in r.reason.split(" | ")]

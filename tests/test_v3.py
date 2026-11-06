@@ -139,7 +139,7 @@ def test_pending_reason_cell_and_blue_flag(srv, tmp_path):
     heads = [c.value for c in ws[4]]
     col = heads.index("Pending Reason") + 1
     texts = {ws.cell(r, 2).value: ws.cell(r, col).value for r in range(5, ws.max_row + 1)}
-    assert texts["PL-20261020000003"].startswith("Partially Submitted:") and "Appointment 04-11-2026" in texts["PL-20261020000003"]
+    assert texts["PL-20261020000003"].startswith("Partially Submitted: App Office | Appointment 04/11/2026 12:00 PM")
     assert not texts["PL-20250901000005"]                                          # no reason found: cell stays empty ...
     cell = next(ws.cell(r, col) for r in range(5, ws.max_row + 1) if ws.cell(r, 2).value == "PL-20250901000005")
     assert cell.fill.fgColor.rgb[-6:] == "BFE3FF"                                  # ... and light sky-blue

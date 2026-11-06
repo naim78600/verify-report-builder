@@ -614,10 +614,16 @@ def pending_kind(rs: list[BillRow], state: str = "pending") -> str:
 
 
 def _due_text(r: BillRow, mates: list[BillRow]) -> str:
+    """The documents still due (Partially Submitted), short: the details in brackets stay in the Report Summary column."""
     for m in [r] + list(mates):
         due = m.summary.due.replace("\n", " ").strip()
-        if due not in ("", "0", "Report not yet submitted"):
-            return due[:90]
+        if due in ("", "0", "Report not yet submitted"):
+            continue
+        short = " ".join(re.sub(r"\s*\([^)]*\)", "", due).split()).strip(" ,;")
+        short = short or " ".join(due.split())
+        if len(short) > 90:
+            short = short[:90].rsplit(" ", 1)[0].rstrip(" ,;") + "..."
+        return short
     return ""
 
 
