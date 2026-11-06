@@ -102,6 +102,7 @@ def test_file_state_unit():
     # a live trip created after the last Submitted re-opens the file; a canceled one does not
     assert file_state(mk(2, subs=[d(2026, 10, 1, 10)], trips=[(d(2026, 10, 5), 2)])) == "pending"
     assert file_state(mk(6, subs=[d(2026, 10, 1, 10)], trips=[(d(2026, 10, 5), 6)])) == "submitted"
+    assert file_state(mk(6, subs=[d(2026, 10, 1, 10)], trips=[(d(2026, 10, 5), 7)])) == "submitted"      # an Inactive trip does not re-open it
     # partial, and as-of time travel: submitted at 16:00 was still pending at 15:00
     assert file_state(mk(7, parts=[d(2026, 10, 3, 9)], subs=[d(2026, 10, 1, 10)])) == "partial"
     sub = mk(6, subs=[d(2026, 11, 5, 16, 0)])
@@ -114,6 +115,8 @@ def test_dead_row():
     r = BillRow()
     r.kind, r.trips = "Extra", [({}, {"status_code": 6}), ({}, {"status_code": 8})]
     assert is_dead_row(r)
+    r.trips = [({}, {"status_code": 7})]
+    assert is_dead_row(r)                                                   # Inactive extra trip = no bill (05-11-2026 ghost rows)
     r.trips = [({}, {"status_code": 6}), ({}, {"status_code": 2})]
     assert not is_dead_row(r)
     r.kind, r.trips = "Package", [({}, {"status_code": 6})]

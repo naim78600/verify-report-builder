@@ -48,3 +48,20 @@ def test_pdf_failure_keeps_the_excel(d, tmp_path, monkeypatch):
     paths = reports.write_prime_outputs(d, tmp_path, excel=True, pdf=True)
     assert [p.suffix for p in paths] == [".xlsx"] and paths[0].exists()
     assert d.notes[0].startswith("PDF তৈরি হয়নি")
+
+
+def test_pdf_long_cells_become_short_summaries(d, tmp_path):
+    """Many trips / appointments: the PDF shows the newest few + a count, never a tiny font."""
+    from datetime import datetime, timedelta
+    from report_builder.prime_pdf import appointment_short, last_update_short
+    r = d.incomplete[0]
+    base = datetime(2026, 11, 1, 10)
+    r.last_trips = [(700000 + i, "House", base + timedelta(hours=i) if i % 4 else None, "Finished", "Mgr") for i in range(12)]
+    r.appointments = [{"trip_id": 700000 + i, "trip_type": "House", "time": base + timedelta(days=i), "type": "Visit",
+                       "created_at": base, "reason": "not at home", "active": i == 11} for i in range(9)]
+    lu = "\n".join("".join(t for t, _s in ln) for ln in last_update_short(r))
+    assert lu.count("· House") == 3 and "older trip updates" in lu and "no activity" in lu
+    ap = "\n".join("".join(t for t, _s in ln) for ln in appointment_short(r))
+    assert ap.count("Appointment:") == 2 and "+7 more appointments" in ap
+    assert len(r.appointments) == 9                                          # the row itself is not changed
+    assert build_prime_pdf(d, tmp_path / "s.pdf").exists()

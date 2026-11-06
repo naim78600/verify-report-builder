@@ -545,7 +545,8 @@ def is_test_file(file_no: str) -> bool:
     return bool(_TEST_FILE.search(file_no or ""))
 
 
-DEAD_TRIP = (6, 8)            # Canceled / Withdrawn trip: nothing left to submit for it
+DEAD_TRIP = (6, 7, 8)         # Canceled / Inactive / Withdrawn trip: nothing left to submit for it (live 05-11-2026: an Inactive extra
+                              # trip of an old, already Submitted file came back as an overdue ghost row once the file was re-opened)
 
 
 def file_state(r: BillRow, as_of: datetime | None = None) -> str:
@@ -575,7 +576,7 @@ def file_state(r: BillRow, as_of: datetime | None = None) -> str:
 
 
 def is_dead_row(r: BillRow) -> bool:
-    """A Re-CPV / Extra row whose trips are all Canceled / Withdrawn is not a pending bill."""
+    """A Re-CPV / Extra row whose trips are all Canceled / Inactive / Withdrawn is not a pending bill."""
     return r.kind in ("ReCpv", "Extra") and bool(r.trips) and all(t.get("status_code") in DEAD_TRIP for _c, t in r.trips)
 
 
