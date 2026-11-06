@@ -809,7 +809,7 @@ def select_rows(rows: list[BillRow], mode: str, report_date: date, w_from: date 
     for r in incomplete:
         classify_reason(r, r.mates or None, state_of.get(r.file_id, "pending"))
         if not r.reason and mode == "tracker":
-            r.flags["reason"] = "কোনো কারণ পাওয়া যায়নি (Appointment / Hold reason / SLA-র মধ্যে On Going নেই)"
+            r.flags["reason"] = "SLA পেরিয়েছে, কিন্তু কারণ পাওয়া যায়নি (Appointment / Hold comment / Finished নয়) - কারণ লিখুন"
     return complete, incomplete
 
 

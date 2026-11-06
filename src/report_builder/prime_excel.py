@@ -413,8 +413,9 @@ def _sum_sheet(wb: Workbook, d: PrimeData) -> None:
             s.cell(r, j).fill = _fill(T.NAVY_DARK)
         _put(s, r, 2, "Rows", font=Font(name=FONT, bold=True, color=T.WHITE), fill=_fill(T.NAVY_DARK), alignment=cen)
         r += 1
-        kinds = (("appointment", "Appointment given"), ("hold", "Hold (reason written)"), ("ongoing", "On Going, within SLA"),
-                 ("partial", "Partially Submitted (documents due)"), ("", "Reason not found (light-blue cell)"))
+        kinds = (("hold", "Hold (comment / appointment written)"), ("finished", "Finished, not yet submitted"),
+                 ("partial", "Partially Submitted (documents due)"), ("appointment", "On Going past its SLA, appointment given"),
+                 ("ongoing", "On Going, within SLA"), ("", "On Going past its SLA, reason not found (light-blue cell)"))
         for i, (k, label) in enumerate(kinds):
             n = sum(1 for x in d.incomplete if x.reason_kind == k)
             line_f = _fill(T.ZEBRA) if i % 2 else None

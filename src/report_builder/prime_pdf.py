@@ -175,7 +175,7 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
 
     heads = ["SL", "File No", "Concerns", "Re-CPV / Extra Trip (ID)", "Bill Slab", "Area", "Receive Date",
              "Submission Date-Time", "TAT", "Extra TAT / SLA", "Report Status", "Report Summary", "Last Update", "Appointment"]
-    widths_mm = [8, 40, 32, 28, 44, 11, 23, 24, 10, 18, 23, 42, 40, 34]
+    widths_mm = [8, 44, 31, 27, 43, 11, 23, 24, 10, 18, 23, 41, 39, 34]
     REASON_MM = 36                       # Incomplete table only: "Pending Reason" right after "Report Status"
     cur = {"w": []}
 
