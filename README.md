@@ -25,6 +25,13 @@ Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্�
 
 **Zoho App Password:** Zoho Mail → My Account → Security → **App Passwords** → নতুন (নাম: Verify Report Builder) → যে পাসওয়ার্ড দেখায় সেটি এখানে বসান (সাধারণ লগইন পাসওয়ার্ড চলবে না; ২-ফ্যাক্টর চালু থাকলে এটিই লাগে)। সার্ভার ডিফল্ট `smtp.zoho.com`, SSL ৪৬৫ — অ্যাকাউন্ট অন্য ডেটা সেন্টারে হলে (`.in` / `.eu` / `.com.au`) ‘সার্ভার সেটিং…’-এ বদলান।
 
+### পরবর্তী (এখনও release হয়নি) — Report Summary: একই ট্রিপের **শেষ বক্তব্যই** জেতে
+
+- **সমস্যা:** ভেরিফায়ারের লেখায় প্রথমে সমস্যা, পরে সমাধান থাকলে (যেমন "HR/Accounts কেউ ছিলেন না … LOI signed by AGM", "Previous signatory not available. New signatory name is …", "Signatory not available … LOI signed infront of me") সফটওয়্যার প্রথম বাক্যটি ধরে Due-তে LOI রেখে দিত (উদাহরণ: PL-20260910064853366, Phase 2 – ৫ নভেম্বর)।
+- **এখন:** LOI (বা DOCUMENT/LOI ট্রিপ) পরের কোনো বাক্যে সম্পন্ন লেখা থাকলে ("LOI signed by …", "signed/verified in front of me", "completed through …") আগের সমস্যা-নোট বাদ যায়; **সম্পন্ন-বাক্যের পরে** লেখা সমস্যা (যেমন "Second signatory not available") থাকলে Due থাকে। ভবিষ্যৎ/শর্তের বাক্য ("will be verified from head office", "if …", "need …") কখনো সম্পন্ন ধরা হয় না; "LOI will be signed from head office" আর "Signed from head office" নামে Done-এ আসে না। "Previous/Earlier/Former … not available" ইতিহাস, সমস্যা নয়।
+- **অসম্পূর্ণ (চলমান) ট্রিপ:** একাধিক Appointment থাকলে শুধু **সর্বশেষ Appointment-এর কারণ** দেখায় (ট্র্যাকারেও প্রধান Report Summary কলামে শেষ কারণই থাকে)।
+- লাইভ ৯০ দিনের ডেটায় (৩৬৭৫ সারি) Report Summary বদলেছে ৩৪ সারিতে; TAT/SLA/Area/সারির সংখ্যা বদলায়নি।
+
 ### v3.2.1 — (১) Incomplete-এ শুধু Hold / Finished / Partially Submitted; (২) Report Summary এখন ফাইলের **শেষ আপডেট** ধরে
 
 - **Incomplete (ট্র্যাকার ও তারিখ-সীমার রিপোর্ট, দুটোতেই):** চলমান **On Going / Created ফাইল কখনো আসে না** — SLA পেরোলেও না (চলমান ট্রিপের রিপোর্ট ব্যাংকও চায় না, আমরাও না)। তালিকায় থাকে শুধু **Hold** (কারণসহ), **Finished কিন্তু Submit হয়নি** ও **Partially Submitted** ফাইল। আগে তারিখ-সীমার (যেমন ৯০ দিনের) রিপোর্টে সব Submitted-না-হওয়া ফাইল আসত, ট্র্যাকারে SLA-পেরোনো On Going আসত — দুটোই বন্ধ। প্রতিটি ফাইল (চলমান সহ) আগের মতোই সাধারণ বিস্তারিত Excel-এ পাওয়া যায়।

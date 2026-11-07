@@ -63,7 +63,7 @@ NOTE_RULES = [
        r"address\s+(?:is\s+)?(?:mis\s?match|different|changed)[^.\n]{0,40}new", "New address found & verified"),
     _r(r"(?<!can\s)(?<!be\s)signed\s+(?:from|by|at)\s+(?:the\s+)?(?:applicant'?s?\s+)?branch|sign\s+by\s+branch\s+manager|"
        r"loi\s+(?:is\s+)?signed\s+from\s+branch", "Signed from branch", "loi"),
-    _r(r"(?:loi\s+(?:has\s+been\s+)?|has\s+been\s+)?signed\s+(?:from|by|at)\s+(?:the\s+)?(?:dhaka\s+)?(?:head\s*office|hq|corporate)",
+    _r(r"(?:loi\s+(?:has\s+been\s+)?|has\s+been\s+)?(?<!be\s)signed\s+(?:from|by|at)\s+(?:the\s+)?(?:dhaka\s+)?(?:head\s*office|hq|corporate)",
        "Signed from head office", "loi"),
     # ---- LOI ----
     _r(r"forwarding\s+l[ae]t+er", "Need forwarding letter", "loi"),
@@ -285,11 +285,41 @@ _LOI_NEG = re.compile(r"loi\s+not\s+(?:sign\w*|verif\w*)[^.\n]{0,40}|not\s+(?:si
                       r"loi[^.\n]{0,20}(?:wasn'?t|was\s+not|couldn'?t|could\s+not)", _I)
 
 
+# A sentence that states the work is DONE ("LOI signed by ...", "verification had to be completed through the AGM", "signed in front of me").
+# The report follows the LAST update: such a sentence settles what the verifier wrote before it - "Previous signatory not available.
+# LOI signed in front of me" is a finished LOI, not a due one.  A sentence that is itself negative / future ("LOI not signed",
+# "will be signed from head office", "need forwarding letter") is never a "done" statement.
+_DONE = re.compile(
+    r"\bloi\b[^.\n]{0,25}\b(?:signed|sign\s+by|verified|varified)\b"
+    r"|\b(?:signed|verified|varified)\s+(?:in\s*front|infront|by\b|and\s+returned)"
+    r"|\b(?:completed|done)\s+(?:through|by|from|at|with)\b"
+    r"|\bverification\s+(?:was\s+|has\s+been\s+)?(?:completed|done)\b", _I)
+_NOT_DONE = re.compile(
+    r"\bnot\b(?!\s+in\s*front)|n['’]t\b|\bunable\b|\bcannot\b|\bwill\s+be\b|\bcan\s+be\b|\bcould\s+be\b|"
+    r"\bto\s+be\s+(?:sign\w*|verif\w*|varif\w*)\b|\bbe\s+(?:signed|verified|varified)\b|\bneed\w*|\bmust\b|\bshould\b|\bwould\b|\bmay\b|\bmight\b|"
+    r"\bshall\b|\bif\b|\bwithout\b|\bwill\s+(?:sign|verify)\b|\b(?:want|ask|request|advis|inform|said|stated)\w*", _I)
+_HISTORY = re.compile(r"\s*(?:the\s+)?(?:previous|earlier|former)\b", _I)
+_LOI_WORD = re.compile(r"\bloi\b|signator\w*|salary\s*cert\w*|letter\s+of\s+intro\w*", _I)
+
+
+def _done_sentence(s: str) -> bool:
+    return bool(_DONE.search(s)) and not _NOT_DONE.search(s)
+
+
+def _latest_appt_reason(trip: dict) -> list:
+    """The reason of the NEWEST appointment only (last update wins): an older "applicant not available, come Monday" is replaced by the
+    next appointment's reason, exactly as the running tracker keeps just the latest reason in its Report Summary column."""
+    ap = [a for a in (trip.get("appointments") or []) if a.get("reason")]
+    if not ap:
+        return []
+    ap.sort(key=lambda a: (a.get("created_at") or datetime.min, a.get("time") or datetime.min, a.get("id") or 0))
+    return [clean_text(ap[-1].get("reason"))]
+
+
 def _trip_text(trip: dict) -> tuple[str, str]:
     """(outcome text = remarks (+ appointment reasons while the trip is still open), comment)."""
     rem = clean_text(trip.get("remarks"))
-    appts = [] if trip.get("status_code") == 5 else \
-        [clean_text(a.get("reason")) for a in (trip.get("appointments") or []) if a.get("reason")]
+    appts = [] if trip.get("status_code") == 5 else _latest_appt_reason(trip)
     outcome = "\n".join([x for x in [rem] + appts if x])
     return outcome, clean_text(trip.get("comment"))
 
@@ -297,7 +327,7 @@ def _trip_text(trip: dict) -> tuple[str, str]:
 _POSITIVE = re.compile(r"information\s+(?:is\s+)?ok|address\s+(?:is\s+)?ok", _I)
 
 
-def _notes_for(text_all: str, outcome: str, rules) -> tuple[dict, bool]:
+def _notes_for(text_all: str, outcome: str, rules, loi_trip: bool = False) -> tuple[dict, bool]:
     """-> ({"loi": [...], "trip": [...]}, fallback_used).
 
     A visit whose verifier wrote "Information ok" is a successful visit: stray negative words in it
@@ -311,6 +341,24 @@ def _notes_for(text_all: str, outcome: str, rules) -> tuple[dict, bool]:
     positive = bool(_POSITIVE.search(outcome)) and not _INFO_NOT_OK.search(outcome)
     if positive:
         found["trip"] = [n for n in found["trip"] if n in INFO_NOTES]
+    sl = _sentences(outcome)
+    last_done = max((i for i, x in enumerate(sl) if _done_sentence(x)), default=-1)
+    last_loi_done = max((i for i, x in enumerate(sl) if _done_sentence(x) and (loi_trip or _LOI_WORD.search(x))), default=-1)
+    if last_loi_done >= 0 and found["loi"]:
+        # the LOI was finished by a later statement: only LOI problems written in / after that statement still count
+        # "Previous signatory not available. New signatory name is ..." describes a signatory that was replaced: history, not a problem
+        tail = "\n".join(x for x in sl[last_loi_done:] if not _HISTORY.match(x))
+        keep = [n for n in found["loi"] if n in INFO_NOTES]
+        for rx, note, target in rules:
+            if target == "loi" and note not in keep and rx.search(tail):
+                keep.append(note)
+        found["loi"] = keep
+        if loi_trip:                                    # a LOI visit settled by its last statement: earlier visit problems are history too
+            keep = [n for n in found["trip"] if n in INFO_NOTES]
+            for rx, note, target in rules:
+                if target == "trip" and note not in keep and rx.search(tail):
+                    keep.append(note)
+            found["trip"] = keep
     if "LOI not verified" in found["loi"] and re.search(
             r"loi\s+(?:was\s+|is\s+)?(?:signed|verified|varified)\s+(?:by\s+(?:the\s+)?signator|in\s*front|infront)|"
             r"verified\s+and\s+returned|loi\s+(?:has\s+been\s+)?verified", text_all, _I) \
@@ -325,7 +373,7 @@ def _notes_for(text_all: str, outcome: str, rules) -> tuple[dict, bool]:
             found["trip"].remove(generic)
     if not found["trip"] and not found["loi"] and not positive:
         neg = _INFO_NOT_OK.search(outcome) or None
-        sents = [x for x in _sentences(outcome) if _NEG_FALLBACK.search(x) and not _NEUTRAL.search(x)
+        sents = [x for i, x in enumerate(sl) if i > last_done and _NEG_FALLBACK.search(x) and not _NEUTRAL.search(x)
                  and not re.match(r"information\s+not\s+ok$", x, _I)]
         if sents:
             found["trip"].append(_short(sents[0]))
@@ -370,7 +418,8 @@ def analyze(views: list[TripView], submitted: bool, bank_label: str = "BS") -> S
         code = t.get("type_code", "")
         status = t.get("status_code")
         finished = status == FINISHED
-        notes, fallback = _notes_for(text_all, outcome, rules)
+        notes, fallback = _notes_for(text_all, outcome, rules,
+                                     loi_trip=code not in ("HOUSE", "GUARANTOR_HOUSE", "OFFICE", "GUARANTOR_OFFICE", "BANK") and _doc_name(t) == "LOI")
         who = v.who
 
         # ---- primary component ----
