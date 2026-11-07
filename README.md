@@ -1,7 +1,23 @@
-# Verify Report Builder v4.0.0 (ভেরিফাই রিপোর্ট বিল্ডার)
+# Verify Report Builder — Version 4 (ভেরিফাই রিপোর্ট বিল্ডার)
 
-Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্যার। Verify ড্যাশবোর্ড থেকে Prime Bank PLC-এর ফাইল সংগ্রহ করে **দৈনিক সাবমিশন ট্র্যাকার** (Complete + Incomplete) বানায় এবং **সরাসরি ব্যাংককে ইমেইল** পাঠায়।
+**Version 4.0.0** · Prime Bank PLC · Barikoi Technologies Limited
+
+Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্যার। Verify ড্যাশবোর্ড থেকে Prime Bank PLC-এর ফাইল সংগ্রহ করে **দৈনিক সাবমিশন ট্র্যাকার** (Complete + Incomplete, Excel + PDF) বানায় এবং **সরাসরি ব্যাংককে ইমেইল** পাঠায়।
 **Verify থেকে শুধু তথ্য পড়ে (GET); কোনো তথ্য বদলায় না।** লগইন পাসওয়ার্ড ও ইমেইলের App Password কোথাও সংরক্ষণ হয় না।
+
+## Version 4 এক নজরে
+
+| | কী বদলেছে |
+|---|---|
+| **SLA Restart** | Appointment দিলে তার *scheduled date* থেকে, আর **যেকোনো নতুন ট্রিপ** (Re-CPV, Extra / Additional, Single …) তৈরি হলে **সঙ্গে সঙ্গে** SLA আবার শুরু — In = ২ কার্যদিবস, Out = ৪ কার্যদিবস |
+| **নতুন কলাম** | Excel ও PDF-এ **SLA Start / Restart Date** — TAT এই তারিখ থেকে; restart হলে বেগুনি ঘর + সহজ ভাষার ব্যাখ্যা |
+| **Done / Due** | Report Summary সবসময় ফাইলের **সর্বশেষ activity** ধরে (শেষ আপডেটই জেতে) |
+| **Incomplete** | শুধু **Hold**, **Finished কিন্তু Submit হয়নি** ও **Partially Submitted**; চলমান ফাইল কখনো নয় |
+| **দিনে দুইবার ট্র্যাকার** | ১ম ফেজ ৩:৩০ PM, ২য় ফেজ ৭:০০ PM — Excel দেখে সরাসরি Zoho থেকে মেইল |
+| **ফাইল হিস্টরি** | যেকোনো ফাইল নম্বরের সম্পূর্ণ ইতিহাসের Excel |
+| **পরীক্ষা** | ১২৯টি স্বয়ংক্রিয় টেস্ট + আসল অ্যাপ-উইন্ডোর GUI smoke test (Windows, macOS, Linux) |
+
+নিচে **প্রথম সংস্করণ থেকে Version 4 পর্যন্ত সব ফিচার বিস্তারিত** আছে।
 
 ## ইনস্টল
 
@@ -12,10 +28,10 @@ Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্�
 | Mac (Apple Silicon M1–M4) | `VerifyReportBuilder-Mac-AppleSilicon.dmg` | খুলে অ্যাপটি **Applications**-এ টেনে আনুন |
 | Mac (Intel) | `VerifyReportBuilder-Mac-Intel.dmg` | একই |
 
-ইনস্টলার না চাইলে `.zip` (portable) ফাইলও আছে। রিপোজিটরি **প্রাইভেট** — ডাউনলোডের জন্য GitHub-এ সাইন-ইন লাগবে (Releases পাতা)।
+ইনস্টলার না চাইলে `.zip` (portable) ফাইলও আছে। রিপোজিটরি **প্রাইভেট** — ডাউনলোডের জন্য GitHub-এ সাইন-ইন লাগবে (**Releases** পাতা; Release-এর নাম “Verify Report Builder Version 4 (v4.0.0)”)।
 প্রথমবার খুললে ডিজিটাল স্বাক্ষর নেই বলে সতর্কতা আসে: **Windows:** More info → Run anyway। **Mac:** System Settings → Privacy & Security → *Open Anyway* (অথবা `xattr -dr com.apple.quarantine /Applications/VerifyReportBuilder.app`)।
 
-## V3-এর সম্পূর্ণ ওয়ার্কফ্লো (দিনে দুইবার)
+## প্রতিদিনের ওয়ার্কফ্লো (দিনে দুইবার)
 
 1. **৩:০০ PM-এর পর (১ম ফেজ, মেইল ৩:৩০ PM):** অ্যাপ খুলুন → ইমেইল/পাসওয়ার্ড → *দৈনিক সাবমিশন ট্র্যাকার* → ফেজ **অটো/1st** → **রিপোর্ট তৈরি করুন**।
 2. তৈরি হলে **ইমেইল উইন্ডো** খোলে (বন্ধ রাখা যায়)। আগে **Excel খুলে দেখুন**: যেসব ঘর **হালকা আকাশি নীল** — সেখানে কারণ পাওয়া যায়নি; Excel-এ লিখে সেভ করুন (বা নীল রেখেই পাঠান)। উইন্ডোতে **‘আবার যাচাই করুন’** চাপলে নীল ঘরের সংখ্যা নতুন করে গোনে।
@@ -25,7 +41,104 @@ Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্�
 
 **Zoho App Password:** Zoho Mail → My Account → Security → **App Passwords** → নতুন (নাম: Verify Report Builder) → যে পাসওয়ার্ড দেখায় সেটি এখানে বসান (সাধারণ লগইন পাসওয়ার্ড চলবে না; ২-ফ্যাক্টর চালু থাকলে এটিই লাগে)। সার্ভার ডিফল্ট `smtp.zoho.com`, SSL ৪৬৫ — অ্যাকাউন্ট অন্য ডেটা সেন্টারে হলে (`.in` / `.eu` / `.com.au`) ‘সার্ভার সেটিং…’-এ বদলান।
 
-### v4.0.0 — (১) Appointment ও যেকোনো নতুন ট্রিপে SLA **Restart** + নতুন কলাম “SLA Start / Restart Date”; (২) Report Summary (Done / Due) সবসময় **সর্বশেষ activity** ধরে
+## সব ফিচার — প্রথম সংস্করণ থেকে Version 4 পর্যন্ত (বিস্তারিত)
+
+প্রতিটি ধাপে আগের সব ফিচার থেকে যায়; নিচে কোন সংস্করণে কী যোগ হয়েছে ক্রমানুসারে লেখা।
+
+### Version 1 — প্রথম সংস্করণ (৩১ অক্টোবর ২০২৬): ড্যাশবোর্ড থেকে এক্সেল রিপোর্ট
+
+- **লগইন করে ফাইল সংগ্রহ:** ইমেইল ও পাসওয়ার্ড দিলে শেষ N দিনের (ডিফল্ট **৯০ দিন**) Prime Bank PLC-এর সব ফাইল Verify ড্যাশবোর্ড থেকে সংগ্রহ হয়।
+- **সার্ভার বাছাই:** মূল সাইট (Production) / স্টেজিং / অন্য সার্ভার। স্টেজিং বা অন্য সার্ভারের ঠিকানা একবার দিলে মনে থাকে।
+- **শুধু পড়ে, কিছু বদলায় না:** সব অনুরোধ GET; অনুমোদিত পাথের তালিকা কোডেই বাঁধা — Delete / Edit / Cancel / Logs-লেখা / OCR-এর কোনো কোডই নেই।
+- **পাসওয়ার্ড কোথাও সংরক্ষণ হয় না** (কোডে, ফাইলে বা সেটিংসে)।
+- **দ্রুত ও নিরাপদ সংগ্রহ:** তালিকা পেজ ধরে (৫০/পেজ), প্রতিটি ফাইলের বিবরণ একসাথে ৬টি (সর্বোচ্চ ৮) অনুরোধে; কোনো ফাইল ব্যর্থ হলে বাকি রিপোর্ট চলে, ব্যর্থ ফাইল আলাদা শিটে (**Failed Files**)।
+- **নিয়মভিত্তিক সংক্ষিপ্ত রিমার্কস:** পুরোপুরি অফলাইন নিয়মে লেখা হয় — কোনো তথ্য বাইরে যায় না।
+- **এক্সেল রিপোর্ট:** Executive Summary, File Report, File/Trip Status ও ডেটা শিট।
+- **সহজ ব্যবহার:** শেষে ‘এক্সেল খুলুন’ বোতাম; ফাইল ডিফল্টে `Documents/VerifyReports` ফোল্ডারে।
+- **বিল্ড:** GitHub Actions থেকে Windows (.exe) ও Mac (Apple Silicon / Intel) অ্যাপ।
+
+### Version 2 (২ নভেম্বর) — Prime Bank Report, Re-CPV, ছুটি, ইমেইল কপি
+
+- **Prime Bank Report (Excel + PDF)** দুই ধরনে: **ট্র্যাকার** (প্রতিদিনের 3 PM / 7 PM রিপোর্ট — Complete + Incomplete; শিরোনামের সময় ল্যাপটপের ঘড়ি থেকে, বিকাল ৫টার আগে 3pm, পরে 7pm; হাতেও বাছা যায়) ও **তারিখের সীমা** (যেমন ২০২৬-০৮-০১ থেকে ২০২৬-১১-০২)।
+- **TAT ও Extra TAT** Excel-এ জীবন্ত ফর্মুলা (সংখ্যা নিজে বসানো নয়, তাই হাতে তারিখ বদলালে নিজে হিসাব হয়)।
+- **Re-CPV সহ বিস্তারিত এক্সেল:** প্রতিটি ফাইলের নিচে Re-CPV / Extra; সঙ্গে `Billing Rows` ও `Calculation` শিট (ট্রিপ সংখ্যা মিলিয়ে দেখার জন্য)।
+- **ছুটির তালিকা:** ২০২৭ পর্যন্ত সরকারি ছুটি ভিতরেই আছে। নতুন ছুটি লিখুন `2027-03-09 | 2027-03-11 | Eid ul Fitr` ধাঁচে (এক দিনের হলে শেষ তারিখ বাদ) অথবা CSV/টেক্সট ফাইল ইমপোর্ট করুন। তালিকা শেষ হওয়ার কাছে এলে সতর্ক করে।
+- **ইমেইলের জন্য কপি:** ব্রাউজারে পাতা খোলে → **Copy** → Zoho Mail-এ Paste। ইমেইল সিগনেচার একবার সেট করা যায়।
+- **চার-লক্ষ্য বিল্ড:** Windows 64-bit, Windows 32-bit, Mac Apple Silicon, Mac Intel।
+
+### Version 2.1 (৫ নভেম্বর) — নতুন চেহারা ও ব্যাংকের হিসাব
+
+- **নতুন ইউজার ইন্টারফেস:** বাঁদিকে মেনু, ডানে ৪টি ধাপ (লগইন → সময়সীমা → রিপোর্টের ধরন → কী তৈরি হবে); ছোট স্ক্রিনে উপরের অংশ স্ক্রল হয়, বোতাম নিচে স্থির।
+- **সময়সীমা:** ‘শেষ কয়েক দিন’ অথবা ‘তারিখ বাছুন’ (তারিখ বাছলে দিনের ঘর বন্ধ)।
+- **In / Out ও SLA:** In = ২ কার্যদিবস, Out = ৪ কার্যদিবস (শুক্র, শনি ও সরকারি ছুটি বাদ); সময় পেরোলে **SLA Breach**।
+- **Bill Slab:** তৈরির দিনে ৩/৪/৫টি ট্রিপ = **Package**; ৬/৭/৮ নম্বর ট্রিপ = **Extra Trip 1/2/3** (আলাদা Single বিল)। প্রতিটি সারিতে ফাইলের পুরো ইতিহাস।
+- **BS:** Bank ট্রিপ সব জায়গায় ‘BS’ (Bank Statement)।
+- **নতুন কলাম:** *Last Update* (Activity Log থেকে ফাইল ও প্রতিটি ট্রিপের শেষ আপডেট, তারিখ-সময় সহ) এবং *Appointment* (ট্রিপ আইডি, ধরন, অ্যাপয়েন্টমেন্টের সময়, তৈরির সময়, কারণ; না থাকলে NO)।
+- **নরম রং:** নেতিবাচকে চোখে-লাগা লাল নয়; ইতিবাচকে সবুজ; Out-এ ইন্ডিগো — Excel, PDF ও ইমেইল পাতায় একই রং।
+
+### Version 2.2 (৫ নভেম্বর) — সঠিক In/Out, ট্র্যাকারের ভাষায় Done/Due, ফাইল হিস্টরি
+
+- **In (সংশোধন):** শুধু Dhaka City Corporation (DNCC + DSCC) ও Chattogram City Corporation; গাজীপুর, নারায়ণগঞ্জ, সাভার, টঙ্গী … সব Out। প্যাকেজের একটি ট্রিপ Out হলে পুরো প্যাকেজ Out; Single / Extra / Re-CPV নিজ ঠিকানা অনুযায়ী।
+- **Report Summary (Done / Due) ট্র্যাকারের ভাষায়:** `Done-App House, Office, Sign, LOI, BS1 (Insufficient fund), BS2, Co-App House` / `Due-0`। ক্রম: App → LOI/BS/ডকুমেন্ট → Co-App → PG। Bank ট্রিপ সবসময় BS (একাধিক হলে BS1, BS2); I/F = Insufficient fund; ফোন / ইমেইল / নাম কখনো লেখা হয় না। Done-এর সমস্যাগুলো (ব্র্যাকেটে) Due-তেও একই ভাষায় আসে, নরম পিচ রঙে হাইলাইট; সমস্যা না থাকলে `Due-0`।
+- **দুই-শিটের Excel:** *Complete Report* ও *Incomplete Report* (সঙ্গে Summary, Holidays)। ফিল্টার-বোতাম শুধু **File No** ও **Last Update Date**-এ। Last Update ভাগ: **Last Update Date** (আসল তারিখ) ও **Last Update Details**।
+- **রিপোর্ট দেখতে সুবিধা:** ব্যানার, KPI টাইল, ৭৫% জুম — পুরো রিপোর্ট এক স্ক্রিনে।
+- **ফাইল হিস্টরি (নতুন রিপোর্টের ধরন):** ফাইল নম্বরের Excel/CSV দিন (পুরো নম্বর অথবা শেষের কয়েকটি অঙ্ক; অথবা নম্বর পেস্ট করুন) → প্রতিটি ফাইলের সম্পূর্ণ ইতিহাসের একটি Excel: Summary, Timeline (নতুন থেকে পুরোনো), Submission History, Trips, Appointments, Re-CPV & Extra, Concerns, Not Found। **সময়সীমা নেই।** ফাইল নম্বর ও তারিখ কম্পিউটারে (`~/.verify_report_builder/file_index.json`, কোনো ব্যক্তিগত তথ্য নেই) জমা থাকে, পরের বার শুধু নতুন দিন পড়ে। CLI: `--history numbers.xlsx`।
+
+### Version 2.2.1 ও 2.2.2 (৫ নভেম্বর) — ড্যাশবোর্ডের সঙ্গে মিল
+
+- **Submitted সংখ্যা ড্যাশবোর্ডের সঙ্গে মেলানো:** সফটওয়্যার ড্যাশবোর্ডের নিজের Submitted তালিকা পড়ে মিলিয়ে দেখে। Complete = ওই তারিখসীমার মধ্যে Submitted হওয়া সারি (Receive যেদিনই হোক)।
+- **স্ক্রিনে মিলের ফল:** ‘ড্যাশবোর্ডের Submitted: ১৪ টি · রিপোর্টে মিলেছে: ১৪ টি ✓’; Excel-এর Summary শিটে ‘Dashboard check’ ব্লক।
+- **ড্যাশবোর্ডের তারিখ-নিয়ম লাইভ সাইটে যাচাই করে মেলানো:** স্ট্যাটাস ছাড়া = ফাইলের Start Date; স্ট্যাটাস দিয়ে = ফাইল বর্তমান স্ট্যাটাসে যেদিন ঢুকেছে। ফাইলের তালিকা দুই ধরনের মিলন, তাই পরে Submitted/Hold হওয়া ফাইলও ধরা পড়ে।
+
+### Version 2.3.0 (৬ নভেম্বর) — ব্যাংকের পাঠানো আসল মেইল মিলিয়ে নিয়ম
+
+- Zoho Sent-এর ট্র্যাকার মেইল (১৮/১০ – ০৫/১১), ব্যাংকের Excel (৩৭১৪ সারি) ও লাইভ activity log পাশাপাশি রেখে **Complete / Incomplete-এর নিয়ম** ঠিক করা।
+- **Complete =** activity log-এর `status updated to SUBMITTED` ঘটনার দিন।
+- **ছুটির দিনের সাবমিশন পরের কর্মদিবসে:** শুক্র / শনি / ছুটিতে Submitted সারি পরের কর্মদিবসের ট্র্যাকারে যায়; Submission Date ও TAT সেই কর্মদিবস ধরে; Check List-এ আসল সাবমিশন সময় থাকে।
+- **‘Incomplete তালিকা’ অপশন:** আজকের Partial / চলমান Partial সহ / সব Pending (এই অপশন পরে v3.2-এ ড্যাশবোর্ড-স্ট্যাটাসের নিয়মে বদলে গেছে)।
+
+### Version 3.0.0 (৬ নভেম্বর) — দিনে দুইবার স্বয়ংক্রিয় ট্র্যাকার ও সরাসরি মেইল
+
+- **দুই ফেজ:** *1st (3:30 PM মেইল)* = বিকাল ৩টা পর্যন্ত অবস্থা; *2nd (7:00 PM)* = পুরো দিন। ‘শুধু ৩টার পরের সাবমিশন’ টিক দিলে ১ম ফেজে যা গেছে তা বাদ। Excel-এ ‘Before / After 3 PM’ কলাম।
+- **একটিই সম্পাদনাযোগ্য Excel** (Complete Report · Incomplete Report · Summary · Holidays · Check List) — ‘ব্যাংক কপি / অভ্যন্তরীণ কপি’ আর নেই। ফাইলের নাম `Prime_Bank_Submission_Tracker_YYYY-MM-DD_Phase1|Phase2.xlsx`।
+- **হালকা আকাশি নীল ঘর = ‘এখানে কারণ পাওয়া যায়নি, লিখে দিন’।** Excel-এ লিখে সেভ করে উইন্ডোতে ‘আবার যাচাই করুন’ চাপলে নীল ঘর নতুন করে গোনে। *Check List* শিটে কারণ।
+- **সরাসরি ইমেইল (Zoho SMTP):** To / Cc / Bcc (ডিফল্ট To = ব্যাংকের ৩ জন, বদলালে মনে থাকে); **৩টি বার্তার নমুনা** (Formal / Concise / Executive — সংখ্যা নিজে থেকে বসে, চাইলে এডিট); সিগনেচার (নাম · পদ · ফোন · Barikoi Technologies Limited · লোগো); সংযুক্তি = পাঠানোর মুহূর্তের সর্বশেষ Excel (অভ্যন্তরীণ *Check List* শিট স্বয়ংক্রিয়ভাবে বাদ)।
+- **নিরাপদ পাঠানো:** আগে ‘নিজেকে টেস্ট পাঠান’ (শুধু verify@barikoi.com-এ); একই তারিখ + ফেজের মেইল আগে গেলে সতর্কতা (দুইবার না যাওয়ার জন্য); সাইডবারে ‘পাঠানো ইমেইল’-এর তালিকা; **Zoho App Password ফাইলে সেভ হয় না**; সার্ভার সেটিং (`smtp.zoho.com`, SSL ৪৬৫; `.in` / `.eu` / `.com.au` অ্যাকাউন্টের জন্য বদলানো যায়)।
+- **কমান্ড লাইন / Task Scheduler:** `--prime --mode tracker --slot 3pm|7pm --send-mail --template formal|concise|executive`, `--to/--cc/--bcc`, `--after3`, `--pdf`, `--keep-checklist`, `--force`।
+- **Incomplete-এ SLA + Partial নিয়ম** এবং ড্যাশবোর্ডের Submitted তালিকার সঙ্গে স্বয়ংক্রিয় মিলান (*Check List* শিটে প্রতিটি ফাইল কখন সাবমিট হলো ও কোন মেইলে গেল)।
+
+### Version 3.1.0 / 3.1.1 / 3.1.2 (৬ নভেম্বর)
+
+- **3.1.0:** Incomplete তালিকা **ফাইল ধরে** ঠিক হয় (ড্যাশবোর্ডের সঙ্গে মেলে) ও ফেজের হিসাব মিলিয়ে নেওয়া হয়।
+- **3.1.1:** একটি সারি পাতার চেয়ে লম্বা হলেও PDF আর থামে না।
+- **3.1.2:** **পড়ার মতো PDF** — বড় ফন্ট (৮.৬), নতুন কলাম-প্রস্থ, লম্বা ঘর সংক্ষেপ (পুরো লেখা Excel-এ)। **Inactive ট্রিপ** আর ‘ভুতুড়ে’ Incomplete সারি বানায় না।
+
+### Version 3.2.0 (৬ নভেম্বর) — স্ট্যাটাস-ভিত্তিক Incomplete, এক ফাইল = এক সারি
+
+- **Incomplete ড্যাশবোর্ড-স্ট্যাটাস ধরে:** Hold → কারণ = Hold-এর সময়ের comment (না থাকলে Appointment); Finished কিন্তু Submit হয়নি; Partially Submitted (বাকি ডকুমেন্টসহ)।
+- **এক ফাইল = এক সারি:** Incomplete-এ সবসময়; Complete-এ একই দিনের Re-CPV / Extra আলাদা সারিতে দ্বিতীয়বার আসে না (Package + Single আলাদা বিল হলে দুটোই থাকে)। পুরো ইতিহাস Bill Slab কলামে।
+- **Pending Reason কলাম** Excel ও PDF-এ (নিয়ম ও সংক্ষিপ্ত রূপসহ); PDF-এ File No ও Receive Date প্রশস্ত।
+- **Area নিয়ম:** Panchlaish = Chattogram City Corporation (ওয়ার্ড ০৩ → In); Keraniganj, Gazipur, Tongi, Savar … Out; সীমানার কাছে ঠিকানার লেখা জেতে (নীল ঘর + Check List)।
+
+### Version 3.2.1 (৬ নভেম্বর) — শুধু প্রয়োজনীয় Incomplete, Report Summary ফাইলের শেষ আপডেট ধরে
+
+- **চলমান (On Going / Created) ফাইল Incomplete-এ কখনো আসে না** — SLA পেরোলেও না। তালিকায় শুধু Hold, Finished-not-submitted ও Partially Submitted; ট্র্যাকার ও তারিখ-সীমা দুই রিপোর্টেই।
+- **Report Summary একই ফাইলের একাধিক সারির সব ট্রিপ বিবেচনা করে:** পরে তৈরি LOI ট্রিপে ফল Completed হলে Due-র পুরনো লেখা সরে Done-এ আসে (শেষ আপডেটই জেতে)।
+
+### Version 4.0.0 (৮ নভেম্বর) — SLA Restart ও সর্বশেষ activity-নির্ভর Done/Due
+
+- **নতুন SLA নিয়ম (ব্যাংকের চূড়ান্ত):** In = ২ কার্যদিবস, Out = ৪ কার্যদিবস। **Appointment** দিলে সর্বশেষ Appointment-এর *scheduled date* থেকে (শুক্র / শনি / ছুটি হলে পরের কর্মদিবস ধরে) আবার গোনা শুরু; **যেকোনো নতুন ট্রিপ** (Re-CPV, Extra / Additional, Single …) তৈরি হলে তৈরির দিন থেকেই সঙ্গে সঙ্গে restart, কোনো দেরি নেই। একাধিক কারণ থাকলে সবচেয়ে পরের তারিখ। মৃত ট্রিপে (Canceled / Inactive / Withdrawn) restart হয় না।
+- **ফাইল-ভিত্তিক SLA:** একই ফাইলের অন্য বিল-সারির নতুন ট্রিপও গোনা হয়; একই দিনে Package-এ মিশে যাওয়া Re-CPV / Extra-র restart-ও দেখানো সারিতে ধরা হয়।
+- **নতুন কলাম “SLA Start / Restart Date”** (Excel ও PDF, Receive Date-এর পরে); TAT এই তারিখ থেকে গোনা হয়। restart হলে ঘর **বেগুনি (plum)** এবং সহজ ভাষায় লেখা: *“SLA restarted from DD/MM/YYYY (N working days again, from the latest appointment date / from the new trip created on DD/MM/YYYY)”*। Summary শিটে ‘SLA restarted (appointment / new trip)’ সারি।
+- **Report Summary (Done / Due) সবসময় সর্বশেষ activity ধরে:** একই বাক্যের বিষয় ধরে সমস্যা বসে (Office-এর লেখায় ‘LOI verify করতে রাজি নয়’ = LOI-এর সমস্যা); ভুল বানানের ‘LOI signed’ চেনা যায়; ‘..’ দিয়ে আলাদা বাক্য; একই সাবমিশনের পরের LOI ট্রিপ পুরনো Done/Due খুলে বা বন্ধ করে দেয়; ‘Can be verified from <নাম> branch’ নোট চেনা যায়।
+- **নতুন স্বয়ংক্রিয় পরীক্ষা:** মোট **১২৯টি টেস্ট** (SLA restart-এর ১৩টিসহ) এবং **GUI smoke test** — আসল অ্যাপ-উইন্ডো মক সার্ভারে চালিয়ে ট্র্যাকার (Excel + PDF), ইমেইল উইন্ডো, ছুটির উইন্ডো, তারিখ-সীমার রিপোর্ট ও ‘পাসওয়ার্ড সেভ হয় না’ যাচাই; GitHub Actions-এ Windows, macOS ও Linux তিনটিতেই।
+- **লাইভ ৯০ দিনের ডেটায় ফল:** ১৫২৫ সারির মধ্যে ৫৯৪টিতে Appointment ও ২১৫টিতে নতুন ট্রিপের কারণে SLA restart; SLA Breach ৫১১ থেকে ১০২।
+
+---
+
+## বর্তমান নিয়ম — বিস্তারিত (Version 4)
+
+### Version 4.0.0 — বিস্তারিত নিয়ম: (১) Appointment ও যেকোনো নতুন ট্রিপে SLA **Restart** + নতুন কলাম “SLA Start / Restart Date”; (২) Report Summary (Done / Due) সবসময় **সর্বশেষ activity** ধরে
 
 **(১) SLA ও Appointment (ব্যাংকের চূড়ান্ত নিয়ম)**
 - **In =** Dhaka City Corporation ও Chattogram City Corporation → **২ কার্যদিবস**; এর বাইরের সব **Out → ৪ কার্যদিবস** (শুক্র, শনি ও সরকারি ছুটি বাদ)।
@@ -45,16 +158,16 @@ Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্�
 - “Can be verified from <নাম> branch” নোট চেনা যায়।
 - লাইভ ৯০ দিনের ডেটায় (৩৬৭৫ সারি) পুরনো বনাম নতুন তুলনা: Report Summary বদলেছে ৭৯ সারিতে — Due মুছেছে ২৫, নতুন Due এসেছে ২৭ (সবই পরের LOI ট্রিপ / ব্যর্থ-বক্তব্য), অদল-বদল ১৬, শুধু Done-এর লেখা ১১। চলমান ট্র্যাকারের সঙ্গে মিল (Due ০/অ-০) ১১২৬ → ১১৩৯ (১৩৮১ মিলানো সারির মধ্যে)।
 
-### v3.2.1 — (১) Incomplete-এ শুধু Hold / Finished / Partially Submitted; (২) Report Summary এখন ফাইলের **শেষ আপডেট** ধরে
+### Version 3.2.1 — বিস্তারিত নিয়ম: (১) Incomplete-এ শুধু Hold / Finished / Partially Submitted; (২) Report Summary এখন ফাইলের **শেষ আপডেট** ধরে
 
 - **Incomplete (ট্র্যাকার ও তারিখ-সীমার রিপোর্ট, দুটোতেই):** চলমান **On Going / Created ফাইল কখনো আসে না** — SLA পেরোলেও না (চলমান ট্রিপের রিপোর্ট ব্যাংকও চায় না, আমরাও না)। তালিকায় থাকে শুধু **Hold** (কারণসহ), **Finished কিন্তু Submit হয়নি** ও **Partially Submitted** ফাইল। আগে তারিখ-সীমার (যেমন ৯০ দিনের) রিপোর্টে সব Submitted-না-হওয়া ফাইল আসত, ট্র্যাকারে SLA-পেরোনো On Going আসত — দুটোই বন্ধ। প্রতিটি ফাইল (চলমান সহ) আগের মতোই সাধারণ বিস্তারিত Excel-এ পাওয়া যায়।
 - **Report Summary (Done / Due):**
 
-- **সমস্যা:** এক সারি একই ফাইলের একাধিক বিল-সারির প্রতিনিধি হলে (যেমন Package-এর সাথে একই দিনে সাবমিট হওয়া Extra Document / Re-CPV, যেগুলো শুধু Bill Slab-এর ইতিহাসে লেখা থাকে) Done/Due শুধু Package-এর নিজের ট্রিপ থেকে হিসাব হতো। ফলে আগে "LOI (Signatory not available)" Due ছিল, পরে LOI-এর জন্য নতুন ট্রিপ তৈরি হয়ে Completed ও Submitted হলেও Due-তে পুরনো লেখাই থেকে যেত (উদাহরণ: ERIKO SULTANA, PL-20261027061849862)।
+- **সমস্যা:** এক সারি একই ফাইলের একাধিক বিল-সারির প্রতিনিধি হলে (যেমন Package-এর সাথে একই দিনে সাবমিট হওয়া Extra Document / Re-CPV, যেগুলো শুধু Bill Slab-এর ইতিহাসে লেখা থাকে) Done/Due শুধু Package-এর নিজের ট্রিপ থেকে হিসাব হতো। ফলে আগে "LOI (Signatory not available)" Due ছিল, পরে LOI-এর জন্য নতুন ট্রিপ তৈরি হয়ে Completed ও Submitted হলেও Due-তে পুরনো লেখাই থেকে যেত (উদাহরণ: PL-20261027061849862)।
 - **এখন:** যে আইটেম Due-তে আছে, সেটি ওই ফাইলের **পরে তৈরি** হওয়া ও Finished ট্রিপে আবার হয়ে থাকলে, Done-এ পরের ফলাফল বসে এবং Due থেকে সরে যায় (পরের ফলাফলও সমস্যার হলে Due-তে পরের লেখাই থাকে — শেষ আপডেটই জেতে)। Due নয় এমন আইটেম বা সারিতে নেই এমন আইটেম বদলায় না; আগের (পুরনো) ট্রিপ কখনো নতুন সারির Due মুছে না।
 - বাকি সবকিছু (Complete তালিকা, Area, SLA, TAT, PDF/Excel গঠন) অপরিবর্তিত। লাইভ ড্যাশবোর্ডের ৯০ দিনের ডেটায় পুরনো বনাম নতুন তুলনায় Report Summary-র জন্য শুধু লেখা বদলেছে (৩৩ সারি); সারির সংখ্যা, Area, TAT, Submission তারিখ ও Bill Slab-এর ইতিহাস-তালিকা একটিও বদলায়নি।
 
-### রিপোর্টের নিয়ম (V3)
+### রিপোর্টের নিয়ম (Version 3 থেকে, Version 4-এও চালু)
 
 - **Complete =** ফাইলের activity log-এ `status updated to SUBMITTED` ঘটনার দিন। শুক্র/শনি/ছুটির সাবমিশন পরের কর্মদিবসের ট্র্যাকারে যায় (তারিখও সেই দিনের)।
 - **Incomplete = ফাইল-ভিত্তিক, ড্যাশবোর্ডের স্ট্যাটাস ধরে (v3.2):** যে ফাইল রিপোর্টের মুহূর্তে **Submitted নয়**, তার ড্যাশবোর্ড-স্ট্যাটাস অনুযায়ী: **Hold** → সবসময় তালিকায় (কারণ = Hold-এর সময় লেখা comment; comment না থাকলে Appointment-ই কারণ; কিছুই না থাকলে ঘর নীল) · **Finished কিন্তু Submit হয়নি** → সবসময় ("Finished - not yet submitted") · **Partially Submitted** → সবসময় (বাকি ডকুমেন্টসহ) · **On Going / Created (চলমান) → কখনো না (v3.2.1)**, SLA পেরোলেও না। **এক ফাইল = এক সারি** (বাকি Package/Re-CPV/Extra সারি Bill Slab-এর ইতিহাসে আছে)। ড্যাশবোর্ডে Submitted ফাইলের কোনো সারি কখনো Incomplete-এ আসে না। Canceled / Withdrawn ফাইল ও মৃত (Canceled/Inactive/Withdrawn) ট্রিপের Extra সারি বাদ। টেস্ট ফাইল (নম্বরে `Test`) বাদ। **লুক-ব্যাক ৯০ দিন** (নির্দিষ্ট)।
@@ -79,10 +192,46 @@ python run_app.py --cli --email you@barikoi.com --prime --mode tracker --slot 7p
 
 ### কী কী যাচাই হয়েছে
 
-- ৫৫+ স্বয়ংক্রিয় টেস্ট (CI-তে প্রতিবার): রিপোর্টের নিয়ম, ফেজ/৩টা কাট-অফ, কারণ-শ্রেণি, Excel কাঠামো, Check List বাদ দেওয়া (এডিট সহ রাউন্ডট্রিপ), মেইলের গঠন (লোগো, সিগনেচার, সংযুক্তি), লোকাল নকল SMTP সার্ভারে পাঠানো/ভুল পাসওয়ার্ড/ডুপ্লিকেট রোধ, ১০৬০ ফাইল × ৯০ দিনের বাল্ক সিনারিও (স্বতন্ত্র নিয়মে হিসাব করা প্রত্যাশার সাথে হুবহু মেলে)।
+- ১২৯টি স্বয়ংক্রিয় টেস্ট (CI-তে প্রতিবার; Version 4-এ SLA restart-এর ১৩টি নতুন) + আসল অ্যাপ-উইন্ডো মক সার্ভারে চালানো GUI smoke test (Windows / macOS / Linux): রিপোর্টের নিয়ম, ফেজ/৩টা কাট-অফ, কারণ-শ্রেণি, Excel কাঠামো, Check List বাদ দেওয়া (এডিট সহ রাউন্ডট্রিপ), মেইলের গঠন (লোগো, সিগনেচার, সংযুক্তি), লোকাল নকল SMTP সার্ভারে পাঠানো/ভুল পাসওয়ার্ড/ডুপ্লিকেট রোধ, ১০৬০ ফাইল × ৯০ দিনের বাল্ক সিনারিও (স্বতন্ত্র নিয়মে হিসাব করা প্রত্যাশার সাথে হুবহু মেলে)।
 - লাইভ ড্যাশবোর্ড (শুধু GET): ৯০ দিনের সব ফাইল (১০৩১টি) ও তাদের activity log ত্রুটি ছাড়া পড়া যায় (~৯০ সেকেন্ড); ১৪ দিনের প্রতিটি দিনে ড্যাশবোর্ডের Submitted তালিকার প্রতিটি ফাইল log-ভিত্তিক Complete-এ আছে (অতিরিক্ত যেগুলো, সেগুলো পরে আবার Submitted/Hold হয়ে বর্তমান স্ট্যাটাস বদলেছে)।
 
+## GitHub থেকে বিল্ড ও ডাউনলোড
+
+1. কোড GitHub-এর **Private** রিপোজিটরিতে থাকে। **Actions** চলে শুধু (ক) `v*` ট্যাগ দিলে অথবা (খ) হাতে *Run workflow* চাপলে — তখন আগে ১২৯টি টেস্ট, তারপর চারটি বিল্ড এবং তিন সিস্টেমে GUI smoke test চলে।
+2. **স্থায়ী ডাউনলোড লিংক (Release) বানাতে:** GitHub → **Releases → Draft a new release** → Tag লিখুন `v4.0.0` (Target: `main`) → **Publish**। (অথবা টার্মিনালে `git tag v4.0.0 && git push origin v4.0.0`।) ট্যাগ দেওয়ার পর Actions Windows 64/32-bit ও Mac Apple Silicon / Intel বিল্ড করে প্রায় ১৫–২০ মিনিটে Release-এ ফাইল জুড়ে দেয়। Release-এর নাম ও বিবরণ নিজে থেকে বসে (`RELEASE_NOTES.md` থেকে)।
+3. **শুধু বিল্ড চেক করতে:** **Actions → Build desktop app → Run workflow**; শেষে রানের পাতার নিচে **Artifacts** থেকে ডাউনলোড (`Windows-64bit`, `Windows-32bit`, `Mac-AppleSilicon`, `Mac-Intel`) — এটি Release নয়, কিছুদিন পরে মেয়াদ শেষ হয়।
+
+> আপনার MacBook Apple Silicon (M-সিরিজ) হলে `Mac-AppleSilicon`, Intel হলে `Mac-Intel` নিন। (Apple menu → About This Mac এ দেখা যায়।)
+
+## ডেভেলপারদের জন্য
+
+```bash
+pip install -r requirements-dev.txt
+python run_app.py                      # জানালা
+python -m pytest -q tests              # মক সার্ভারে পুরো ফ্লো পরীক্ষা (আসল সার্ভারে যায় না)
+VERIFY_PASSWORD=... python run_app.py --cli --web https://verify.bmapsbd.com --email you@x.com --out report.xlsx
+```
+
+- `src/report_builder/client.py` – শুধু GET + অনুমোদিত পাথ তালিকা (Delete/Edit/Cancel/Logs/OCR ইত্যাদি কোডেই নেই)।
+- `collect.py` – লগইন → তালিকা (৫০/পেজ) → প্রতিটি ফাইলের বিবরণ (একসাথে ৬টি, সর্বোচ্চ ৮) → ব্যর্থ ফাইল আলাদা।
+- `remarks.py` – নিয়মভিত্তিক সংক্ষিপ্ত রিমার্কস (অফলাইন, ডেটা বাইরে যায় না)।
+- `billing.py`, `activity.py`, `recpv.py`, `summary.py`, `geo.py`, `holidays.py` – v2 এর বিলিং নিয়ম, অ্যাক্টিভিটি লগ, Re-CPV, Done/Due, In/Out, ছুটি।
+- `prime_excel.py`, `prime_pdf.py`, `email_copy.py` – Prime Bank Excel/PDF/ইমেইল পাতা।
+- `excel.py` – এক্সেল (Executive Summary, File Report, File/Trip Status, ডেটা শিট, Failed Files)।
+- `collect_prime.py`, `reports.py`, `model.py` – Prime Bank ট্র্যাকার / তারিখ-সীমার ডেটা সংগ্রহ ও রিপোর্টের কাঠামো।
+- `billing.py` – Bill Slab, In/Out, **SLA Start / Restart Date** (`link_siblings`, `sla_start_for`, `retime_folded`), TAT, এক ফাইল = এক সারি (fold)।
+- `summary.py` – Report Summary (Done / Due) — বাক্যের বিষয় ধরে সমস্যা, সর্বশেষ activity-ই জেতে।
+- `prime_excel.py`, `prime_pdf.py`, `report_text.py`, `theme.py` – Excel / PDF ও রং; `file_history.py`, `history_excel.py` – ফাইল হিস্টরি।
+- `mailer.py`, `mail_templates.py`, `signature.py`, `gui_mail.py` – Zoho SMTP মেইল, ৩টি নমুনা, সিগনেচার, ইমেইল উইন্ডো।
+- `gui.py`, `ui_kit.py` – অ্যাপের জানালা। `tests/gui_smoke.py` – আসল জানালা মক সার্ভারে চালানোর পরীক্ষা (CI-তে তিন সিস্টেমে)।
+- `devtools/live_check` – লাইভ ড্যাশবোর্ড যাচাইয়ের সরঞ্জাম (শুধু GET; অ্যাপ বিল্ডের অংশ নয়)।
+- সেটিংস (`~/.verify_report_builder/settings.json`): `workers`, `org_name` বদলানো যায়। পাসওয়ার্ড কখনো লেখা হয় না।
+
 ---
+
+# পুরোনো সংস্করণের নোট (ইতিহাস)
+
+নিচের অংশ প্রতিটি সংস্করণের সময়ে লেখা নোট — কোন নিয়ম কেন বদলেছে বোঝার জন্য রাখা। **বর্তমান নিয়ম উপরে।**
 
 ## পুরোনো ব্যবহার-নির্দেশ (zip ফাইল)
 
@@ -160,30 +309,3 @@ CLI: `python run_app.py --cli --prime --email you@x.com --mode tracker --outdir 
 তারিখের সীমা: `python run_app.py --cli --prime --email you@x.com --mode range --from 2026-08-01 --till 2026-11-02 --outdir out`
 
 > হলুদ ঘর: Dhaka ভিতরে/বাইরে (In/Out), Report Summary, বাতিল ট্রিপ — যেখানে সফটওয়্যার নিশ্চিত নয়। অভ্যন্তরীণ কপিতে দেখে নিন।
-
-## GitHub থেকে বিল্ড ও ডাউনলোড
-
-1. নতুন **Private** রিপোজিটরি বানিয়ে এই সব ফাইল push করুন।
-2. **Actions → Build desktop app → Run workflow**। প্রায় ৫–১০ মিনিটে শেষ হবে।
-3. শেষ হলে রানের পাতার নিচে **Artifacts** থেকে ডাউনলোড করুন:
-   `Windows-64bit`, `Windows-32bit`, `Mac-AppleSilicon` (M1–M4), `Mac-Intel` (macOS 13 Ventura বা নতুন)।
-4. স্থায়ী ডাউনলোড লিংক চাইলে ট্যাগ দিন: `git tag v2.0.0 && git push origin v2.0.0` → **Releases** এ zip ফাইল চলে আসবে।
-
-> আপনার MacBook Apple Silicon (M-সিরিজ) হলে `Mac-AppleSilicon`, Intel হলে `Mac-Intel` নিন। (Apple menu → About This Mac এ দেখা যায়।)
-
-## ডেভেলপারদের জন্য
-
-```bash
-pip install -r requirements-dev.txt
-python run_app.py                      # জানালা
-python -m pytest -q tests              # মক সার্ভারে পুরো ফ্লো পরীক্ষা (আসল সার্ভারে যায় না)
-VERIFY_PASSWORD=... python run_app.py --cli --web https://verify.bmapsbd.com --email you@x.com --out report.xlsx
-```
-
-- `src/report_builder/client.py` – শুধু GET + অনুমোদিত পাথ তালিকা (Delete/Edit/Cancel/Logs/OCR ইত্যাদি কোডেই নেই)।
-- `collect.py` – লগইন → তালিকা (৫০/পেজ) → প্রতিটি ফাইলের বিবরণ (একসাথে ৬টি, সর্বোচ্চ ৮) → ব্যর্থ ফাইল আলাদা।
-- `remarks.py` – নিয়মভিত্তিক সংক্ষিপ্ত রিমার্কস (অফলাইন, ডেটা বাইরে যায় না)।
-- `billing.py`, `activity.py`, `recpv.py`, `summary.py`, `geo.py`, `holidays.py` – v2 এর বিলিং নিয়ম, অ্যাক্টিভিটি লগ, Re-CPV, Done/Due, In/Out, ছুটি।
-- `prime_excel.py`, `prime_pdf.py`, `email_copy.py` – Prime Bank Excel/PDF/ইমেইল পাতা।
-- `excel.py` – এক্সেল (Executive Summary, File Report, File/Trip Status, ডেটা শিট, Failed Files)।
-- সেটিংস (`~/.verify_report_builder/settings.json`): `workers`, `org_name` বদলানো যায়। পাসওয়ার্ড কখনো লেখা হয় না।

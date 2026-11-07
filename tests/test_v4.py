@@ -152,3 +152,18 @@ def test_the_restart_note_says_new_trip_in_plain_words():
     r = _tat(pk)
     text = " ".join("".join(t for t, _s in line) for line in sla_restart_lines(r))
     assert "SLA restarted from 05/11/2026" in text and "2 working days again" in text and "new trip created on 05/11/2026" in text
+
+
+def test_docs_name_the_current_version():
+    """README title + release notes must carry the version that ships (stops stale docs)."""
+    from pathlib import Path
+    from report_builder import __version__
+    root = Path(__file__).resolve().parents[1]
+    major = __version__.split(".")[0]
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    notes = (root / "RELEASE_NOTES.md").read_text(encoding="utf-8")
+    assert readme.splitlines()[0].startswith(f"# Verify Report Builder — Version {major}")
+    assert f"Version {__version__}" in readme
+    assert notes.splitlines()[0] == f"# Verify Report Builder — Version {major} (v{__version__})"
+    for ver in ("Version 1 ", "Version 2 ", "Version 3.0.0", "Version 3.2.1", f"Version {__version__} "):
+        assert ver in readme and ver in notes

@@ -118,10 +118,18 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4              # RELEASE_NOTES.md = the Release text
       - uses: actions/download-artifact@v4
         with: { path: out, merge-multiple: true }
+      - name: Release title ("Version 4 (v4.0.0)")
+        id: title
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          echo "name=Verify Report Builder Version ${v%%.*} (${GITHUB_REF_NAME})" >> "$GITHUB_OUTPUT"
       - uses: softprops/action-gh-release@v2
         with:
+          name: ${{ steps.title.outputs.name }}
+          body_path: RELEASE_NOTES.md
           files: |
             out/*.exe
             out/*.dmg
