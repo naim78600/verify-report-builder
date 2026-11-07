@@ -90,6 +90,6 @@ def test_a_pending_row_is_counted_up_to_the_report_date_from_the_restart():
 def test_sla_start_for_without_receive_date():
     r = _row("In")
     r.receive_dt = None
-    assert sla_start_for(r, date(2026, 11, 8), NO_HOLIDAYS) == (None, None)
+    assert sla_start_for(r, date(2026, 11, 8), NO_HOLIDAYS) == (None, None, None)
     compute_tat(r, date(2026, 11, 8), NO_HOLIDAYS)
     assert r.tat is None and r.sla_start is None

@@ -75,12 +75,17 @@ def sla_start_label(r: BillRow) -> str:
 
 
 def sla_restart_lines(r: BillRow) -> list:
-    """Plain words for a banker: the SLA was restarted by an appointment, and from which day.  [] = no restart."""
-    appt = getattr(r, "sla_appt", None)
-    if not appt or not getattr(r, "sla_start", None):
+    """Plain words for a banker: the SLA was restarted (by an appointment or by a new trip), and from which day.  [] = no restart."""
+    if not getattr(r, "sla_start", None):
         return []
-    note = (f"(appointment date {appt:%d/%m/%Y} is a day off, so the next working day)" if r.sla_start != appt
-            else f"({r.sla_days} working days again, from the latest appointment date)")
+    appt, trip = getattr(r, "sla_appt", None), getattr(r, "sla_trip", None)
+    if appt:
+        note = (f"(appointment date {appt:%d/%m/%Y} is a day off, so the next working day)" if r.sla_start != appt
+                else f"({r.sla_days} working days again, from the latest appointment date)")
+    elif trip:
+        note = f"({r.sla_days} working days again, from the new trip created on {trip:%d/%m/%Y})"
+    else:
+        return []
     return [[("SLA restarted from ", "rs"), (f"{r.sla_start:%d/%m/%Y}", "rs")], [(note, "m")]]
 
 

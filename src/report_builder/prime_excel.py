@@ -11,7 +11,8 @@ documents named in Due for a Partially Submitted file.
 
 TAT and Extra TAT are LIVE Excel formulas:
     SLA Start / Restart Date = the Receive Date, or - when an appointment was given - the scheduled date of the latest appointment
-                               (a Fri / Sat / holiday date moves to the next working day).  The SLA restarts from it.
+                               (a Fri / Sat / holiday date moves to the next working day), or - when a new (Re-CPV) trip was
+                               created - its creation day; the latest of them.  The SLA restarts from it.
     TAT       = MAX(0, NETWORKDAYS.INTL(SLA Start+1, Submission, "0000110", Holidays))    (Fri + Sat off)
     Extra TAT = MAX(0, TAT - 4) when Area = Out,  MAX(0, TAT - 2) when Area = In          (SLA 4 / 2 working days)
     SLA       = "SLA Breach" when Extra TAT > 0
@@ -183,7 +184,7 @@ def _banner(ws, d: PrimeData, name: str, rows, is_incomplete: bool, cols: list) 
         ws.cell(2, 3).value = "=ReportDate"
     note = (f"Generated {d.generated_at:%d/%m/%Y %I:%M %p}   |   BS = Bank Statement   |   SLA: In area {SLA_IN} working days, "
             f"Out area {SLA_OUT} working days (Fri, Sat and holidays excluded), counted from the SLA Start Date = Receive Date; "
-            f"if an appointment was given the SLA restarts from the latest appointment date (plum cell)")
+            f"an appointment (latest scheduled date) or a new Re-CPV trip (its creation day) restarts the SLA from that day (plum cell)")
     if is_incomplete:
         note += "   |   TAT is counted up to the Report Date"
     note += "   |   Light-blue cell = reason / detail not found"
@@ -273,7 +274,7 @@ def _write_rows(ws, r0: int, rows, checks: list, section: str, cols: list) -> in
         ws.cell(r, col["Report Status"]).font = Font(name=FONT, bold=True, color=T.POS if sub else T.NEG)
         ws.cell(r, col["Report Status"]).fill = _fill(T.POS_BG if sub else T.NEG_BG)
         ws.cell(r, col["File No"]).font = Font(name=FONT, bold=True, color=T.NAVY)
-        if row.sla_appt:                                      # restarted by an appointment: plum cell, easy to see
+        if row.sla_restarted:                                 # restarted (appointment / new trip): plum cell, easy to see
             ws.cell(r, col["SLA Start / Restart Date"]).font = Font(name=FONT, bold=True, color=T.RESTART)
             ws.cell(r, col["SLA Start / Restart Date"]).fill = _fill(T.RESTART_BG)
         ws.cell(r, col["Extra TAT"]).font = Font(name=FONT, bold=True, color=T.NEG if (row.extra_tat or 0) > 0 else T.POS)
@@ -397,7 +398,7 @@ def _sum_sheet(wb: Workbook, d: PrimeData) -> None:
     for i, (label, flag) in enumerate((("Within SLA", False), ("SLA Breach", True))):
         line(r, label, sum(1 for x in d.complete if x.sla_breach == flag), sum(1 for x in d.incomplete if x.sla_breach == flag), i % 2)
         r += 1
-    line(r, "SLA restarted by an appointment", sum(1 for x in d.complete if x.sla_appt), sum(1 for x in d.incomplete if x.sla_appt), 0)
+    line(r, "SLA restarted (appointment / new trip)", sum(1 for x in d.complete if x.sla_restarted), sum(1 for x in d.incomplete if x.sla_restarted), 0)
     r += 1
     ck = (d.dash or {}).get("check")
     if ck:

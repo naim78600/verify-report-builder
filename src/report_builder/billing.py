@@ -119,6 +119,8 @@ class BillRow:
     sla_breach: bool = False
     sla_start: date | None = None                      # the day the SLA clock starts: Receive Date, or the appointment day (restart)
     sla_appt: date | None = None                       # the scheduled appointment date that restarted it (None = no restart)
+    sla_trip: date | None = None                       # the day a new (Re-CPV) trip was created that restarted it (None = no restart)
+    folded_rows: list = field(default_factory=list)    # the BillRows shown inside this one (their appointments / new trips count for the SLA too)
     bill_note: str = ""                                # "Out bill" / "In bill" (single-trip rows)
     file_history: list = field(default_factory=list)   # every billing event of this file, first to last
     history_pos: int = 0                               # index of this row inside file_history (0-based)
@@ -133,6 +135,15 @@ class BillRow:
     @property
     def submitted(self) -> bool:
         return self.status == "Submitted"
+
+    @property
+    def sla_restarted(self) -> bool:
+        return bool(self.sla_appt or self.sla_trip)
+
+    @property
+    def sla_why(self) -> str:
+        """'appointment' | 'new trip' | '' - what restarted the SLA clock."""
+        return "appointment" if self.sla_appt else ("new trip" if self.sla_trip else "")
 
     @property
     def reported_at(self) -> datetime | None:
@@ -485,24 +496,38 @@ def assign_sub_days(rows: list[BillRow], cap: date | None, holiday_set: set[date
     return n
 
 
-def sla_start_for(r: BillRow, report_date: date, holiday_set: set[date]) -> tuple[date | None, date | None]:
-    """-> (SLA Start Date, appointment date that restarted it or None).
+RESTART_ON_RECPV = True          # a new Re-CPV trip restarts the SLA (the dashboard does: 181 of 197 files checked, 05-11-2026)
+RESTART_ON_EXTRA = False         # an Extra document trip does NOT (the dashboard restarts for it in 1 of 312 files checked)
 
-    Start = the Receive Date.  An appointment restarts the SLA: the scheduled date of the LATEST-CREATED appointment of the row's
-    trips (the dashboard does the same, 38 of 38 files checked), moved to the next working day when it is a Friday / Saturday /
-    holiday.  Only appointments that existed at the time of the report count (created before the submission, or before the end of
-    the report date for a pending row).  An appointment on a day before the Receive Date changes nothing."""
+
+def sla_start_for(r: BillRow, report_date: date, holiday_set: set[date]) -> tuple[date | None, date | None, date | None]:
+    """-> (SLA Start Date, appointment date that restarted it or None, new-trip day that restarted it or None).
+
+    Start = the Receive Date, unless something restarts the clock (the LATEST of them wins):
+      * an appointment: the scheduled date of the LATEST-CREATED appointment (the dashboard does the same, 38 of 38 files checked),
+        moved to the next working day when it is a Friday / Saturday / holiday;
+      * a new trip: the creation day of a live Re-CPV trip (a trip added to a running / finished file), also one that is shown inside
+        this row because it was submitted with it.  The dashboard restarts the file's SLA for it (In / Out working days again).
+    Only what existed at the time of the report counts (created before the submission, or before the end of the report date for a
+    pending row).  Something on a day before the Receive Date changes nothing.  The rows shown inside this one count as well."""
     if r.receive_dt is None:
-        return None, None
+        return None, None, None
     base = r.receive_dt.date()
     cutoff = r.submitted_at or datetime.combine(report_date, time.max)
-    known = [a for a in r.appointments if a.get("time") and (a.get("created_at") is None or a["created_at"] <= cutoff)]
-    if not known:
-        return base, None
-    last = max(known, key=lambda a: (a.get("created_at") or datetime.min, a["time"], a.get("trip_id") or 0))
-    day = last["time"].date()
-    start = hol.next_working_day(day, holiday_set)
-    return (start, day) if start > base else (base, None)
+    group = [r] + list(r.folded_rows)
+    known = [a for g in group for a in g.appointments if a.get("time") and (a.get("created_at") is None or a["created_at"] <= cutoff)]
+    cands: list[tuple[date, date | None, date | None]] = [(base, None, None)]
+    trip_days = [t["created_at"].date() for g in group if (g.kind == "ReCpv" and RESTART_ON_RECPV) or (g.kind == "Extra" and RESTART_ON_EXTRA)
+                 for _c, t in g.trips if t.get("created_at") and t["created_at"] <= cutoff and t.get("status_code") not in DEAD_TRIP]
+    if trip_days:
+        d = max(trip_days)
+        cands.append((d, None, d))
+    if known:
+        last = max(known, key=lambda a: (a.get("created_at") or datetime.min, a["time"], a.get("trip_id") or 0))
+        day = last["time"].date()
+        cands.append((hol.next_working_day(day, holiday_set), day, None))
+    best = max(cands, key=lambda c: c[0])             # a tie keeps the earlier entry: the plain Receive Date, then the new trip
+    return best if best[0] > base else (base, None, None)
 
 
 def compute_tat(r: BillRow, report_date: date, holiday_set: set[date]) -> None:
@@ -510,15 +535,23 @@ def compute_tat(r: BillRow, report_date: date, holiday_set: set[date]) -> None:
     (Receive Date, or the appointment day when an appointment restarted the SLA): the day after it is day 1."""
     if r.receive_dt is None:
         r.tat = r.extra_tat = None
-        r.sla_start = r.sla_appt = None
+        r.sla_start = r.sla_appt = r.sla_trip = None
         return
-    r.sla_start, r.sla_appt = sla_start_for(r, report_date, holiday_set)
+    r.sla_start, r.sla_appt, r.sla_trip = sla_start_for(r, report_date, holiday_set)
     end = (r.sub_day or r.submitted_at.date()) if r.submitted_at else report_date
     start = r.sla_start + timedelta(days=1)
     r.tat = max(0, hol.count_business_days(start, end, holiday_set))
     r.sla_days = SLA_OUT if r.area == "Out" else SLA_IN
     r.extra_tat = max(0, r.tat - r.sla_days)
     r.sla_breach = r.extra_tat > 0
+
+
+def retime_folded(rows: list[BillRow], report_date: date, holiday_set: set[date]) -> None:
+    """A row that stands for several bill rows (Package + the Re-CPV / Extra of the same day, or all pending rows of a file) counts its
+    SLA over the whole shown set: a new trip or an appointment of a folded row restarts the clock of the row that is shown."""
+    for r in rows:
+        if r.folded_rows:
+            compute_tat(r, report_date, holiday_set)
 
 
 def before_after(r: BillRow) -> str:
@@ -711,6 +744,7 @@ def classify_reason(r: BillRow, mates: list[BillRow] | None = None, state: str =
 def _fold_into(keep: BillRow, dropped: list[BillRow]) -> None:
     for x in dropped:
         keep.folded.append((x.kind, x.trips[0][1].get("id")))
+        keep.folded_rows.append(x)
     if dropped:
         refresh_summary(keep, dropped)
 
@@ -848,6 +882,7 @@ def select_rows(rows: list[BillRow], mode: str, report_date: date, w_from: date 
             main.mates = mates                                         # every pending row of the file (reason is per file)
             incomplete.append(main)
     complete = fold_complete(complete)
+    retime_folded(complete + incomplete, report_date, hset or set())
     key = lambda r: (r.receive_dt or datetime.max, r.file_no, r.trips[0][1]["id"] or 0)   # noqa: E731
     complete.sort(key=key)
     incomplete.sort(key=key)

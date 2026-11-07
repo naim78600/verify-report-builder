@@ -236,9 +236,9 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
             hist = "\n".join(hl)
             kc = T.KIND_TX.get(r.kind)
             start = r.sla_start or (r.receive_dt.date() if r.receive_dt else None)
-            if r.sla_appt:                                           # restarted by an appointment: plum, with the reason in words
+            if r.sla_restarted:                                      # restarted (appointment / new trip): plum, with the reason in words
                 start_cell = Paragraph(f"<font color='#{T.RESTART}'><b>{start:%d/%m/%Y}</b><br/><font size='6.6'>SLA restarted<br/>"
-                                       f"(appointment)</font></font>", center)
+                                       f"({r.sla_why})</font></font>", center)
             else:
                 start_cell = _p(f"{start:%d/%m/%Y}" if start else "", center)
             cells = {
@@ -265,14 +265,14 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
             style.append(("BACKGROUND", (ix["Bill Slab"], i), (ix["Bill Slab"], i), _c(T.KIND_BG.get(r.kind, "FFFFFF"))))
             style.append(("BACKGROUND", (ix["Area"], i), (ix["Area"], i), _c(T.OUT_BG if out else T.IN_BG)))
             style.append(("BACKGROUND", (ix["Report Status"], i), (ix["Report Status"], i), _c(T.POS_BG if sub else T.NEG_BG)))
-            if r.sla_appt:
+            if r.sla_restarted:
                 style.append(("BACKGROUND", (ix["SLA Start / Restart Date"], i), (ix["SLA Start / Restart Date"], i), _c(T.RESTART_BG)))
             if has_due(r):
                 style.append(("BACKGROUND", (ix["Report Summary"], i), (ix["Report Summary"], i), _c(T.DUE_CELL_BG)))
             if i % 2 == 0:
                 zebra_cols = ["SL", "File No", "Concerns", "Re-CPV / Extra Trip (ID)", "Receive Date", "Submission Date-Time", "TAT",
                               "Extra TAT / SLA", "Last Update", "Appointment"]
-                if not r.sla_appt:
+                if not r.sla_restarted:
                     zebra_cols.append("SLA Start / Restart Date")
                 if not has_due(r):
                     zebra_cols.append("Report Summary")
@@ -329,7 +329,7 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
         cv.setFillColor(GREY)
         cv.drawString(left, 6 * mm, f"Generated {d.generated_at:%d/%m/%Y %I:%M %p}   |   BS = Bank Statement   |   "
                                     f"SLA: In area {SLA_IN} working days, Out area {SLA_OUT} working days (Fri, Sat and holidays excluded), from the "
-                                    f"SLA Start Date = Receive Date; an appointment restarts it from the latest appointment date")
+                                    f"SLA Start Date = Receive Date; an appointment (latest scheduled date) or a new Re-CPV trip (creation day) restarts it from that day")
         cv.restoreState()
 
     story = []
