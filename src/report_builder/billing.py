@@ -7,9 +7,13 @@ Rules (agreed with the user)
   * Every trip created after the creation date is a single bill: in the Re-CPV tracker -> ReCpv,
     otherwise Extra Document / Extra Trip.
   * Inactive trips are billable; Canceled trips are marked light-blue (internal copy).
-  * In = inside Dhaka city, Gazipur city or Narayanganj city (lat/long); everything else = Out.
+  * In = inside Dhaka City Corporation or Chattogram City Corporation (lat/long); everything else = Out.
   * Package is Out if ANY of its trips is Out; a single row is judged on its own trip.
-  * SLA (working days from Receive Date): In = 2, Out = 4. Extra TAT = TAT - SLA (never below 0).
+  * SLA (working days): In = 2, Out = 4, counted from the SLA Start Date = the Receive Date.  An APPOINTMENT restarts the SLA
+    (the visit to the appointment is not the company's responsibility - the bank knows it): the SLA Start Date becomes the scheduled
+    date of the LATEST-CREATED appointment of the row's trips (a Fri / Sat / holiday date moves to the next working day), and the
+    2 / 4 working days are counted again from it.  A new trip does not restart anything - it is its own bill row with its own clock.
+    Extra TAT = TAT - SLA (never below 0).
   * The number of trips never changes because of Re-CPV - Re-CPV only labels a trip.
   * Each row has its own Receive Date, Submission, TAT and Extra TAT.
 """
@@ -113,6 +117,8 @@ class BillRow:
     canceled: bool = False
     sla_days: int = 2
     sla_breach: bool = False
+    sla_start: date | None = None                      # the day the SLA clock starts: Receive Date, or the appointment day (restart)
+    sla_appt: date | None = None                       # the scheduled appointment date that restarted it (None = no restart)
     bill_note: str = ""                                # "Out bill" / "In bill" (single-trip rows)
     file_history: list = field(default_factory=list)   # every billing event of this file, first to last
     history_pos: int = 0                               # index of this row inside file_history (0-based)
@@ -479,13 +485,36 @@ def assign_sub_days(rows: list[BillRow], cap: date | None, holiday_set: set[date
     return n
 
 
+def sla_start_for(r: BillRow, report_date: date, holiday_set: set[date]) -> tuple[date | None, date | None]:
+    """-> (SLA Start Date, appointment date that restarted it or None).
+
+    Start = the Receive Date.  An appointment restarts the SLA: the scheduled date of the LATEST-CREATED appointment of the row's
+    trips (the dashboard does the same, 38 of 38 files checked), moved to the next working day when it is a Friday / Saturday /
+    holiday.  Only appointments that existed at the time of the report count (created before the submission, or before the end of
+    the report date for a pending row).  An appointment on a day before the Receive Date changes nothing."""
+    if r.receive_dt is None:
+        return None, None
+    base = r.receive_dt.date()
+    cutoff = r.submitted_at or datetime.combine(report_date, time.max)
+    known = [a for a in r.appointments if a.get("time") and (a.get("created_at") is None or a["created_at"] <= cutoff)]
+    if not known:
+        return base, None
+    last = max(known, key=lambda a: (a.get("created_at") or datetime.min, a["time"], a.get("trip_id") or 0))
+    day = last["time"].date()
+    start = hol.next_working_day(day, holiday_set)
+    return (start, day) if start > base else (base, None)
+
+
 def compute_tat(r: BillRow, report_date: date, holiday_set: set[date]) -> None:
-    """Same numbers as the Excel formulas (Fri+Sat off, holidays from the list)."""
+    """Same numbers as the Excel formulas (Fri+Sat off, holidays from the list).  The days are counted from the SLA Start Date
+    (Receive Date, or the appointment day when an appointment restarted the SLA): the day after it is day 1."""
     if r.receive_dt is None:
         r.tat = r.extra_tat = None
+        r.sla_start = r.sla_appt = None
         return
+    r.sla_start, r.sla_appt = sla_start_for(r, report_date, holiday_set)
     end = (r.sub_day or r.submitted_at.date()) if r.submitted_at else report_date
-    start = r.receive_dt.date() + timedelta(days=1)
+    start = r.sla_start + timedelta(days=1)
     r.tat = max(0, hol.count_business_days(start, end, holiday_set))
     r.sla_days = SLA_OUT if r.area == "Out" else SLA_IN
     r.extra_tat = max(0, r.tat - r.sla_days)

@@ -1,4 +1,4 @@
-# Verify Report Builder v3.2.1 (ভেরিফাই রিপোর্ট বিল্ডার)
+# Verify Report Builder v3.3.0 (ভেরিফাই রিপোর্ট বিল্ডার)
 
 Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্যার। Verify ড্যাশবোর্ড থেকে Prime Bank PLC-এর ফাইল সংগ্রহ করে **দৈনিক সাবমিশন ট্র্যাকার** (Complete + Incomplete) বানায় এবং **সরাসরি ব্যাংককে ইমেইল** পাঠায়।
 **Verify থেকে শুধু তথ্য পড়ে (GET); কোনো তথ্য বদলায় না।** লগইন পাসওয়ার্ড ও ইমেইলের App Password কোথাও সংরক্ষণ হয় না।
@@ -25,12 +25,23 @@ Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্�
 
 **Zoho App Password:** Zoho Mail → My Account → Security → **App Passwords** → নতুন (নাম: Verify Report Builder) → যে পাসওয়ার্ড দেখায় সেটি এখানে বসান (সাধারণ লগইন পাসওয়ার্ড চলবে না; ২-ফ্যাক্টর চালু থাকলে এটিই লাগে)। সার্ভার ডিফল্ট `smtp.zoho.com`, SSL ৪৬৫ — অ্যাকাউন্ট অন্য ডেটা সেন্টারে হলে (`.in` / `.eu` / `.com.au`) ‘সার্ভার সেটিং…’-এ বদলান।
 
-### পরবর্তী (এখনও release হয়নি) — Report Summary: একই ট্রিপের **শেষ বক্তব্যই** জেতে
+### v3.3.0 — (১) Appointment-এ SLA **Restart** + নতুন কলাম “SLA Start / Restart Date”; (২) Report Summary (Done / Due) সবসময় **সর্বশেষ activity** ধরে
 
-- **সমস্যা:** ভেরিফায়ারের লেখায় প্রথমে সমস্যা, পরে সমাধান থাকলে (যেমন "HR/Accounts কেউ ছিলেন না … LOI signed by AGM", "Previous signatory not available. New signatory name is …", "Signatory not available … LOI signed infront of me") সফটওয়্যার প্রথম বাক্যটি ধরে Due-তে LOI রেখে দিত (উদাহরণ: PL-20260910064853366, Phase 2 – ৫ নভেম্বর)।
-- **এখন:** LOI (বা DOCUMENT/LOI ট্রিপ) পরের কোনো বাক্যে সম্পন্ন লেখা থাকলে ("LOI signed by …", "signed/verified in front of me", "completed through …") আগের সমস্যা-নোট বাদ যায়; **সম্পন্ন-বাক্যের পরে** লেখা সমস্যা (যেমন "Second signatory not available") থাকলে Due থাকে। ভবিষ্যৎ/শর্তের বাক্য ("will be verified from head office", "if …", "need …") কখনো সম্পন্ন ধরা হয় না; "LOI will be signed from head office" আর "Signed from head office" নামে Done-এ আসে না। "Previous/Earlier/Former … not available" ইতিহাস, সমস্যা নয়।
-- **অসম্পূর্ণ (চলমান) ট্রিপ:** একাধিক Appointment থাকলে শুধু **সর্বশেষ Appointment-এর কারণ** দেখায় (ট্র্যাকারেও প্রধান Report Summary কলামে শেষ কারণই থাকে)।
-- লাইভ ৯০ দিনের ডেটায় (৩৬৭৫ সারি) Report Summary বদলেছে ৩৪ সারিতে; TAT/SLA/Area/সারির সংখ্যা বদলায়নি।
+**(১) SLA ও Appointment (ব্যাংকের চূড়ান্ত নিয়ম)**
+- **In =** Dhaka City Corporation ও Chattogram City Corporation → **২ কার্যদিবস**; এর বাইরের সব **Out → ৪ কার্যদিবস** (শুক্র, শনি ও সরকারি ছুটি বাদ)।
+- **Appointment দিলে SLA আবার শুরু হয়:** Appointment-এ যাওয়া ব্যাংকও জানে, দায়ভার কোম্পানির নয় (আবেদনকারী / গ্যারান্টর না-ও থাকতে পারেন)। তাই ভিত্তি = সর্বশেষ তৈরি করা Appointment-এর **Scheduled date** (কবে দেওয়া হয়েছে সেটা নয়, **কোন দিনের জন্য** দেওয়া হয়েছে সেটা)। যেমন ১০ দিন পরের তারিখে Appointment দিলে In-এ ওই তারিখ থেকে ২ কার্যদিবস, Out-এ ৪ কার্যদিবস।
+- Scheduled date শুক্র / শনি / ছুটি হলে **পরের কর্মদিবসে** সরিয়ে তারপর গোনা হয় (ড্যাশবোর্ডও তাই করে)। ওই তারিখের পরের দিন = ১ম দিন।
+- **নতুন ট্রিপ SLA restart করে না** — নতুন (Extra / Re-CPV) ট্রিপের নিজস্ব বিল-সারি ও নিজস্ব ঘড়ি (ট্রিপ তৈরির তারিখ থেকে)।
+- Appointment না থাকলে (বা Appointment-এর তারিখ Receive Date-এর আগে / সমান হলে) আগের মতোই **Receive Date** থেকে গোনা হয়। সাবমিশনের পরে নেওয়া Appointment ওই সাবমিশনের হিসাবে ধরা হয় না।
+- **Excel ও PDF-এ নতুন কলাম “SLA Start / Restart Date”** (Receive Date-এর পরে)। TAT এখন এই তারিখ থেকে গোনা হয়; Excel-এ সূত্র (formula) একই কলাম ধরে। Appointment-এ SLA restart হলে ঘরটি **বেগুনি (plum)** রঙে, আর Appointment-এর ঘরে লেখা থাকে *“SLA restarted from DD/MM/YYYY (N working days again, from the latest appointment date)”* — ব্যাংকের কর্মকর্তা সহজে বুঝতে পারেন। Summary শিটে নতুন সারি: “SLA restarted by an appointment”।
+- লাইভ ৯০ দিনের ডেটায় (৩৪০৫ Submitted বিল-সারি): ১০৪৫ সারিতে Appointment-এ restart হয়েছে; SLA Breach ১১৬২ থেকে ৫৩৩; কোনো সারি নতুন করে Breach হয়নি। Phase 2 (৫ নভেম্বর): …849862 (In) ও …853366 (Out) এখন Breach নয়।
+
+**(২) Report Summary (Done / Due) — সর্বশেষ activity-ই জেতে**
+- একই বাক্যের বিষয় ধরে সমস্যা বসে: Office-এর লেখায় “… LOI verify করতে রাজি নয়” থাকলে সেটি **LOI-এর সমস্যা** (Office-এর নয়)।
+- ভুল বানানের “LOI signed” (যেমন “Loi sing by new signatory”, “Loi Verified Not front of Me”, “verifed”) এখন সম্পন্ন ধরা হয়; “..” দিয়ে লেখা বাক্য আলাদা বাক্য ধরা হয়।
+- একই ফাইলের **পরে তৈরি** LOI ট্রিপ (একই সাবমিশনে) পুরনো Done / Due বদলে দেয়: আগে “LOI signed” থাকলেও পরের LOI ট্রিপে “Denied / Disagree” থাকলে Due-তে LOI; আগে সমস্যা থাকলেও পরের ট্রিপে “LOI verified” থাকলে Done, Due ০। আলাদা সাবমিশন-দিনের সারি নিজের দিনের অবস্থাই দেখায়।
+- “Can be verified from <নাম> branch” নোট চেনা যায়।
+- লাইভ ৯০ দিনের ডেটায় (৩৬৭৫ সারি) পুরনো বনাম নতুন তুলনা: Report Summary বদলেছে ৭৯ সারিতে — Due মুছেছে ২৫, নতুন Due এসেছে ২৭ (সবই পরের LOI ট্রিপ / ব্যর্থ-বক্তব্য), অদল-বদল ১৬, শুধু Done-এর লেখা ১১। চলমান ট্র্যাকারের সঙ্গে মিল (Due ০/অ-০) ১১২৬ → ১১৩৯ (১৩৮১ মিলানো সারির মধ্যে)।
 
 ### v3.2.1 — (১) Incomplete-এ শুধু Hold / Finished / Partially Submitted; (২) Report Summary এখন ফাইলের **শেষ আপডেট** ধরে
 
@@ -123,7 +134,7 @@ Zoho Sent-এর ট্র্যাকার মেইল (১৮/১০ – ০
 - **নতুন চেহারা:** বাঁদিকে মেনু, ডানে ৪টি ধাপ (লগইন → সময়সীমা → রিপোর্টের ধরন → কী তৈরি হবে)। ছোট স্ক্রিনে উপরের অংশ স্ক্রল হয়, বোতাম নিচে স্থির।
 - **সময়সীমা:** ‘শেষ কয়েক দিন’ (যেমন 60) অথবা ‘তারিখ বাছুন’। তারিখ বাছলে দিনের ঘর বন্ধ হয়ে যায়। ‘বিলিং’ শব্দ বাদ।
 - **In / Out:** Dhaka city, Gazipur city, Narayanganj city — এই তিন এলাকার ভিতরে (ম্যাপ/lat-long) হলে In, বাকি সব Out। প্যাকেজের একটি ট্রিপও Out হলে পুরো প্যাকেজ Out; Single/Extra/Re-CPV নিজ নিজ ঠিকানা অনুযায়ী।
-- **SLA:** In = ২ কার্যদিবস, Out = ৪ কার্যদিবস (শুক্র, শনি ও সরকারি ছুটি বাদ), Receive Date (= তৈরির তারিখ) থেকে। বেশি হলে ‘SLA Breach’।
+- **SLA:** In = ২ কার্যদিবস, Out = ৪ কার্যদিবস (শুক্র, শনি ও সরকারি ছুটি বাদ), **SLA Start / Restart Date** থেকে (Appointment না থাকলে Receive Date; Appointment থাকলে সর্বশেষ Appointment-এর scheduled date — v3.3.0)। বেশি হলে ‘SLA Breach’।
 - **Bill Slab:** তৈরির দিনে ৩/৪/৫টি ট্রিপ = Package; ৬/৭/৮ নম্বর ট্রিপ = Extra Trip 1/2/3 (আলাদা Single বিল)। প্রতিটি সারিতে ফাইলের **পুরো ইতিহাস** (প্রথম থেকে শেষ) থাকে।
 - **BS:** Bank ট্রিপ সব জায়গায় ‘BS’ (Bank Statement)।
 - **নতুন কলাম:** *Last Update* (Activity Log থেকে: ফাইল ও প্রতিটি ট্রিপের শেষ আপডেট, তারিখ-সময় সহ) এবং *Appointment* (ট্রিপ আইডি, ধরন, অ্যাপয়েন্টমেন্টের সময়, তৈরির সময় সেকেন্ড সহ, কারণ; না থাকলে NO)।

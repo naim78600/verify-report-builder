@@ -661,7 +661,8 @@ def overview(fd: FileData) -> dict:
             continue
         end = f"submitted {r.submitted_at:%d/%m/%Y}" if r.submitted and r.submitted_at else "running"
         verdict = f"SLA Breach (+{r.extra_tat})" if r.sla_breach else "Within SLA"
-        sla.append(f"{i}. TAT {r.tat} / SLA {r.sla_days} · {verdict} · {end}")
+        restart = f" · SLA restarted from {r.sla_start:%d/%m/%Y} (appointment)" if r.sla_appt else ""
+        sla.append(f"{i}. TAT {r.tat} / SLA {r.sla_days}{restart} · {verdict} · {end}")
     events = timeline(fd)
     last = [f"{e['when']:%d/%m/%Y %H:%M:%S} · {e['text']}" + (f" · {e['user']}" if e["user"] else "") for e in events[:5]]
     if len(events) > 5:

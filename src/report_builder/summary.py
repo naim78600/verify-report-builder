@@ -75,7 +75,7 @@ NOTE_RULES = [
     _r(r"(?:does\s*n[o']?t|do\s*n[o']?t|not)\s+verif\w*[^.\n]{0,40}(?:pay\s*slip|payslip)|pay\s*slip[^.\n]{0,60}"
        r"(?:not\s+verif|does\s*n[o']?t\s+verif)|only\s+verif\w*\s+(?:the\s+)?salary\s+certificate", "HR verifies salary certificate only", "loi"),
     _r(r"(?:can|could|must|should|will)\s+(?:be\s+)?(?:verif\w*|sign\w*)[^.\n]{0,30}(?:from|by|at|through)\s+"
-       r"(?:the\s+)?(?:respective\s+|applicant'?s?\s+)?branch", "Can be verified from branch", "loi"),
+       r"(?:the\s+)?(?:respective\s+|applicant'?s?\s+|[\w'’-]+\s+){0,2}branch", "Can be verified from branch", "loi"),
     _r(r"(?:verif\w*|sign\w*)[^.\n]{0,25}(?:by|via|through|on)\s+e-?mail|need\s+to\s+verif\w*\s+by\s+(?:e-?)?mail|by\s+e-?mail|"
        r"gmail\s+address", "Need to verify by email", "loi"),
     _r(r"signator\w*[^.\n]{0,50}(?:out\s+of\s+(?:the\s+)?country|abroad|not\s+available|not\s+present|on\s+leave)",
@@ -217,7 +217,7 @@ class Summary:
 
 
 def _sentences(text: str) -> list[str]:
-    parts = re.split(r"(?<=[.!?])\s+|\n+", text)
+    parts = re.split(r"(?<=[.!?])\s+|\n+|\.{2,}", text)
     return [p.strip(" .;,-") for p in parts if p and p.strip(" .;,-")]
 
 
@@ -289,13 +289,14 @@ _LOI_NEG = re.compile(r"loi\s+not\s+(?:sign\w*|verif\w*)[^.\n]{0,40}|not\s+(?:si
 # The report follows the LAST update: such a sentence settles what the verifier wrote before it - "Previous signatory not available.
 # LOI signed in front of me" is a finished LOI, not a due one.  A sentence that is itself negative / future ("LOI not signed",
 # "will be signed from head office", "need forwarding letter") is never a "done" statement.
-_DONE = re.compile(
-    r"\bloi\b[^.\n]{0,25}\b(?:signed|sign\s+by|verified|varified)\b"
-    r"|\b(?:signed|verified|varified)\s+(?:in\s*front|infront|by\b|and\s+returned)"
+_DONE = re.compile(      # (sing / singed / varified / verifed are the verifiers' usual typos)
+    r"\bloi\b[^.\n]{0,25}\b(?:sign(?:ed)?|sing(?:ed)?|verified|varified|verifed|varifed)\s+(?:by|in\s*front|infront)\b"
+    r"|\bloi\b[^.\n]{0,25}\b(?:signed|singed|verified|varified|verifed|varifed)\b"
+    r"|\b(?:sign(?:ed)?|sing(?:ed)?|verified|varified|verifed)\s+(?:in\s*front|infront|by\b|and\s+returned)"
     r"|\b(?:completed|done)\s+(?:through|by|from|at|with)\b"
     r"|\bverification\s+(?:was\s+|has\s+been\s+)?(?:completed|done)\b", _I)
 _NOT_DONE = re.compile(
-    r"\bnot\b(?!\s+in\s*front)|n['’]t\b|\bunable\b|\bcannot\b|\bwill\s+be\b|\bcan\s+be\b|\bcould\s+be\b|"
+    r"\bnot\b(?!\s+(?:in\s*)?front)|n['’]t\b|\bunable\b|\bcannot\b|\bwill\s+be\b|\bcan\s+be\b|\bcould\s+be\b|"
     r"\bto\s+be\s+(?:sign\w*|verif\w*|varif\w*)\b|\bbe\s+(?:signed|verified|varified)\b|\bneed\w*|\bmust\b|\bshould\b|\bwould\b|\bmay\b|\bmight\b|"
     r"\bshall\b|\bif\b|\bwithout\b|\bwill\s+(?:sign|verify)\b|\b(?:want|ask|request|advis|inform|said|stated)\w*", _I)
 _HISTORY = re.compile(r"\s*(?:the\s+)?(?:previous|earlier|former)\b", _I)
@@ -327,6 +328,30 @@ def _trip_text(trip: dict) -> tuple[str, str]:
 _POSITIVE = re.compile(r"information\s+(?:is\s+)?ok|address\s+(?:is\s+)?ok", _I)
 
 
+_LOI_ATTRIBUTED = ("Disagree to verify",)       # a refusal written in a sentence about the LOI is the LOI's problem, not the house's / office's
+
+
+def _collect(text: str, rules) -> dict:
+    """Notes found in `text`, each attributed to what the sentence is about: a sentence that names the LOI / signatory / salary
+    certificate is about the LOI ("Applicant disagree to LOI verify" in an Office visit is a LOI problem, not an Office one)."""
+    sl = _sentences(text)
+    about_loi = "\n".join(x for x in sl if _LOI_WORD.search(x))
+    other = "\n".join(x for x in sl if not _LOI_WORD.search(x))
+    found: dict[str, list[str]] = {"loi": [], "trip": []}
+    for rx, note, target in rules:
+        if target == "loi":
+            dest = "loi" if rx.search(text) else None
+        elif rx.search(other):
+            dest = "trip"
+        elif note in _LOI_ATTRIBUTED and rx.search(about_loi):
+            dest = "loi"
+        else:
+            dest = None
+        if dest and note not in found[dest]:
+            found[dest].append(note)
+    return found
+
+
 def _notes_for(text_all: str, outcome: str, rules, loi_trip: bool = False) -> tuple[dict, bool]:
     """-> ({"loi": [...], "trip": [...]}, fallback_used).
 
@@ -334,10 +359,7 @@ def _notes_for(text_all: str, outcome: str, rules, loi_trip: bool = False) -> tu
     (visiting card not available, applicant was not present ... but signed) are NOT problems, so only
     good-news notes and LOI notes are kept for it. A negative outcome keeps every note.
     """
-    found: dict[str, list[str]] = {"loi": [], "trip": []}
-    for rx, note, target in rules:
-        if rx.search(text_all) and note not in found[target]:
-            found[target].append(note)
+    found = _collect(text_all, rules)
     positive = bool(_POSITIVE.search(outcome)) and not _INFO_NOT_OK.search(outcome)
     if positive:
         found["trip"] = [n for n in found["trip"] if n in INFO_NOTES]
@@ -348,17 +370,10 @@ def _notes_for(text_all: str, outcome: str, rules, loi_trip: bool = False) -> tu
         # the LOI was finished by a later statement: only LOI problems written in / after that statement still count
         # "Previous signatory not available. New signatory name is ..." describes a signatory that was replaced: history, not a problem
         tail = "\n".join(x for x in sl[last_loi_done:] if not _HISTORY.match(x))
-        keep = [n for n in found["loi"] if n in INFO_NOTES]
-        for rx, note, target in rules:
-            if target == "loi" and note not in keep and rx.search(tail):
-                keep.append(note)
-        found["loi"] = keep
+        in_tail = _collect(tail, rules)
+        found["loi"] = [n for n in found["loi"] if n in INFO_NOTES] + [n for n in in_tail["loi"] if n not in INFO_NOTES]
         if loi_trip:                                    # a LOI visit settled by its last statement: earlier visit problems are history too
-            keep = [n for n in found["trip"] if n in INFO_NOTES]
-            for rx, note, target in rules:
-                if target == "trip" and note not in keep and rx.search(tail):
-                    keep.append(note)
-            found["trip"] = keep
+            found["trip"] = [n for n in found["trip"] if n in INFO_NOTES] + [n for n in in_tail["trip"] if n not in INFO_NOTES]
     if "LOI not verified" in found["loi"] and re.search(
             r"loi\s+(?:was\s+|is\s+)?(?:signed|verified|varified)\s+(?:by\s+(?:the\s+)?signator|in\s*front|infront)|"
             r"verified\s+and\s+returned|loi\s+(?:has\s+been\s+)?verified", text_all, _I) \
@@ -527,13 +542,13 @@ def _finish(done: list[Item], due: list[Item], skipped: list[str], submitted: bo
 
 def apply_later(own: Summary, later: Summary, submitted: bool) -> Summary:
     """Report Summary = the LAST update.  `own` = Done / Due of a row's own trips; `later` = the summary of trips of the same file that
-    came AFTER them (a Re-CPV / Extra trip listed inside this row).  An item that is still Due in `own` and was done again by a later
-    trip (the LOI document trip created after "signatory not available", finished and submitted with the file) takes the later outcome
-    in Done, and leaves Due - or stays Due with the later wording if that outcome is a problem again.  Items that are not Due, and
-    items the row did not have, are not touched."""
+    came AFTER them (a Re-CPV / Extra trip listed inside this row).  An item the row has - Done or Due - that a later trip finished
+    again (the LOI document trip created after "signatory not available", finished and submitted with the file) takes the LATER
+    outcome: clean -> Done and not Due any more; a problem again -> Due with the later wording ("LOI signed" in the package, then the
+    LOI trip says the applicant disagrees: LOI is due).  Items the row did not have are not added."""
     info = info_notes()
     redone = {(i.who, i.label): i for i in later.done_items if i.rank == 2}
-    hit = {(i.who, i.label) for i in own.due_items if (i.who, i.label) in redone}
+    hit = {(i.who, i.label) for i in own.done_items + own.due_items if (i.who, i.label) in redone}
     if not hit:
         return own
     done = [redone[(i.who, i.label)] if (i.who, i.label) in hit else i for i in own.done_items]

@@ -34,4 +34,6 @@ BAND_NO_BG, BAND_NO_TX = "FDE8D3", "9A3412"
 
 KIND_BG = {"Package": "EEF2F7", "Single": "F3F4F6", "ReCpv": "FFF0E3", "Extra": "F1ECFA"}
 KIND_TX = {"Package": "1D4ED8", "Single": "475569", "ReCpv": "C2410C", "Extra": "6D28D9"}
+RESTART = "86198F"      # SLA restarted by an appointment (plum text) ...
+RESTART_BG = "FAE8FF"   # ... on a pale plum cell
 CHECK = "BFE3FF"        # light sky-blue = "please check this cell" (reason / detail not found)
