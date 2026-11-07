@@ -18,6 +18,11 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "tests"))
 
+try:                                                                       # Windows consoles are cp1252: never die on Bengali text
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:                                                          # noqa: BLE001
+    pass
+
 import tkinter as tk                                                       # noqa: E402
 from tkinter import messagebox                                             # noqa: E402
 
@@ -122,6 +127,9 @@ def main():
     app.d_till.var.set("02-11-2026")
     app._sync_ui()
     pump(app, 0.3)
+    if app.password.get():
+        fail("the password stayed in the window after the run (it must be cleared)")
+    app.password.set("secret")                                             # the window clears it after every run (by design)
     app.out_files = []
     app._go()
     if not pump(app, until=lambda: finished(app)):
