@@ -11,8 +11,9 @@ documents named in Due for a Partially Submitted file.
 
 TAT and Extra TAT are LIVE Excel formulas:
     SLA Start / Restart Date = the Receive Date, or - when an appointment was given - the scheduled date of the latest appointment
-                               (a Fri / Sat / holiday date moves to the next working day), or - when a new (Re-CPV) trip was
-                               created - its creation day; the latest of them.  The SLA restarts from it.
+                               (a Fri / Sat / holiday date moves to the next working day), or - when ANY new trip of the file
+                               (Re-CPV, extra / additional, ...) was created - its creation day; the latest of them.  The SLA
+                               restarts from it at once.
     TAT       = MAX(0, NETWORKDAYS.INTL(SLA Start+1, Submission, "0000110", Holidays))    (Fri + Sat off)
     Extra TAT = MAX(0, TAT - 4) when Area = Out,  MAX(0, TAT - 2) when Area = In          (SLA 4 / 2 working days)
     SLA       = "SLA Breach" when Extra TAT > 0
@@ -184,7 +185,7 @@ def _banner(ws, d: PrimeData, name: str, rows, is_incomplete: bool, cols: list) 
         ws.cell(2, 3).value = "=ReportDate"
     note = (f"Generated {d.generated_at:%d/%m/%Y %I:%M %p}   |   BS = Bank Statement   |   SLA: In area {SLA_IN} working days, "
             f"Out area {SLA_OUT} working days (Fri, Sat and holidays excluded), counted from the SLA Start Date = Receive Date; "
-            f"an appointment (latest scheduled date) or a new Re-CPV trip (its creation day) restarts the SLA from that day (plum cell)")
+            f"an appointment (latest scheduled date) or any new trip (its creation day) restarts the SLA from that day (plum cell)")
     if is_incomplete:
         note += "   |   TAT is counted up to the Report Date"
     note += "   |   Light-blue cell = reason / detail not found"

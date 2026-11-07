@@ -121,6 +121,7 @@ class BillRow:
     sla_appt: date | None = None                       # the scheduled appointment date that restarted it (None = no restart)
     sla_trip: date | None = None                       # the day a new (Re-CPV) trip was created that restarted it (None = no restart)
     folded_rows: list = field(default_factory=list)    # the BillRows shown inside this one (their appointments / new trips count for the SLA too)
+    file_rows: list = field(default_factory=list)      # every other bill row of the same file (a new trip of the file restarts the SLA of all)
     bill_note: str = ""                                # "Out bill" / "In bill" (single-trip rows)
     file_history: list = field(default_factory=list)   # every billing event of this file, first to last
     history_pos: int = 0                               # index of this row inside file_history (0-based)
@@ -496,29 +497,40 @@ def assign_sub_days(rows: list[BillRow], cap: date | None, holiday_set: set[date
     return n
 
 
-RESTART_ON_RECPV = True          # a new Re-CPV trip restarts the SLA (the dashboard does: 181 of 197 files checked, 05-11-2026)
-RESTART_ON_EXTRA = False         # an Extra document trip does NOT (the dashboard restarts for it in 1 of 312 files checked)
+def link_siblings(rows: list[BillRow]) -> None:
+    """Give every bill row the other rows of its file: the SLA is the FILE's, so a new trip (or an appointment) of the file restarts
+    the clock of every row that was still open when it appeared."""
+    by_file: dict = {}
+    for r in rows:
+        by_file.setdefault(r.file_id, []).append(r)
+    for rs in by_file.values():
+        for r in rs:
+            r.file_rows = [x for x in rs if x is not r]
 
 
 def sla_start_for(r: BillRow, report_date: date, holiday_set: set[date]) -> tuple[date | None, date | None, date | None]:
     """-> (SLA Start Date, appointment date that restarted it or None, new-trip day that restarted it or None).
 
     Start = the Receive Date, unless something restarts the clock (the LATEST of them wins):
+      * a NEW TRIP of the file - ANY kind (Re-CPV, additional / Extra document trip, a single trip ...): the SLA restarts on the day
+        the trip is created, at once (In 2 / Out 4 working days again; the day after it is day 1).  A trip that is Canceled /
+        Inactive / Withdrawn does not count;
       * an appointment: the scheduled date of the LATEST-CREATED appointment (the dashboard does the same, 38 of 38 files checked),
-        moved to the next working day when it is a Friday / Saturday / holiday;
-      * a new trip: the creation day of a live Re-CPV trip (a trip added to a running / finished file), also one that is shown inside
-        this row because it was submitted with it.  The dashboard restarts the file's SLA for it (In / Out working days again).
-    Only what existed at the time of the report counts (created before the submission, or before the end of the report date for a
-    pending row).  Something on a day before the Receive Date changes nothing.  The rows shown inside this one count as well."""
+        moved to the next working day when it is a Friday / Saturday / holiday.
+    The whole file counts (its other bill rows too), but only what existed at the time of the report: created before the
+    submission, or before the end of the report date for a pending row.  Something on a day before the Receive Date changes nothing."""
     if r.receive_dt is None:
         return None, None, None
     base = r.receive_dt.date()
     cutoff = r.submitted_at or datetime.combine(report_date, time.max)
-    group = [r] + list(r.folded_rows)
+    group = [r]
+    for g in list(r.folded_rows) + list(r.file_rows):
+        if not any(g is x for x in group):
+            group.append(g)
     known = [a for g in group for a in g.appointments if a.get("time") and (a.get("created_at") is None or a["created_at"] <= cutoff)]
     cands: list[tuple[date, date | None, date | None]] = [(base, None, None)]
-    trip_days = [t["created_at"].date() for g in group if (g.kind == "ReCpv" and RESTART_ON_RECPV) or (g.kind == "Extra" and RESTART_ON_EXTRA)
-                 for _c, t in g.trips if t.get("created_at") and t["created_at"] <= cutoff and t.get("status_code") not in DEAD_TRIP]
+    trip_days = [t["created_at"].date() for g in group for _c, t in g.trips
+                 if t.get("created_at") and t["created_at"] <= cutoff and t.get("status_code") not in DEAD_TRIP]
     if trip_days:
         d = max(trip_days)
         cands.append((d, None, d))

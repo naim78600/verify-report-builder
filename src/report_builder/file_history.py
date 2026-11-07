@@ -26,7 +26,7 @@ from pathlib import Path
 
 from . import config, holidays as hol
 from .activity import parse_logs
-from .billing import BASE_TYPE, BillRow, FileLogs, build_rows, compute_tat, concern_info, file_type_of, fill_history
+from .billing import BASE_TYPE, BillRow, FileLogs, build_rows, compute_tat, concern_info, file_type_of, fill_history, link_siblings
 from .client import ApiError, AuthError, Cancelled, ReadOnlyClient
 from .collect import Progress, RunConfig, _noop
 from .collect_prime import NO_STATUS, _list_files, _pool_map
@@ -552,6 +552,7 @@ def collect_history(cfg: HistoryConfig, progress: Progress = _noop, cancel: thre
         fd.recpv_events = list(recpv_by_file.get((f["file_no"] or "").strip().upper(), []))
         try:
             fd.rows = build_rows(f, recpv_by_trip, recpv_by_file, fd.logs, HISTORY_SINCE)
+            link_siblings(fd.rows)
             for r in fd.rows:
                 compute_tat(r, today, hset)
             fill_history(fd.rows)

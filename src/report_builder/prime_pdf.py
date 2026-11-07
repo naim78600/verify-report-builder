@@ -329,7 +329,7 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
         cv.setFillColor(GREY)
         cv.drawString(left, 6 * mm, f"Generated {d.generated_at:%d/%m/%Y %I:%M %p}   |   BS = Bank Statement   |   "
                                     f"SLA: In area {SLA_IN} working days, Out area {SLA_OUT} working days (Fri, Sat and holidays excluded), from the "
-                                    f"SLA Start Date = Receive Date; an appointment (latest scheduled date) or a new Re-CPV trip (creation day) restarts it from that day")
+                                    f"SLA Start Date = Receive Date; an appointment (latest scheduled date) or any new trip (creation day) restarts it from that day")
         cv.restoreState()
 
     story = []
