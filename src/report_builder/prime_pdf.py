@@ -26,10 +26,10 @@ from reportlab.platypus import KeepInFrame, PageBreak, Paragraph, SimpleDocTempl
 from . import theme as T
 from .billing import SLA_IN, SLA_OUT, before_after
 from .collect_prime import PrimeData, title_for
-from .report_text import _dt, appointment_lines, bill_slab_lines, has_due, last_update_lines, summary_lines
+from .report_text import _dt, appointment_lines, bill_slab_lines, has_due, last_update_lines, sla_restart_lines, summary_lines
 
 HIST_MAX = 6              # history lines shown per row in the PDF (newest); the Excel has them all
-LINES = {"concerns": 10, "history": 18, "slab": 16, "summary": 14, "last": 14, "appt": 10, "reason": 14}   # printed lines per cell
+LINES = {"concerns": 10, "history": 18, "slab": 16, "summary": 14, "last": 14, "appt": 14, "reason": 14}   # printed lines per cell
 MAX_CELL_H = 600          # points; the page frame is ~747 pt high, minus the repeated header row and the cell padding
 
 
@@ -98,7 +98,7 @@ class _NumberedCanvas(rl_canvas.Canvas):
 _FONT_TAGS = {   # style code -> (bold, colour, size delta)
     "n": (False, T.TEXT), "b": (True, T.TEXT), "m": (False, T.MUTED), "h": (True, T.NAVY),
     "g": (False, T.POS), "gb": (True, T.POS), "a": (False, T.NEG), "ab": (True, T.NEG), "k": (False, T.MUTED),
-    "dn": (False, T.NOTE), "hl": (True, T.HILITE),
+    "dn": (False, T.NOTE), "hl": (True, T.HILITE), "rs": (True, T.RESTART),
 }
 
 
@@ -130,12 +130,15 @@ def last_update_short(r) -> list:
 
 def appointment_short(r) -> list:
     """PDF version of the Appointment column: the active / newest SHOW_APPTS appointments, the rest counted."""
+    restart = sla_restart_lines(r)
+    head = (restart + [[("", "n")]]) if restart else []
     if len(r.appointments) <= SHOW_APPTS:
-        return appointment_lines(r)
+        lines = appointment_lines(r)
+        return head + ([] if restart and lines == [[("NO", "m")]] else lines)
     keep = sorted(r.appointments, key=lambda a: (a.get("active", True), a.get("time") or a.get("created_at")), reverse=True)[:SHOW_APPTS]
     lines = appointment_lines(SimpleNamespace(appointments=keep))      # that function only reads .appointments
     lines += [[("", "n")], [(f"+{len(r.appointments) - SHOW_APPTS} more appointments (all in the Excel)", "m")]]
-    return lines
+    return head + lines
 
 
 def _markup(lines, kind_color: str | None = None) -> str:
@@ -173,16 +176,16 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
     head = ParagraphStyle("h", parent=base, fontName="Vera-Bold", textColor=colors.white, alignment=1, fontSize=8.8)
     small = ParagraphStyle("s", parent=base, fontSize=7.8, leading=9.6, textColor=GREY)
 
-    heads = ["SL", "File No", "Concerns", "Re-CPV / Extra Trip (ID)", "Bill Slab", "Area", "Receive Date",
+    heads = ["SL", "File No", "Concerns", "Re-CPV / Extra Trip (ID)", "Bill Slab", "Area", "Receive Date", "SLA Start / Restart Date",
              "Submission Date-Time", "TAT", "Extra TAT / SLA", "Report Status", "Report Summary", "Last Update", "Appointment"]
-    widths_mm = [8, 44, 31, 27, 43, 11, 23, 24, 10, 18, 23, 41, 39, 34]
-    REASON_MM = 36                       # Incomplete table only: "Pending Reason" right after "Report Status"
+    widths_mm = [7, 40, 29, 26, 40, 12, 23, 23, 23, 10, 17, 22, 40, 36, 34]
+    REASON_MM = 34                       # Incomplete table only: "Pending Reason" right after "Report Status"
     cur = {"w": []}
 
     def set_layout(reason: bool):
         w_mm = list(widths_mm)
         if reason:
-            w_mm.insert(11, REASON_MM)
+            w_mm.insert(heads.index("Report Status") + 1, REASON_MM)
         scale = usable / (sum(w_mm) * mm)
         cur["w"] = [w * mm * scale for w in w_mm]
         return cur["w"]
@@ -203,10 +206,10 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
 
     def table_for(rows, reason: bool = False) -> Table:
         widths = set_layout(reason)
-        o = 1 if reason else 0                                   # columns right of "Report Status" move one place
         hs = list(heads)
         if reason:
-            hs.insert(11, "Pending Reason")
+            hs.insert(hs.index("Report Status") + 1, "Pending Reason")
+        ix = {h: i for i, h in enumerate(hs)}                    # column index by name (the Incomplete table has one more column)
         data = [[Paragraph(h, head) for h in hs]]
         style = [
             ("BACKGROUND", (0, 0), (-1, 0), NAVY),
@@ -232,43 +235,60 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
                 hl = [f"... {len(hl) - HIST_MAX} earlier events (full list in the Excel)"] + hl[-HIST_MAX:]
             hist = "\n".join(hl)
             kc = T.KIND_TX.get(r.kind)
-            row_cells = [
-                _p(r.sl, center),
-                Paragraph(f"<b><font color='#{T.NAVY}'>{escape(_safe(r.file_no))}</font></b><br/><font color='#{T.MUTED}'>{escape(r.file_type)}</font>", base),
-                cap(_p("\n".join(r.concern_lines), base), 2, LINES["concerns"]),
-                cap(_p(hist, base), 3, LINES["history"]),
-                cap(Paragraph(_markup(bill_slab_lines(r), kc), base), 4, LINES["slab"]),
-                Paragraph(f'<font color="#{T.OUT if out else T.IN}"><b>{r.area}</b></font>', center),
-                _p(f"{r.receive_dt:%d/%m/%Y}" if r.receive_dt else "", center),
-                Paragraph(when, center),
-                _p(r.tat if r.tat is not None else "", center),
-                Paragraph(f"<b><font color='#{sla_col}'>{xt}</font></b><br/><font size='6.6' color='#{sla_col}'>{sla_txt}<br/>"
-                          f"(SLA {r.sla_days} days)</font>", center),
-                Paragraph(f'<font color="#{st_color}"><b>{status}</b></font>', center),
-                cap(Paragraph(_markup(summary_lines(r)), base), 11 + o, LINES["summary"]),
-                cap(Paragraph(_markup(last_update_short(r)), base), 12 + o, LINES["last"]),
-                cap(Paragraph(_markup(appointment_short(r)), base), 13 + o, LINES["appt"]),
-            ]
+            start = r.sla_start or (r.receive_dt.date() if r.receive_dt else None)
+            if r.sla_restarted:                                      # restarted (appointment / new trip): plum, with the reason in words
+                start_cell = Paragraph(f"<font color='#{T.RESTART}'><b>{start:%d/%m/%Y}</b><br/><font size='6.6'>SLA restarted<br/>"
+                                       f"({r.sla_why})</font></font>", center)
+            else:
+                start_cell = _p(f"{start:%d/%m/%Y}" if start else "", center)
+            cells = {
+                "SL": _p(r.sl, center),
+                "File No": Paragraph(f"<b><font color='#{T.NAVY}'>{escape(_safe(r.file_no))}</font></b><br/><font color='#{T.MUTED}'>{escape(r.file_type)}</font>", base),
+                "Concerns": cap(_p("\n".join(r.concern_lines), base), ix["Concerns"], LINES["concerns"]),
+                "Re-CPV / Extra Trip (ID)": cap(_p(hist, base), ix["Re-CPV / Extra Trip (ID)"], LINES["history"]),
+                "Bill Slab": cap(Paragraph(_markup(bill_slab_lines(r), kc), base), ix["Bill Slab"], LINES["slab"]),
+                "Area": Paragraph(f'<font color="#{T.OUT if out else T.IN}"><b>{r.area}</b></font>', center),
+                "Receive Date": _p(f"{r.receive_dt:%d/%m/%Y}" if r.receive_dt else "", center),
+                "SLA Start / Restart Date": start_cell,
+                "Submission Date-Time": Paragraph(when, center),
+                "TAT": _p(r.tat if r.tat is not None else "", center),
+                "Extra TAT / SLA": Paragraph(f"<b><font color='#{sla_col}'>{xt}</font></b><br/><font size='6.6' color='#{sla_col}'>{sla_txt}<br/>"
+                                             f"(SLA {r.sla_days} days)</font>", center),
+                "Report Status": Paragraph(f'<font color="#{st_color}"><b>{status}</b></font>', center),
+                "Report Summary": cap(Paragraph(_markup(summary_lines(r)), base), ix["Report Summary"], LINES["summary"]),
+                "Last Update": cap(Paragraph(_markup(last_update_short(r)), base), ix["Last Update"], LINES["last"]),
+                "Appointment": cap(Paragraph(_markup(appointment_short(r)), base), ix["Appointment"], LINES["appt"]),
+            }
             if reason:
-                row_cells.insert(11, cap(_reason_flow(r), 11, LINES["reason"]))
-            data.append(row_cells)
-            style.append(("BACKGROUND", (4, i), (4, i), _c(T.KIND_BG.get(r.kind, "FFFFFF"))))
-            style.append(("BACKGROUND", (5, i), (5, i), _c(T.OUT_BG if out else T.IN_BG)))
-            style.append(("BACKGROUND", (10, i), (10, i), _c(T.POS_BG if sub else T.NEG_BG)))
+                cells["Pending Reason"] = cap(_reason_flow(r), ix["Pending Reason"], LINES["reason"])
+            data.append([cells[h] for h in hs])
+            style.append(("BACKGROUND", (ix["Bill Slab"], i), (ix["Bill Slab"], i), _c(T.KIND_BG.get(r.kind, "FFFFFF"))))
+            style.append(("BACKGROUND", (ix["Area"], i), (ix["Area"], i), _c(T.OUT_BG if out else T.IN_BG)))
+            style.append(("BACKGROUND", (ix["Report Status"], i), (ix["Report Status"], i), _c(T.POS_BG if sub else T.NEG_BG)))
+            if r.sla_restarted:
+                style.append(("BACKGROUND", (ix["SLA Start / Restart Date"], i), (ix["SLA Start / Restart Date"], i), _c(T.RESTART_BG)))
             if has_due(r):
-                style.append(("BACKGROUND", (11 + o, i), (11 + o, i), _c(T.DUE_CELL_BG)))
+                style.append(("BACKGROUND", (ix["Report Summary"], i), (ix["Report Summary"], i), _c(T.DUE_CELL_BG)))
             if i % 2 == 0:
-                for col in (0, 1, 2, 3, 6, 7, 8, 9, 12 + o, 13 + o) + (() if has_due(r) else (11 + o,)) + ((11,) if reason else ()):
-                    style.append(("BACKGROUND", (col, i), (col, i), _c(T.ZEBRA)))
-            if internal:
-                col_for = {"area": 5, "slab": 4, "summary": 11 + o, "status": 10}
+                zebra_cols = ["SL", "File No", "Concerns", "Re-CPV / Extra Trip (ID)", "Receive Date", "Submission Date-Time", "TAT",
+                              "Extra TAT / SLA", "Last Update", "Appointment"]
+                if not r.sla_restarted:
+                    zebra_cols.append("SLA Start / Restart Date")
+                if not has_due(r):
+                    zebra_cols.append("Report Summary")
                 if reason:
-                    col_for["reason"] = 11
+                    zebra_cols.append("Pending Reason")
+                for h in zebra_cols:
+                    style.append(("BACKGROUND", (ix[h], i), (ix[h], i), _c(T.ZEBRA)))
+            if internal:
+                col_for = {"area": ix["Area"], "slab": ix["Bill Slab"], "summary": ix["Report Summary"], "status": ix["Report Status"]}
+                if reason:
+                    col_for["reason"] = ix["Pending Reason"]
                 for key in r.flags:
                     if key in col_for:
                         style.append(("BACKGROUND", (col_for[key], i), (col_for[key], i), CHECK))
                 if r.canceled:
-                    style.append(("BACKGROUND", (4, i), (4, i), CHECK))
+                    style.append(("BACKGROUND", (ix["Bill Slab"], i), (ix["Bill Slab"], i), CHECK))
         t = Table(data, colWidths=widths, repeatRows=1, splitByRow=1)
         t.setStyle(TableStyle(style))
         return t
@@ -308,7 +328,8 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
         cv.setFont("Vera", 7.5)
         cv.setFillColor(GREY)
         cv.drawString(left, 6 * mm, f"Generated {d.generated_at:%d/%m/%Y %I:%M %p}   |   BS = Bank Statement   |   "
-                                    f"SLA: In area {SLA_IN} working days, Out area {SLA_OUT} working days (Fri, Sat and holidays excluded)")
+                                    f"SLA: In area {SLA_IN} working days, Out area {SLA_OUT} working days (Fri, Sat and holidays excluded), from the "
+                                    f"SLA Start Date = Receive Date; an appointment (latest scheduled date) or any new trip (creation day) restarts it from that day")
         cv.restoreState()
 
     story = []

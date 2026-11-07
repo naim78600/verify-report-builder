@@ -77,7 +77,8 @@ def test_incomplete_rule_sla_plus_partial(srv):
     assert d.incomplete_scope == "sla_partial"
     by = {r.file_no: r for r in d.incomplete}
     assert set(by) == {"PL-20261020000003"}                                       # Partially Submitted
-    assert by["PL-20261020000003"].file_status == 7 and (by["PL-20261020000003"].extra_tat or 0) > 0
+    # (an appointment for 04 Nov restarted its SLA, so it is not breached on 02 Nov any more - it is listed because it is Partially Submitted)
+    assert by["PL-20261020000003"].file_status == 7 and by["PL-20261020000003"].sla_appt and not by["PL-20261020000003"].sla_breach
     # F5 is On Going and past its SLA (In = 2 working days) but it is a running file: never listed (v3.2.1)
     f5 = [r for r in d.all_rows if r.file_no == "PL-20250901000005"]
     assert f5 and all((r.extra_tat or 0) > 0 for r in f5) and "PL-20250901000005" not in by
@@ -194,7 +195,7 @@ def test_facts_from(srv_f5_hold):
     d = _run(srv_f5_hold)
     f = facts_from(d)
     assert (f.complete_files, f.complete_rows, f.incomplete_files, f.incomplete_rows) == (4, 6, 2, 2)
-    assert f.sla_breach_rows == 2 and f.partial_files == 1 and f.reason_missing == 1 and f.slot == "7pm"
+    assert f.sla_breach_rows == 1 and f.partial_files == 1 and f.reason_missing == 1 and f.slot == "7pm"
 
 
 # ----------------------------------------------------------------------------- volume: 1000+ files, 90 days

@@ -26,7 +26,7 @@ from pathlib import Path
 
 from . import config, holidays as hol
 from .activity import parse_logs
-from .billing import BASE_TYPE, BillRow, FileLogs, build_rows, compute_tat, concern_info, file_type_of, fill_history
+from .billing import BASE_TYPE, BillRow, FileLogs, build_rows, compute_tat, concern_info, file_type_of, fill_history, link_siblings
 from .client import ApiError, AuthError, Cancelled, ReadOnlyClient
 from .collect import Progress, RunConfig, _noop
 from .collect_prime import NO_STATUS, _list_files, _pool_map
@@ -552,6 +552,7 @@ def collect_history(cfg: HistoryConfig, progress: Progress = _noop, cancel: thre
         fd.recpv_events = list(recpv_by_file.get((f["file_no"] or "").strip().upper(), []))
         try:
             fd.rows = build_rows(f, recpv_by_trip, recpv_by_file, fd.logs, HISTORY_SINCE)
+            link_siblings(fd.rows)
             for r in fd.rows:
                 compute_tat(r, today, hset)
             fill_history(fd.rows)
@@ -661,7 +662,8 @@ def overview(fd: FileData) -> dict:
             continue
         end = f"submitted {r.submitted_at:%d/%m/%Y}" if r.submitted and r.submitted_at else "running"
         verdict = f"SLA Breach (+{r.extra_tat})" if r.sla_breach else "Within SLA"
-        sla.append(f"{i}. TAT {r.tat} / SLA {r.sla_days} · {verdict} · {end}")
+        restart = f" · SLA restarted from {r.sla_start:%d/%m/%Y} ({r.sla_why})" if r.sla_restarted else ""
+        sla.append(f"{i}. TAT {r.tat} / SLA {r.sla_days}{restart} · {verdict} · {end}")
     events = timeline(fd)
     last = [f"{e['when']:%d/%m/%Y %H:%M:%S} · {e['text']}" + (f" · {e['user']}" if e["user"] else "") for e in events[:5]]
     if len(events) > 5:

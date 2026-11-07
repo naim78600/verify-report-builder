@@ -85,9 +85,11 @@ def test_submitted_file_never_has_pending_rows(extra_files):
     assert [r.kind for r in inc["PL-20261026000103"]] == ["Package"]       # ONE row per file; the canceled extra is hidden, the live extra is folded in
     assert [k for k, _t in inc["PL-20261026000103"][0].folded] == ["Extra"]
     assert "PL-20261102000104" not in inc                                   # received today, inside the 2-day In SLA
-    # a pending file is judged by its Start Date: F-G3 started Mon 26-Oct, 5 working days later it is past the In SLA of 2
+    # a pending file is judged by its SLA Start Date: F-G3 came in Mon 26-Oct, but its live extra trip was created on the report day
+    # (Mon 02-Nov) - any new trip restarts the SLA at once (v4.0.0), so nothing is overdue yet.  (The canceled extra of 28-Oct does not count.)
     pkg = inc["PL-20261026000103"][0]
-    assert pkg.receive_dt == datetime(2026, 10, 26, 10, 0) and (pkg.extra_tat or 0) > 0
+    assert pkg.receive_dt == datetime(2026, 10, 26, 10, 0)
+    assert pkg.sla_start == date(2026, 11, 2) and pkg.sla_why == "new trip" and (pkg.extra_tat or 0) == 0
 
 
 def test_file_state_unit():

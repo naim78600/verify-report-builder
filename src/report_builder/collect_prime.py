@@ -19,7 +19,7 @@ from datetime import date, datetime, timedelta
 
 from . import config, holidays as hol
 from .activity import parse_logs
-from .billing import (INCOMPLETE_SCOPES, LOOKBACK_DAYS, PHASE1_CUTOFF, SCOPE_TEXT, apply_as_of, assign_sub_days, build_rows, compute_tat,
+from .billing import (INCOMPLETE_SCOPES, link_siblings, LOOKBACK_DAYS, PHASE1_CUTOFF, SCOPE_TEXT, apply_as_of, assign_sub_days, build_rows, compute_tat,
                       dashboard_check, fill_history, is_test_file, reconcile, select_rows, tracker_window, BillRow, FileLogs)
 from .client import ApiError, AuthError, Cancelled, ReadOnlyClient
 from .collect import Progress, RunConfig, _noop
@@ -367,6 +367,7 @@ def collect_prime(cfg: PrimeConfig, progress: Progress = _noop, cancel: threadin
     until = datetime.combine(d.report_date, PHASE1_CUTOFF) if (d.mode == "tracker" and d.slot == "3pm") else None
     later = apply_as_of(rows, d.w_till, until)             # submitted after the report moment (last day / 3 PM) = still waiting then
     d.rolled = assign_sub_days(rows, d.w_till, hset)       # Fri / Sat / holiday submissions are reported on the next working day
+    link_siblings(rows)
     for r in rows:
         compute_tat(r, report_date, hset)
     fill_history(rows)

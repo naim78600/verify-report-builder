@@ -69,7 +69,9 @@ def test_submission_and_tat(data):
     f6 = next(r for r in d.complete if r.kind == "Package" and r.file_no.startswith("CC--"))
     assert f6.area == "Out" and (f6.tat, f6.extra_tat) == (4, 0) and f6.sla_days == 4 and not f6.sla_breach
     f3 = d.incomplete[0] if d.incomplete[0].file_no.endswith("0003") else d.incomplete[1]
-    assert f3.status == "Incomplete" and f3.status_note == "Partially Submitted" and f3.tat == 7
+    # the file came in on 20 Oct, but an appointment was given for 04 Nov: the SLA restarts from that day (v3.3), so on 02 Nov nothing is running yet
+    assert f3.status == "Incomplete" and f3.status_note == "Partially Submitted"
+    assert f3.sla_start == date(2026, 11, 4) and f3.sla_appt == date(2026, 11, 4) and f3.tat == 0 and not f3.sla_breach
 
 
 from report_builder.report_text import appointment_lines, last_update_lines, plain as text_of
@@ -108,18 +110,39 @@ def test_outputs(data, tmp_path):
     wb = load_workbook(xlsx)
     assert wb.sheetnames == ["Complete Report", "Incomplete Report", "Summary", "Holidays", "Check List"]   # check list: blue cells exist
     ws = wb["Complete Report"]
-    assert str(ws["K5"].value).startswith("=MAX(0,NETWORKDAYS.INTL(")
+    assert str(ws["L5"].value).startswith("=MAX(0,NETWORKDAYS.INTL(I5+1,")          # TAT counts from the SLA Start / Restart Date (column I)
     # filter buttons only on File No (B) and Last Update Date; every other button is hidden
-    for sh, ncols, date_col in ((wb["Complete Report"], 18, 15), (wb["Incomplete Report"], 19, 16)):
+    for sh, ncols, date_col in ((wb["Complete Report"], 19, 16), (wb["Incomplete Report"], 20, 17)):
         hidden = {fc.colId for fc in sh.auto_filter.filterColumn if fc.hiddenButton}
         assert hidden == set(range(ncols)) - {1, date_col}, (sh.title, hidden)
         assert sh.cell(4, date_col + 1).value == "Last Update Date" and sh.cell(4, date_col + 2).value == "Last Update Details"
     heads = [c.value for c in wb["Incomplete Report"][4]]
-    assert heads[13:16] == ["Report Status", "Pending Reason", "Report Summary"]            # the internal copy's reason column
+    assert heads[14:17] == ["Report Status", "Pending Reason", "Report Summary"]            # the internal copy's reason column
     assert "Pending Reason" not in [c.value for c in wb["Complete Report"][4]]
     w = write_recpv_workbook(d, tmp_path)
     wb3 = load_workbook(w)
     assert {"File Report", "Billing Rows", "Calculation"} <= set(wb3.sheetnames)
+
+
+def test_excel_and_pdf_show_the_sla_start_restart_date(data, tmp_path):
+    """v3.3: a new column "SLA Start / Restart Date" (= Receive Date, or the appointment day when an appointment restarted the SLA);
+    TAT counts from it; the restarted cell is plum and the Appointment cell says so in words."""
+    d, _ = data
+    paths = write_prime_outputs(d, tmp_path, excel=True, pdf=True)
+    wb = load_workbook(next(p for p in paths if p.suffix == ".xlsx"))
+    for sh in (wb["Complete Report"], wb["Incomplete Report"]):
+        heads = [c.value for c in sh[4]]
+        assert heads[7:9] == ["Receive Date", "SLA Start / Restart Date"]
+    inc = wb["Incomplete Report"]
+    row = next(r for r in range(5, inc.max_row + 1) if str(inc.cell(r, 2).value).endswith("0003"))
+    assert inc.cell(row, 9).value.date() == date(2026, 11, 4) and inc.cell(row, 8).value.date() == date(2026, 10, 20)
+    assert inc.cell(row, 9).fill.fgColor.rgb.endswith("FAE8FF")                              # plum = restarted by an appointment
+    assert str(inc.cell(row, 12).value).startswith("=MAX(0,NETWORKDAYS.INTL(I")               # TAT counts from the restart column
+    assert "SLA restarted from 04/11/2026" in str(inc.cell(row, 20).value)
+    comp = wb["Complete Report"]
+    plain = next(r for r in range(5, comp.max_row + 1) if comp.cell(r, 9).fill.fgColor.rgb[-6:] != "FAE8FF")
+    assert comp.cell(plain, 9).value == comp.cell(plain, 8).value                             # no appointment: same as Receive Date
+    assert any(p.suffix == ".pdf" and p.stat().st_size > 5000 for p in paths)
 
 
 def test_geo_and_slot_and_holidays(tmp_path):
@@ -240,8 +263,8 @@ def test_report_cells_done_due_colours_and_last_update(data, tmp_path):
     wb = load_workbook(paths[0])
     ws = wb["Complete Report"]
     heads = [c.value for c in ws[4]]
-    assert heads.index("Last Update Date") == 15 and heads[16] == "Last Update Details"
-    assert isinstance(ws.cell(5, 16).value, __import__("datetime").date)             # a real date, so Excel can filter it
+    assert heads.index("Last Update Date") == 16 and heads[17] == "Last Update Details"
+    assert isinstance(ws.cell(5, 17).value, __import__("datetime").date)             # a real date, so Excel can filter it
     banned = {"FFF200", "FFFF00", "FF0000", "FEF3C7", "FEE2E2", "DC2626", "EF4444", "FFE7A8", "F8C9C9"}
     for sh in wb.worksheets:
         for row in sh.iter_rows():
