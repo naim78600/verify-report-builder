@@ -1,6 +1,6 @@
-# Verify Report Builder — Version 4 (v4.0.0)
+# Verify Report Builder — Version 5 (v5.0.0)
 
-Prime Bank PLC-এর দৈনিক সাবমিশন ট্র্যাকার (Complete + Incomplete, Excel + PDF) বানায় এবং সরাসরি ব্যাংককে ইমেইল পাঠায়। Verify থেকে **শুধু তথ্য পড়ে (GET)**, কিছু বদলায় না; পাসওয়ার্ড কোথাও সংরক্ষণ হয় না।
+Prime Bank PLC-এর দৈনিক সাবমিশন ট্র্যাকার (Complete + Incomplete, Excel + PDF) বানায়, ফাইল হিস্টরি তৈরি করে এবং সরাসরি ব্যাংককে ইমেইল পাঠায়। Verify থেকে **শুধু তথ্য পড়ে (GET)**, কিছু বদলায় না; পাসওয়ার্ড কোথাও সংরক্ষণ হয় না।
 
 ## ডাউনলোড
 
@@ -13,15 +13,20 @@ Prime Bank PLC-এর দৈনিক সাবমিশন ট্র্যা�
 
 `.zip` (portable) ফাইলও নিচে আছে। প্রথমবার খুললে ডিজিটাল স্বাক্ষর নেই বলে সতর্কতা আসে — Windows: *More info → Run anyway*; Mac: *System Settings → Privacy & Security → Open Anyway*।
 
-## Version 4-এ নতুন
+## Version 5-এ নতুন
 
-- **SLA Restart:** Appointment দিলে তার *scheduled date* থেকে (শুক্র / শনি / ছুটি হলে পরের কর্মদিবস ধরে), আর **যেকোনো নতুন ট্রিপ** (Re-CPV, Extra / Additional, Single …) তৈরি হলে **সঙ্গে সঙ্গে** SLA আবার শুরু। In (Dhaka ও Chattogram City Corporation) = ২ কার্যদিবস, Out = ৪ কার্যদিবস।
-- **নতুন কলাম “SLA Start / Restart Date”** (Excel ও PDF): TAT এই তারিখ থেকে; restart হলে ঘর বেগুনি এবং সহজ ভাষায় লেখা কোন তারিখ থেকে ও কেন।
-- **Report Summary (Done / Due)** সবসময় ফাইলের **সর্বশেষ activity** ধরে — শেষ আপডেটই জেতে।
-- **নতুন পরীক্ষা:** ১২৯টি স্বয়ংক্রিয় টেস্ট এবং আসল অ্যাপ-উইন্ডোর GUI smoke test (Windows, macOS, Linux)।
-- লাইভ ৯০ দিনের ডেটায়: ১৫২৫ সারির মধ্যে ৫৯৪টিতে Appointment ও ২১৫টিতে নতুন ট্রিপের কারণে restart; SLA Breach ৫১১ থেকে ১০২।
+- **Done / Due শুধু ভেরিফায়ারের Remarks থেকে** — ব্যাক-অফিসের Comment (নির্দেশ) থেকে নয়। Payslip-বাক্য (“HR will verify only salary certificate”) এখন ঠিকভাবে পড়া হয়, ভুল “Head office disagree” আসে না।
+- **File History ক্র্যাশ ঠিক:** ফাঁকা শিট থাকলে (যেমন সব নম্বর পাওয়া গেলে) `'MergedCell' object is not iterable` দিয়ে থেমে যেত — আর যায় না।
+- **File History ইনপুট = File No + Applicant Name:** নমুনা Excel (অ্যাপের বোতামে বা `templates/File_History_Format.xlsx`); ফাইল নম্বর দিয়ে খোঁজা হয়, নামের জন্য Summary শিটে **Name Check** (Matches / Matches Guarantor / Different)।
+- **আগের সব অপশন অপরিবর্তিত** (ট্র্যাকার, তারিখ-সীমা, Re-CPV, সাধারণ এক্সেল, ইমেইল, ছুটি, SLA ও Incomplete নিয়ম)।
+- ১৪৩টি স্বয়ংক্রিয় টেস্ট + আসল অ্যাপ-উইন্ডোর GUI smoke test (File History সহ; Windows, macOS, Linux)।
 
-## সব ফিচার — প্রথম সংস্করণ থেকে Version 4 পর্যন্ত
+## Version 4 থেকে চলছে
+
+- **SLA Restart:** Appointment-এর *scheduled date* থেকে এবং **যেকোনো নতুন ট্রিপ** তৈরি হলে সঙ্গে সঙ্গে; In (Dhaka ও Chattogram City Corporation) = ২ কার্যদিবস, Out = ৪ কার্যদিবস। নতুন কলাম **“SLA Start / Restart Date”** (Excel ও PDF)।
+- **Incomplete** = শুধু Hold, Finished কিন্তু Submit হয়নি ও Partially Submitted।
+
+## সব ফিচার — প্রথম সংস্করণ থেকে Version 5 পর্যন্ত (বিস্তারিত)
 
 প্রতিটি ধাপে আগের সব ফিচার থেকে যায়; নিচে কোন সংস্করণে কী যোগ হয়েছে ক্রমানুসারে লেখা।
 
@@ -116,4 +121,17 @@ Prime Bank PLC-এর দৈনিক সাবমিশন ট্র্যা�
 
 ---
 
-নিয়মের পূর্ণ বিবরণ, কমান্ড লাইন ও ইতিহাস: রিপোজিটরির `README.md`।
+### Version 5.0.0 (৮ নভেম্বর) — Done / Due শুধু Remarks থেকে, File History-র সংশোধন ও File No + Applicant Name Excel
+
+- **Done / Due (Report Summary) এখন শুধু ভেরিফায়ারের Remarks থেকে লেখা হয়, ব্যাক-অফিসের Comment থেকে নয়।** *Comment* = ফাইল তৈরির সময় ব্যাক-অফিস ভেরিফায়ারকে যে **নির্দেশ** দেয় (যেমন “LOI will be signed from head office”); *Remarks* = কাজ শেষে ভেরিফায়ার যা **পেয়েছে** তার বর্ণনা। আগে Comment-এর নির্দেশও Done / Due-তে নোট হিসেবে ঢুকে যেত (যেমন নির্দেশের “Will be signed from head office” Done ও Due দুটোতেই আসত)। এখন Comment কেবল একটি কাজে লাগে — “Document” ট্রিপটি আসলে কিসের (LOI, Payslip, Tuition, Rental …) তা চেনা; ফলাফল, সমস্যা ও কারণ সবই Remarks (ও চলমান ট্রিপের সর্বশেষ Appointment-এর কারণ) থেকে।
+- **Payslip বাক্যের ভুল পড়া ঠিক:** “HR payslip will be not verified. HR will verified only salary certificate.” আগে ভুল করে “Head office disagree” নোটও দিত। এখন ফল: `Done-… LOI (HR verifies salary certificate only)` / `Due-LOI (HR verifies salary certificate only)` — Comment যা-ই লেখা থাকুক। (সত্যিকারের “HR does not agree to verify the LOI” লেখা থাকলে “Head office disagree” আগের মতোই আসে।) Comment-এর কোনো শব্দে (“different”, “current”, “parent”) আর ভুল করে *Rental* আইটেম বসে না।
+- **File History ক্র্যাশ ঠিক:** কোনো শিট ফাঁকা থাকলে (যেমন সব নম্বর পাওয়া গেলে ‘Not Found’ শিটে কিছুই থাকে না) Excel বানানোর সময় `TypeError: 'MergedCell' object is not iterable` দিয়ে পুরো রান থেমে যেত। কারণ: ফাঁকা শিটে ফ্রিজ-করা ঘরটি “কিছু নেই” লেখা মার্জ-করা সারির ভিতরে পড়ত। এখন কোনো শিট ফাঁকা হলেও ইতিহাস ঠিকভাবে তৈরি হয় (‘Not Found’ শিটে “Every number was found.” লেখা থাকে)।
+- **File History-র ইনপুট Excel: `File No` + `Applicant Name`।** শুধু দুটি কলাম দিলেই ইতিহাস চলে আসে। শিরোনাম-শব্দ (File No / Tracking No …, আর Applicant / Customer / Name / আবেদনকারী / নাম) দেখে কলাম চেনা হয়; ফাইল নম্বর পুরো (`CC-…`) বা শেষের কয়েকটি অঙ্ক — দুটোই চলে; নাম ঐচ্ছিক (না দিলে আগের মতোই)। ফাইল নম্বর *নাম দিয়ে* খোঁজা হয় না — নম্বর দিয়েই খোঁজা হয়, নাম মেলানোর জন্য।
+- **Name Check:** নাম দেওয়া থাকলে Summary শিটে তিনটি নতুন কলাম — *Applicant Name (given)*, *Name Check*, *Applicant on the file*। **Matches** = একই ব্যক্তি (Md. / Mohammad, শব্দের ক্রম, একটি শব্দ কম, ছোট বানান-ভুল সহনীয়); **Matches Guarantor 1 / Co-Applicant** = নামটি ফাইলের অন্য concern-এর; **Different** = ফাইলের Applicant অন্য নাম (পাশের কলামে দেখানো)। ‘Not Found’ শিটেও দেওয়া নাম থাকে। নাম না দিলে শিটগুলো হুবহু আগের মতো।
+- **নমুনা Excel:** ‘ফাইল হিস্টরি’ বাছলে ‘⬇ নমুনা Excel (File No + Applicant Name) সংরক্ষণ করুন’ বোতাম; রিপোজিটরিতেও আছে: `templates/File_History_Format.xlsx` (প্রথম শিটে দুই কলাম + ৫০০ প্রস্তুত সারি; File No কলাম Text ফরম্যাটে যাতে শুরুর শূন্য কখনো হারায় না; দ্বিতীয় শিটে কীভাবে ভরতে হবে)।
+- **আগের কোনো অপশন বদলায়নি:** ট্র্যাকার, তারিখ-সীমা, Re-CPV, সাধারণ এক্সেল, ইমেইল, ছুটি, SLA নিয়ম, Incomplete নিয়ম — সবই Version 4-এর মতো (শুধু Done / Due-র Comment-নির্ভরতা বাদ)।
+- **পরীক্ষা:** মোট **১৪৩টি স্বয়ংক্রিয় টেস্ট** (Version 5-এর ১৪টি নতুন: ক্র্যাশ, নাম-সহ ইনপুট, Name Check, নমুনা Excel, Comment-বনাম-Remarks, এবং ড্যাশবোর্ড→ট্র্যাকার Excel পর্যন্ত end-to-end) এবং আসল অ্যাপ-উইন্ডোর GUI smoke test-এ এখন File History ধাপও আছে (Windows, macOS, Linux)।
+
+---
+
+নিয়মের পূর্ণ বিবরণ, পুরো ওয়ার্কফ্লো, কমান্ড লাইন ও ইতিহাস: রিপোজিটরির `README.md`।

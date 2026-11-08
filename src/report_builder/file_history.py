@@ -57,6 +57,7 @@ class IdEntry:
     digits: str
     prefix: str = ""
     day: date | None = None    # full numbers: the creation date written inside the number
+    name: str = ""             # applicant name written next to the number in the input sheet (optional; shown + checked, never searched)
 
     @property
     def uid(self) -> str:
@@ -100,11 +101,15 @@ def make_entry(value) -> IdEntry | None:
 
 
 def _dedupe(entries) -> list[IdEntry]:
-    seen, out = set(), []
+    seen, out = {}, []
     for e in entries:
-        if e is not None and e.uid not in seen:
-            seen.add(e.uid)
+        if e is None:
+            continue
+        if e.uid not in seen:
+            seen[e.uid] = e
             out.append(e)
+        elif e.name and not seen[e.uid].name:
+            seen[e.uid].name = e.name
     return out
 
 
@@ -143,11 +148,43 @@ def _pick_column(rows: list[list]) -> tuple[int | None, int]:
     return best, best_score
 
 
+_HEADER_NAME = re.compile(r"applicant|customer|client|borrower|\bname\b|আবেদনকারী|গ্রাহক|নাম", re.I)
+
+
+def clean_name(v) -> str:
+    """A name cell -> one tidy line (empty when it is not text, e.g. a number)."""
+    if not isinstance(v, str):
+        return ""
+    t = re.sub(r"\s+", " ", v.replace("\u200b", "")).strip()
+    return "" if not t or make_entry(t) is not None else t[:80]
+
+
+def _pick_name_column(rows: list[list], num_col: int) -> int | None:
+    """The column whose header says Applicant / Name (never the file-number column).  Header words only: a name is never guessed."""
+    width = max((len(r) for r in rows), default=0)
+    for c in range(width):
+        if c == num_col:
+            continue
+        head = next((str(r[c]) for r in rows[:6] if c < len(r) and isinstance(r[c], str) and r[c].strip() and make_entry(r[c]) is None), "")
+        if head and _HEADER_NAME.search(head) and not _HEADER_STRONG.search(head):
+            return c
+    return None
+
+
 def _entries_from_rows(rows: list[list]) -> tuple[list[IdEntry], float]:
     col, score = _pick_column(rows)
     if col is None:
         return [], 0.0
-    return _dedupe(make_entry(r[col]) for r in rows if col < len(r)), score
+    ncol = _pick_name_column(rows, col)
+    out = []
+    for r in rows:
+        if col >= len(r):
+            continue
+        e = make_entry(r[col])
+        if e is not None and ncol is not None and ncol < len(r):
+            e.name = clean_name(r[ncol])
+        out.append(e)
+    return _dedupe(out), score
 
 
 def parse_ids_file(path) -> list[IdEntry]:
@@ -584,6 +621,44 @@ def collect_history(cfg: HistoryConfig, progress: Progress = _noop, cancel: thre
     if cancel.is_set():
         raise Cancelled()
     return h
+
+
+# =============================================================================== applicant-name check
+_NAME_FIX = {"md": "mohammad", "mohd": "mohammad", "mohammed": "mohammad", "muhammad": "mohammad", "mohamad": "mohammad",
+             "mst": "mosammat", "mosammat": "mosammat"}
+
+
+def _name_tokens(s: str) -> list[str]:
+    return [_NAME_FIX.get(t, t) for t in re.sub(r"[^\w\s]", " ", (s or "").lower()).split()]
+
+
+def names_match(a: str, b: str) -> bool:
+    """Same person written slightly differently (Md. / Mohammad, order of words, one word missing, a typo)."""
+    x, y = _name_tokens(a), _name_tokens(b)
+    if not x or not y:
+        return False
+    if sorted(x) == sorted(y):
+        return True
+    sx, sy = set(x), set(y)
+    if min(len(sx), len(sy)) >= 2 and (sx <= sy or sy <= sx):
+        return True
+    from difflib import SequenceMatcher
+    return SequenceMatcher(None, " ".join(sorted(x)), " ".join(sorted(y))).ratio() >= 0.86
+
+
+def name_check(given: str, file: dict) -> tuple[str, str]:
+    """-> (result, applicant of the file).  result: '' (no name given) | 'Matches' | 'Matches <role>' | 'Different'."""
+    if not given:
+        return "", ""
+    info = concern_info(file)
+    cons = sorted(file.get("concerns") or [], key=lambda c: info[c["id"]]["no"])
+    app = next((c["name"] for c in cons if info[c["id"]]["role"] == "APPLICANT"), cons[0]["name"] if cons else "")
+    if names_match(given, app):
+        return "Matches", app
+    for c in cons:
+        if info[c["id"]]["role"] != "APPLICANT" and names_match(given, c["name"]):
+            return f"Matches {info[c['id']]['label']}", app
+    return "Different", app
 
 
 # =============================================================================== what the report shows

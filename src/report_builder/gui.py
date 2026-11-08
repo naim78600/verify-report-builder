@@ -20,7 +20,7 @@ from .mail_templates import facts_from
 from .excel import build_workbook
 from .gui_mail import MailDialog, SentLogDialog, SignatureDialog
 from .file_history import HistoryConfig, collect_history, parse_ids_file, parse_ids_text
-from .history_excel import write_history_outputs
+from .history_excel import write_history_outputs, write_history_template
 from .reports import write_prime_outputs, write_recpv_workbook
 from .ui_kit import (Button, Card, DateField, Entry, Fonts, P, Progress, Segmented, Stepper, Tile, parse_date,
                      pick_font_family)
@@ -261,6 +261,7 @@ class App(tk.Tk):
         Button(pick, "📄  Excel / CSV বাছুন", self._pick_ids_file, kind="secondary", font=f.body, padx=12, pady=7).pack(side="left")
         self.hist_file = tk.Label(pick, text="কোনো ফাইল বাছা হয়নি", bg=P["card"], fg=P["mute"], font=f.small, anchor="w", wraplength=210, justify="left")
         self.hist_file.pack(side="left", padx=10)
+        Button(b, "⬇  নমুনা Excel (File No + Applicant Name) সংরক্ষণ করুন", self._save_hist_template, kind="ghost", font=f.tiny, padx=0, pady=3).pack(anchor="w", pady=(2, 0))
         tk.Label(b, text="অথবা নম্বরগুলো এখানে লিখুন বা পেস্ট করুন (প্রতি লাইনে একটি):", bg=P["card"], fg=P["text"],
                  font=f.small, anchor="w").pack(fill="x", pady=(10, 2))
         self.hist_text = tk.Text(b, width=46, height=5, font=f.body, relief="flat", highlightthickness=1, highlightbackground=P["line"])
@@ -512,8 +513,21 @@ class App(tk.Tk):
         return out
 
     def _hist_count(self):
-        n = len(self._collect_ids())
-        self.hist_count.config(text=f"✓ {n} টি ফাইল নম্বর পাওয়া গেছে" if n else "")
+        ids = self._collect_ids()
+        n, named = len(ids), sum(1 for e in ids if getattr(e, "name", ""))
+        self.hist_count.config(text=(f"✓ {n} টি ফাইল নম্বর পাওয়া গেছে" + (f" (আবেদনকারীর নামসহ: {named} টি)" if named else "")) if n else "")
+
+    def _save_hist_template(self):
+        path = filedialog.asksaveasfilename(title="নমুনা Excel সংরক্ষণ", defaultextension=".xlsx", initialfile="File_History_Format.xlsx",
+                                            filetypes=[("Excel", "*.xlsx")])
+        if not path:
+            return
+        try:
+            write_history_template(path)
+        except OSError as exc:
+            messagebox.showwarning("সংরক্ষণ করা যায়নি", str(exc))
+            return
+        messagebox.showinfo("নমুনা Excel", f"সংরক্ষিত হয়েছে:\n{path}\n\nA কলামে File No, B কলামে Applicant Name লিখে ‘Excel / CSV বাছুন’-এ দিন।")
 
     def _work_recpv(self, cfg: PrimeConfig):
         try:

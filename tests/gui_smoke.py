@@ -137,6 +137,38 @@ def main():
     if ".xlsx" not in {p.suffix for p in app.out_files}:
         fail("range report has no Excel")
 
+    step("file history through the window (input Excel = File No + Applicant Name, every file found)")
+    from openpyxl import load_workbook
+    from report_builder.file_history import parse_ids_file
+    from report_builder.history_excel import write_history_template
+    tpl = out / "File_History_Format.xlsx"
+    write_history_template(tpl)                                            # the template the window offers
+    wb = load_workbook(tpl)
+    ws = wb["File History"]
+    ws["A2"], ws["B2"] = "PL-20261026000001", "alpha one"
+    ws["A3"], ws["B3"] = "CC-20261101000002", "Gamma Two"
+    wb.save(tpl)
+    app.hist_ids = parse_ids_file(tpl)
+    if [e.name for e in app.hist_ids] != ["alpha one", "Gamma Two"]:
+        fail(f"names not read from the input Excel: {[e.name for e in app.hist_ids]}")
+    app.rtype.set("history")
+    app._sync_ui()
+    pump(app, 0.3)
+    app.password.set("secret")
+    app.out_files = []
+    shown.clear()
+    app._go()
+    if not pump(app, until=lambda: finished(app)):
+        fail(f"file history did not finish; status: {app.status.get()!r}; boxes: {shown}")
+    if any(k == "showerror" for k, _a in shown):
+        fail(f"an error box was shown for the file history: {shown}")
+    hx = [p for p in app.out_files if p.suffix == ".xlsx"]
+    if not hx:
+        fail("file history has no Excel")
+    hwb = load_workbook(hx[0])
+    if "Not Found" not in hwb.sheetnames or "Applicant Name (given)" not in [c.value for c in hwb["Summary"][3]]:
+        fail(f"file history workbook is incomplete: {hwb.sheetnames}")
+
     step("settings saved without the password")
     sf = config.SETTINGS_FILE
     if sf.exists() and "secret" in sf.read_text(encoding="utf-8", errors="ignore"):
