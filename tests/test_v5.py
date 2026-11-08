@@ -265,3 +265,46 @@ def test_due_check_a_loi_document_trip_ignores_the_comment_text():
             outs = {_dd(rem, com, submitted=submitted, status=status) for com in ("LOI VERIFICATION", COMMENT, "Collect LOI. Signatory may disagree to verify",
                                                                                     "LOI sign. Need forwarding letter. Applicant not available")}
             assert len(outs) == 1, (status, rem, outs)
+
+
+# ------------------------------------------------------------------------------ cases read from the LIVE dashboard (names / numbers removed)
+from datetime import datetime as _D  # noqa: E402
+from report_builder.billing import fold_complete  # noqa: E402
+from test_v321 import _row  # noqa: E402
+
+_LRM = "‎‎"        # the dashboard puts two invisible marks between a verifier's sentences
+
+
+def test_invisible_marks_between_sentences_do_not_glue_them_together():
+    rem = (f"Information ok.{_LRM}Confirmed Applicant's self. {_LRM}Applicant was present at office and signed in front of me.{_LRM}"
+           "Loi Panding.signatory is not available.")
+    s = _sum([_trip(1, "OFFICE", rem)])
+    assert "Sign" in s.done and "LOI" in s.due                          # was: "Sign" lost (sentence glued to the LOI sentence)
+
+
+def test_live_file_package_plus_later_document_trip_settles_the_loi_from_the_remarks():
+    """File shaped like the one reported (house + office + bank in the package, a later Document trip on the same Submit day)."""
+    sub = _D(2026, 11, 4, 17, 9)
+    pk = _row("Package", [
+        (_trip(498280, "HOUSE", "Information ok. Proper address is : <address>. Mobile number is ok.", "-", created=_D(2026, 11, 1, 20, 35)), "App"),
+        (_trip(498281, "OFFICE", "Information ok. Address is Ok. Applicant was present at office And signed in front of me. "
+                                 "LOI will be signed From head office.", "- Office Name: <office>", created=_D(2026, 11, 1, 20, 35)), "App"),
+        (_trip(498282, "BANK", "Bank statement Hard copy provided. verified.", "<account number>", created=_D(2026, 11, 1, 20, 35)), "App")], sub)
+    assert pk.summary.due == "LOI (Will be signed from head office)"      # what the OFFICE remarks said
+    ex = _row("Extra", [(_trip(500204, "DOCUMENT", REM_500204, COMMENT, created=_D(2026, 11, 4, 16, 7)), "App")], sub)
+    out = fold_complete([pk, ex])
+    assert len(out) == 1
+    assert out[0].summary.done == "App House, Office, Sign, LOI (HR verifies salary certificate only), BS"
+    assert out[0].summary.due == "LOI (HR verifies salary certificate only)"       # the later trip's remarks win; no made-up refusal
+
+
+def test_live_file_loi_pending_in_the_office_visit_and_signed_by_a_later_document_trip_is_done():
+    sub = _D(2026, 11, 4, 14, 9)
+    office = ("Information ok." + _LRM + "Confirmed Applicant's self. " + _LRM + "Applicant was present at office and signed in front of me." + _LRM +
+              "Loi Panding.signatory is not available. Remarks Update 04-11-2026:- LOI signed infront of me. LOI signed by Signatory Name :- <name>")
+    pk = _row("Package", [(_trip(495023, "HOUSE", "Information ok. Address is ok.", "-", created=_D(2026, 10, 27, 19, 20)), "App"),
+                          (_trip(495024, "OFFICE", office, "- Office Name: <office>", created=_D(2026, 10, 27, 19, 20)), "App")], sub)
+    ex = _row("Extra", [(_trip(498731, "DOCUMENT", "Information OK. Confirmed by Receptionist. LOI signed infront of me. LOI signed by Signatory Name :- <name>",
+                               "Loi Sing.", created=_D(2026, 11, 2, 17, 47)), "App")], sub)
+    out = fold_complete([pk, ex])
+    assert (out[0].summary.done, out[0].summary.due) == ("App House, Office, Sign, LOI", "0")

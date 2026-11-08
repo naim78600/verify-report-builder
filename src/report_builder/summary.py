@@ -48,7 +48,11 @@ def xml_safe(s):
 def clean_text(s: str | None) -> str:
     if not s:
         return ""
-    s = xml_safe(_INVIS.sub("", str(s))).replace("\r", "\n")
+    # The dashboard separates a verifier's sentences with invisible marks ("...in front of me.<LRM><LRM>Loi pending."): dropping them
+    # glued the sentences together ("me.Loi") so "signed in front of me" was lost inside a sentence that names the LOI.  After a sentence
+    # end they become a space; elsewhere they are simply removed.
+    s = _INVIS.sub("", re.sub(r"(?<=[.!?;:])(?:%s)+(?=\S)" % _INVIS.pattern, " ", str(s)))
+    s = xml_safe(s).replace("\r", "\n")
     s = re.sub(r"[ \t ]+", " ", s)
     return re.sub(r"\n\s*\n+", "\n", s).strip()
 

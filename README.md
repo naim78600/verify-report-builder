@@ -14,7 +14,7 @@ Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্�
 | **File History ইনপুট** | Excel-এ শুধু **File No + Applicant Name**; ফাইল নম্বর দিয়ে খোঁজা হয়, নাম মিলিয়ে **Name Check**; নমুনা Excel বোতাম ও `templates/File_History_Format.xlsx` |
 | **আগের সব অপশন** | অপরিবর্তিত — ট্র্যাকার, তারিখ-সীমা, Re-CPV, সাধারণ এক্সেল, ইমেইল, ছুটি, SLA / Incomplete নিয়ম (Version 4-এর মতোই) |
 | **Version 4 থেকে চলছে** | SLA Restart (Appointment ও যেকোনো নতুন ট্রিপ), **SLA Start / Restart Date** কলাম, Incomplete = Hold / Finished-not-submitted / Partially Submitted, দিনে দুইবার ট্র্যাকার + সরাসরি Zoho মেইল |
-| **পরীক্ষা** | ১৫৯টি স্বয়ংক্রিয় টেস্ট + আসল অ্যাপ-উইন্ডোর GUI smoke test (File History সহ; Windows, macOS, Linux) |
+| **পরীক্ষা** | ১৬২টি স্বয়ংক্রিয় টেস্ট + আসল অ্যাপ-উইন্ডোর GUI smoke test (File History সহ; Windows, macOS, Linux) |
 
 নিচে **প্রথম সংস্করণ থেকে Version 5 পর্যন্ত সব ফিচার ও পুরো ওয়ার্কফ্লো বিস্তারিত** আছে।
 
@@ -164,7 +164,7 @@ Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্�
 - **Name Check:** নাম দেওয়া থাকলে Summary শিটে তিনটি নতুন কলাম — *Applicant Name (given)*, *Name Check*, *Applicant on the file*। **Matches** = একই ব্যক্তি (Md. / Mohammad, শব্দের ক্রম, একটি শব্দ কম, ছোট বানান-ভুল সহনীয়); **Matches Guarantor 1 / Co-Applicant** = নামটি ফাইলের অন্য concern-এর; **Different** = ফাইলের Applicant অন্য নাম (পাশের কলামে দেখানো)। ‘Not Found’ শিটেও দেওয়া নাম থাকে। নাম না দিলে শিটগুলো হুবহু আগের মতো।
 - **নমুনা Excel:** ‘ফাইল হিস্টরি’ বাছলে ‘⬇ নমুনা Excel (File No + Applicant Name) সংরক্ষণ করুন’ বোতাম; রিপোজিটরিতেও আছে: `templates/File_History_Format.xlsx` (প্রথম শিটে দুই কলাম + ৫০০ প্রস্তুত সারি; File No কলাম Text ফরম্যাটে যাতে শুরুর শূন্য কখনো হারায় না; দ্বিতীয় শিটে কীভাবে ভরতে হবে)।
 - **আগের কোনো অপশন বদলায়নি:** ট্র্যাকার, তারিখ-সীমা, Re-CPV, সাধারণ এক্সেল, ইমেইল, ছুটি, SLA নিয়ম, Incomplete নিয়ম — সবই Version 4-এর মতো (শুধু Done / Due-র Comment-নির্ভরতা বাদ)।
-- **পরীক্ষা:** মোট **১৫৯টি স্বয়ংক্রিয় টেস্ট** (Version 5-এর ৩০টি নতুন: ক্র্যাশ, নাম-সহ ইনপুট, Name Check, নমুনা Excel, Comment-বনাম-Remarks “due check”, এবং ড্যাশবোর্ড→ট্র্যাকার Excel পর্যন্ত end-to-end) এবং আসল অ্যাপ-উইন্ডোর GUI smoke test-এ এখন File History ধাপও আছে (Windows, macOS, Linux)।
+- **পরীক্ষা:** মোট **১৬২টি স্বয়ংক্রিয় টেস্ট** (Version 5-এর ৩৩টি নতুন: ক্র্যাশ, নাম-সহ ইনপুট, Name Check, নমুনা Excel, Comment-বনাম-Remarks “due check”, ড্যাশবোর্ড→ট্র্যাকার Excel পর্যন্ত end-to-end, এবং আসল ড্যাশবোর্ডে দেখা ফাইলের ধাঁচে ৩টি) এবং আসল অ্যাপ-উইন্ডোর GUI smoke test-এ এখন File History ধাপও আছে (Windows, macOS, Linux)।
 
 ## বর্তমান নিয়ম — বিস্তারিত (Version 5)
 
@@ -172,6 +172,7 @@ Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্�
 
 - **Report Summary (Done / Due) = Remarks।** ব্যাক-অফিসের Comment (নির্দেশ) কখনো Done / Due-র নোট, সমস্যা বা কারণ হয় না; Comment শুধু ‘Document’ ট্রিপ কিসের (LOI / Payslip / Tuition / Rental …) তা চিনতে। চলমান (শেষ না হওয়া) ট্রিপে Remarks না থাকলে কারণ = Appointment-এর কারণ বা স্ট্যাটাস (“Not visited yet”), Comment নয়। বাকি Done / Due-র নিয়ম (সর্বশেষ বক্তব্য জেতে, Done-এর সমস্যা Due-তেও আসে, বাক্যের বিষয় ধরে সমস্যা) Version 4-এর মতোই।
 - **“Due check” (যাচাই):** ৩৩টি রিমার্কস-ধাঁচ × ১০টি Comment × ৪ ট্রিপ-ধরন × ২ অবস্থা = ২৬৪০ সমন্বয়ে পুরনো (Version 4) ও নতুন ইঞ্জিন পাশাপাশি চালানো হয়েছে: (ক) House / Office / Bank ট্রিপে Done / Due আর Comment-এর উপর নির্ভর করে না — পুরনো ইঞ্জিনে ৫২৪ সমন্বয়ে নির্ভর করত; (খ) Comment ফাঁকা রেখে পুরনো বনাম নতুন তুলনায় ২৬৪টির মধ্যে বদলেছে শুধু ৮টি — সবই Payslip-বাক্য (ভুল “Head office disagree” বাদ), বাকি সব রিমার্কসের ফল হুবহু আগের মতো; (গ) Comment-এর একমাত্র প্রভাব Document ট্রিপের **ধরন চেনা** (LOI / Payslip / BS / Rental) — পরীক্ষাগুলো `tests/test_v5.py`-তে।
+- **আসল ড্যাশবোর্ডে দেখা ত্রুটি (Version 5-এ ঠিক):** আসল ড্যাশবোর্ডের Remarks-এ বাক্যের মাঝে চোখে-না-দেখা চিহ্ন (LRM/ZWSP) থাকে; আগে সেগুলো মুছে ফেলায় দুটো বাক্য জুড়ে গিয়ে (“…me.Loi…”) “Sign” হারিয়ে যেত। এখন চিহ্নটি দাঁড়ির পরে থাকলে একটি ফাঁকা দিয়ে বসানো হয় — Done “App House, Office, Sign, LOI”। ডেটা নিরাপত্তার জন্য রিপোজিটরিতে কোনো আবেদনকারীর নাম/নম্বর রাখা হয়নি।
 - **File History ইনপুট:** ফাইল নম্বরের কলাম শিরোনাম-শব্দে (File No / Tracking No / Application …) বা সবচেয়ে বেশি নম্বর-ধাঁচের মানে চেনা হয়; নামের কলাম **শুধু শিরোনাম-শব্দে** (Applicant / Customer / Client / Borrower / Name / আবেদনকারী / নাম) — নাম কখনো আন্দাজ করা হয় না। একই নম্বর দুবার থাকলে প্রথম সারি থাকে (প্রথমটিতে নাম না থাকলে পরেরটির নাম)। শিটে একাধিক পাতা থাকলে যে পাতায় সবচেয়ে বেশি নম্বর সেটি পড়া হয় — তাই নমুনা Excel-এর ‘How to fill’ পাতায় কোনো নম্বর-ধাঁচের সংখ্যা রাখা হয়নি।
 - **Name Check:** Matches / Matches <Role> / Different (শুধু নাম দেওয়া থাকলে; দেখানো নাম ড্যাশবোর্ডের Applicant-এর)।
 
@@ -229,12 +230,12 @@ python run_app.py --cli --email you@barikoi.com --prime --mode tracker --slot 7p
 
 ### কী কী যাচাই হয়েছে
 
-- ১৫৯টি স্বয়ংক্রিয় টেস্ট (CI-তে প্রতিবার; Version 4-এ SLA restart-এর ১৩টি, Version 5-এ Done/Due-Remarks (২৬৪০টি remark × comment × ট্রিপ-ধরনের “due check” সহ), File History ক্র্যাশ ও নাম-সহ ইনপুটের ৩০টি নতুন) + আসল অ্যাপ-উইন্ডো মক সার্ভারে চালানো GUI smoke test (ট্র্যাকার, ইমেইল, ছুটি, তারিখ-সীমা, ফাইল হিস্টরি; Windows / macOS / Linux): রিপোর্টের নিয়ম, ফেজ/৩টা কাট-অফ, কারণ-শ্রেণি, Excel কাঠামো, Check List বাদ দেওয়া (এডিট সহ রাউন্ডট্রিপ), মেইলের গঠন (লোগো, সিগনেচার, সংযুক্তি), লোকাল নকল SMTP সার্ভারে পাঠানো/ভুল পাসওয়ার্ড/ডুপ্লিকেট রোধ, ১০৬০ ফাইল × ৯০ দিনের বাল্ক সিনারিও (স্বতন্ত্র নিয়মে হিসাব করা প্রত্যাশার সাথে হুবহু মেলে)।
+- ১৬২টি স্বয়ংক্রিয় টেস্ট (CI-তে প্রতিবার; Version 4-এ SLA restart-এর ১৩টি, Version 5-এ Done/Due-Remarks (২৬৪০টি remark × comment × ট্রিপ-ধরনের “due check” সহ), File History ক্র্যাশ ও নাম-সহ ইনপুটের ৩৩টি নতুন) + আসল অ্যাপ-উইন্ডো মক সার্ভারে চালানো GUI smoke test (ট্র্যাকার, ইমেইল, ছুটি, তারিখ-সীমা, ফাইল হিস্টরি; Windows / macOS / Linux): রিপোর্টের নিয়ম, ফেজ/৩টা কাট-অফ, কারণ-শ্রেণি, Excel কাঠামো, Check List বাদ দেওয়া (এডিট সহ রাউন্ডট্রিপ), মেইলের গঠন (লোগো, সিগনেচার, সংযুক্তি), লোকাল নকল SMTP সার্ভারে পাঠানো/ভুল পাসওয়ার্ড/ডুপ্লিকেট রোধ, ১০৬০ ফাইল × ৯০ দিনের বাল্ক সিনারিও (স্বতন্ত্র নিয়মে হিসাব করা প্রত্যাশার সাথে হুবহু মেলে)।
 - লাইভ ড্যাশবোর্ড (শুধু GET): ৯০ দিনের সব ফাইল (১০৩১টি) ও তাদের activity log ত্রুটি ছাড়া পড়া যায় (~৯০ সেকেন্ড); ১৪ দিনের প্রতিটি দিনে ড্যাশবোর্ডের Submitted তালিকার প্রতিটি ফাইল log-ভিত্তিক Complete-এ আছে (অতিরিক্ত যেগুলো, সেগুলো পরে আবার Submitted/Hold হয়ে বর্তমান স্ট্যাটাস বদলেছে)।
 
 ## GitHub থেকে বিল্ড ও ডাউনলোড
 
-1. কোড GitHub-এর **Private** রিপোজিটরিতে থাকে। **Actions** চলে শুধু (ক) `v*` ট্যাগ দিলে অথবা (খ) হাতে *Run workflow* চাপলে — তখন আগে ১৫৯টি টেস্ট, তারপর চারটি বিল্ড এবং তিন সিস্টেমে GUI smoke test চলে।
+1. কোড GitHub-এর **Private** রিপোজিটরিতে থাকে। **Actions** চলে শুধু (ক) `v*` ট্যাগ দিলে অথবা (খ) হাতে *Run workflow* চাপলে — তখন আগে ১৬২টি টেস্ট, তারপর চারটি বিল্ড এবং তিন সিস্টেমে GUI smoke test চলে।
 2. **স্থায়ী ডাউনলোড লিংক (Release) বানাতে:** GitHub → **Releases → Draft a new release** → Tag লিখুন `v5.0.0` (Target: `main`) → **Publish**। (অথবা টার্মিনালে `git tag v5.0.0 && git push origin v5.0.0`।) ট্যাগ দেওয়ার পর Actions Windows 64/32-bit ও Mac Apple Silicon / Intel বিল্ড করে প্রায় ১৫–২০ মিনিটে Release-এ ফাইল জুড়ে দেয়। Release-এর নাম ও বিবরণ নিজে থেকে বসে (`RELEASE_NOTES.md` থেকে)।
 3. **শুধু বিল্ড চেক করতে:** **Actions → Build desktop app → Run workflow**; শেষে রানের পাতার নিচে **Artifacts** থেকে ডাউনলোড (`Windows-64bit`, `Windows-32bit`, `Mac-AppleSilicon`, `Mac-Intel`) — এটি Release নয়, কিছুদিন পরে মেয়াদ শেষ হয়।
 
