@@ -1,23 +1,22 @@
-# Verify Report Builder — Version 4 (ভেরিফাই রিপোর্ট বিল্ডার)
+# Verify Report Builder — Version 5 (ভেরিফাই রিপোর্ট বিল্ডার)
 
-**Version 4.0.0** · Prime Bank PLC · Barikoi Technologies Limited
+**Version 5.0.0** · Prime Bank PLC · Barikoi Technologies Limited
 
 Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্যার। Verify ড্যাশবোর্ড থেকে Prime Bank PLC-এর ফাইল সংগ্রহ করে **দৈনিক সাবমিশন ট্র্যাকার** (Complete + Incomplete, Excel + PDF) বানায় এবং **সরাসরি ব্যাংককে ইমেইল** পাঠায়।
 **Verify থেকে শুধু তথ্য পড়ে (GET); কোনো তথ্য বদলায় না।** লগইন পাসওয়ার্ড ও ইমেইলের App Password কোথাও সংরক্ষণ হয় না।
 
-## Version 4 এক নজরে
+## Version 5 এক নজরে
 
 | | কী বদলেছে |
 |---|---|
-| **SLA Restart** | Appointment দিলে তার *scheduled date* থেকে, আর **যেকোনো নতুন ট্রিপ** (Re-CPV, Extra / Additional, Single …) তৈরি হলে **সঙ্গে সঙ্গে** SLA আবার শুরু — In = ২ কার্যদিবস, Out = ৪ কার্যদিবস |
-| **নতুন কলাম** | Excel ও PDF-এ **SLA Start / Restart Date** — TAT এই তারিখ থেকে; restart হলে বেগুনি ঘর + সহজ ভাষার ব্যাখ্যা |
-| **Done / Due** | Report Summary সবসময় ফাইলের **সর্বশেষ activity** ধরে (শেষ আপডেটই জেতে) |
-| **Incomplete** | শুধু **Hold**, **Finished কিন্তু Submit হয়নি** ও **Partially Submitted**; চলমান ফাইল কখনো নয় |
-| **দিনে দুইবার ট্র্যাকার** | ১ম ফেজ ৩:৩০ PM, ২য় ফেজ ৭:০০ PM — Excel দেখে সরাসরি Zoho থেকে মেইল |
-| **ফাইল হিস্টরি** | যেকোনো ফাইল নম্বরের সম্পূর্ণ ইতিহাসের Excel |
-| **পরীক্ষা** | ১২৯টি স্বয়ংক্রিয় টেস্ট + আসল অ্যাপ-উইন্ডোর GUI smoke test (Windows, macOS, Linux) |
+| **Done / Due** | Report Summary এখন শুধু ভেরিফায়ারের **Remarks** (কাজ শেষের বর্ণনা) থেকে — ব্যাক-অফিসের **Comment** (নির্দেশ) থেকে নয় |
+| **File History** | সব নম্বর পাওয়া গেলেও (ফাঁকা শিট থাকলেও) আর ক্র্যাশ করে না (`'MergedCell' object is not iterable` ঠিক) |
+| **File History ইনপুট** | Excel-এ শুধু **File No + Applicant Name**; ফাইল নম্বর দিয়ে খোঁজা হয়, নাম মিলিয়ে **Name Check**; নমুনা Excel বোতাম ও `templates/File_History_Format.xlsx` |
+| **আগের সব অপশন** | অপরিবর্তিত — ট্র্যাকার, তারিখ-সীমা, Re-CPV, সাধারণ এক্সেল, ইমেইল, ছুটি, SLA / Incomplete নিয়ম (Version 4-এর মতোই) |
+| **Version 4 থেকে চলছে** | SLA Restart (Appointment ও যেকোনো নতুন ট্রিপ), **SLA Start / Restart Date** কলাম, Incomplete = Hold / Finished-not-submitted / Partially Submitted, দিনে দুইবার ট্র্যাকার + সরাসরি Zoho মেইল |
+| **পরীক্ষা** | ১৬২টি স্বয়ংক্রিয় টেস্ট + আসল অ্যাপ-উইন্ডোর GUI smoke test (File History সহ; Windows, macOS, Linux) |
 
-নিচে **প্রথম সংস্করণ থেকে Version 4 পর্যন্ত সব ফিচার বিস্তারিত** আছে।
+নিচে **প্রথম সংস্করণ থেকে Version 5 পর্যন্ত সব ফিচার ও পুরো ওয়ার্কফ্লো বিস্তারিত** আছে।
 
 ## ইনস্টল
 
@@ -28,7 +27,7 @@ Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্�
 | Mac (Apple Silicon M1–M4) | `VerifyReportBuilder-Mac-AppleSilicon.dmg` | খুলে অ্যাপটি **Applications**-এ টেনে আনুন |
 | Mac (Intel) | `VerifyReportBuilder-Mac-Intel.dmg` | একই |
 
-ইনস্টলার না চাইলে `.zip` (portable) ফাইলও আছে। রিপোজিটরি **প্রাইভেট** — ডাউনলোডের জন্য GitHub-এ সাইন-ইন লাগবে (**Releases** পাতা; Release-এর নাম “Verify Report Builder Version 4 (v4.0.0)”)।
+ইনস্টলার না চাইলে `.zip` (portable) ফাইলও আছে। রিপোজিটরি **প্রাইভেট** — ডাউনলোডের জন্য GitHub-এ সাইন-ইন লাগবে (**Releases** পাতা; Release-এর নাম “Verify Report Builder Version 5 (v5.0.0)”)।
 প্রথমবার খুললে ডিজিটাল স্বাক্ষর নেই বলে সতর্কতা আসে: **Windows:** More info → Run anyway। **Mac:** System Settings → Privacy & Security → *Open Anyway* (অথবা `xattr -dr com.apple.quarantine /Applications/VerifyReportBuilder.app`)।
 
 ## প্রতিদিনের ওয়ার্কফ্লো (দিনে দুইবার)
@@ -41,7 +40,27 @@ Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্�
 
 **Zoho App Password:** Zoho Mail → My Account → Security → **App Passwords** → নতুন (নাম: Verify Report Builder) → যে পাসওয়ার্ড দেখায় সেটি এখানে বসান (সাধারণ লগইন পাসওয়ার্ড চলবে না; ২-ফ্যাক্টর চালু থাকলে এটিই লাগে)। সার্ভার ডিফল্ট `smtp.zoho.com`, SSL ৪৬৫ — অ্যাকাউন্ট অন্য ডেটা সেন্টারে হলে (`.in` / `.eu` / `.com.au`) ‘সার্ভার সেটিং…’-এ বদলান।
 
-## সব ফিচার — প্রথম সংস্করণ থেকে Version 4 পর্যন্ত (বিস্তারিত)
+## পুরো ওয়ার্কফ্লো — রিপোর্টের ধরন অনুযায়ী ধাপে ধাপে
+
+সব ধরনে প্রথমে একই: অ্যাপ খুলুন → **১ লগইন** (সার্ভার = মূল সাইট; ইমেইল; পাসওয়ার্ড — প্রতিবার দিতে হয়, কোথাও সেভ হয় না) → **৩ রিপোর্টের ধরন** বাছুন → **তৈরি করুন**। অ্যাপ Verify থেকে শুধু পড়ে (GET)।
+
+| রিপোর্টের ধরন | কখন | ধাপ | ফল |
+|---|---|---|---|
+| **দৈনিক সাবমিশন ট্র্যাকার** | প্রতিদিন ৩টা ও ৭টায় | উপরের “প্রতিদিনের ওয়ার্কফ্লো” | Excel + PDF; ইমেইল উইন্ডো থেকে সরাসরি মেইল |
+| **সময়সীমার সব ফাইলের রিপোর্ট** | মাস / সপ্তাহের হিসাব | ২ সময়সীমা: ‘শেষ কয়েক দিন’ বা ‘তারিখ বাছুন’ → তৈরি করুন | Excel (+ PDF): Complete + Incomplete |
+| **Re-CPV সহ বিস্তারিত এক্সেল** | Re-CPV / Extra মিলিয়ে দেখতে | সময়সীমা → তৈরি করুন | প্রতি ফাইলের নিচে Re-CPV / Extra + Calculation শিট |
+| **সাধারণ বিস্তারিত এক্সেল** | আগের ভার্সনের মতো ফাইল ও ট্রিপের রিপোর্ট | সময়সীমা → তৈরি করুন | Executive Summary, File Report, File / Trip Status, ডেটা শিট |
+| **ফাইল হিস্টরি** | নির্দিষ্ট ফাইলের শুরু থেকে শেষ পর্যন্ত ইতিহাস | নিচে | একটি Excel (৮টি শিট) |
+
+**ফাইল হিস্টরি — ধাপে ধাপে (Version 5):**
+1. ‘ফাইল হিস্টরি’ বাছুন → **২ ফাইল নম্বর দিন** ঘরে **‘⬇ নমুনা Excel (File No + Applicant Name) সংরক্ষণ করুন’** চাপুন (অথবা রিপোজিটরির `templates/File_History_Format.xlsx` নিন)।
+2. Excel-এর **A কলামে File No** (পুরো `CC-…` / `PL-…` নম্বর অথবা শেষের কয়েকটি অঙ্ক), **B কলামে Applicant Name** লিখে সেভ করুন। প্রতি সারিতে একটি ফাইল; নাম না দিলেও চলে।
+3. **‘Excel / CSV বাছুন’** → আপনার ফাইলটি দিন। স্ক্রিনে দেখায়: *“✓ N টি ফাইল নম্বর পাওয়া গেছে (আবেদনকারীর নামসহ: M টি)”*। (চাইলে নম্বর সরাসরি লিখে / পেস্ট করেও দেওয়া যায়।)
+4. **‘ইতিহাস তৈরি করুন’** চাপুন। প্রথমবার সব ফাইলের তালিকা পড়তে কয়েক মিনিট লাগতে পারে (পরের বার শুধু নতুন দিন)।
+5. **Excel খুলুন:** *Summary* (সঙ্গে Applicant Name (given) · Name Check · Applicant on the file) · *Timeline* · *Submission History* · *Trips* (পুরো Remarks সহ) · *Appointments* · *Re-CPV & Extra* · *Concerns* · *Not Found*। না-পাওয়া নম্বর ‘File not found’, বাকি ফাইল ঠিকই আসে।
+6. কমান্ড লাইনে: `python run_app.py --cli --email you@x.com --history numbers.xlsx --outdir out`।
+
+## সব ফিচার — প্রথম সংস্করণ থেকে Version 5 পর্যন্ত (বিস্তারিত)
 
 প্রতিটি ধাপে আগের সব ফিচার থেকে যায়; নিচে কোন সংস্করণে কী যোগ হয়েছে ক্রমানুসারে লেখা।
 
@@ -136,7 +155,26 @@ Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্�
 
 ---
 
-## বর্তমান নিয়ম — বিস্তারিত (Version 4)
+### Version 5.0.0 (৮ নভেম্বর) — Done / Due শুধু Remarks থেকে, File History-র সংশোধন ও File No + Applicant Name Excel
+
+- **Done / Due (Report Summary) এখন শুধু ভেরিফায়ারের Remarks থেকে লেখা হয়, ব্যাক-অফিসের Comment থেকে নয়।** *Comment* = ফাইল তৈরির সময় ব্যাক-অফিস ভেরিফায়ারকে যে **নির্দেশ** দেয় (যেমন “LOI will be signed from head office”); *Remarks* = কাজ শেষে ভেরিফায়ার যা **পেয়েছে** তার বর্ণনা। আগে Comment-এর নির্দেশও Done / Due-তে নোট হিসেবে ঢুকে যেত (যেমন নির্দেশের “Will be signed from head office” Done ও Due দুটোতেই আসত)। এখন Comment কেবল একটি কাজে লাগে — “Document” ট্রিপটি আসলে কিসের (LOI, Payslip, Tuition, Rental …) তা চেনা; ফলাফল, সমস্যা ও কারণ সবই Remarks (ও চলমান ট্রিপের সর্বশেষ Appointment-এর কারণ) থেকে।
+- **Payslip বাক্যের ভুল পড়া ঠিক:** “HR payslip will be not verified. HR will verified only salary certificate.” আগে ভুল করে “Head office disagree” নোটও দিত। এখন ফল: `Done-… LOI (HR verifies salary certificate only)` / `Due-LOI (HR verifies salary certificate only)` — Comment যা-ই লেখা থাকুক। (সত্যিকারের “HR does not agree to verify the LOI” লেখা থাকলে “Head office disagree” আগের মতোই আসে।) Comment-এর কোনো শব্দে (“different”, “current”, “parent”) আর ভুল করে *Rental* আইটেম বসে না।
+- **File History ক্র্যাশ ঠিক:** কোনো শিট ফাঁকা থাকলে (যেমন সব নম্বর পাওয়া গেলে ‘Not Found’ শিটে কিছুই থাকে না) Excel বানানোর সময় `TypeError: 'MergedCell' object is not iterable` দিয়ে পুরো রান থেমে যেত। কারণ: ফাঁকা শিটে ফ্রিজ-করা ঘরটি “কিছু নেই” লেখা মার্জ-করা সারির ভিতরে পড়ত। এখন কোনো শিট ফাঁকা হলেও ইতিহাস ঠিকভাবে তৈরি হয় (‘Not Found’ শিটে “Every number was found.” লেখা থাকে)।
+- **File History-র ইনপুট Excel: `File No` + `Applicant Name`।** শুধু দুটি কলাম দিলেই ইতিহাস চলে আসে। শিরোনাম-শব্দ (File No / Tracking No …, আর Applicant / Customer / Name / আবেদনকারী / নাম) দেখে কলাম চেনা হয়; ফাইল নম্বর পুরো (`CC-…`) বা শেষের কয়েকটি অঙ্ক — দুটোই চলে; নাম ঐচ্ছিক (না দিলে আগের মতোই)। ফাইল নম্বর *নাম দিয়ে* খোঁজা হয় না — নম্বর দিয়েই খোঁজা হয়, নাম মেলানোর জন্য।
+- **Name Check:** নাম দেওয়া থাকলে Summary শিটে তিনটি নতুন কলাম — *Applicant Name (given)*, *Name Check*, *Applicant on the file*। **Matches** = একই ব্যক্তি (Md. / Mohammad, শব্দের ক্রম, একটি শব্দ কম, ছোট বানান-ভুল সহনীয়); **Matches Guarantor 1 / Co-Applicant** = নামটি ফাইলের অন্য concern-এর; **Different** = ফাইলের Applicant অন্য নাম (পাশের কলামে দেখানো)। ‘Not Found’ শিটেও দেওয়া নাম থাকে। নাম না দিলে শিটগুলো হুবহু আগের মতো।
+- **নমুনা Excel:** ‘ফাইল হিস্টরি’ বাছলে ‘⬇ নমুনা Excel (File No + Applicant Name) সংরক্ষণ করুন’ বোতাম; রিপোজিটরিতেও আছে: `templates/File_History_Format.xlsx` (প্রথম শিটে দুই কলাম + ৫০০ প্রস্তুত সারি; File No কলাম Text ফরম্যাটে যাতে শুরুর শূন্য কখনো হারায় না; দ্বিতীয় শিটে কীভাবে ভরতে হবে)।
+- **আগের কোনো অপশন বদলায়নি:** ট্র্যাকার, তারিখ-সীমা, Re-CPV, সাধারণ এক্সেল, ইমেইল, ছুটি, SLA নিয়ম, Incomplete নিয়ম — সবই Version 4-এর মতো (শুধু Done / Due-র Comment-নির্ভরতা বাদ)।
+- **পরীক্ষা:** মোট **১৬২টি স্বয়ংক্রিয় টেস্ট** (Version 5-এর ৩৩টি নতুন: ক্র্যাশ, নাম-সহ ইনপুট, Name Check, নমুনা Excel, Comment-বনাম-Remarks “due check”, ড্যাশবোর্ড→ট্র্যাকার Excel পর্যন্ত end-to-end, এবং আসল ড্যাশবোর্ডে দেখা ফাইলের ধাঁচে ৩টি) এবং আসল অ্যাপ-উইন্ডোর GUI smoke test-এ এখন File History ধাপও আছে (Windows, macOS, Linux)।
+
+## বর্তমান নিয়ম — বিস্তারিত (Version 5)
+
+### Version 5.0.0 — বিস্তারিত নিয়ম
+
+- **Report Summary (Done / Due) = Remarks।** ব্যাক-অফিসের Comment (নির্দেশ) কখনো Done / Due-র নোট, সমস্যা বা কারণ হয় না; Comment শুধু ‘Document’ ট্রিপ কিসের (LOI / Payslip / Tuition / Rental …) তা চিনতে। চলমান (শেষ না হওয়া) ট্রিপে Remarks না থাকলে কারণ = Appointment-এর কারণ বা স্ট্যাটাস (“Not visited yet”), Comment নয়। বাকি Done / Due-র নিয়ম (সর্বশেষ বক্তব্য জেতে, Done-এর সমস্যা Due-তেও আসে, বাক্যের বিষয় ধরে সমস্যা) Version 4-এর মতোই।
+- **“Due check” (যাচাই):** ৩৩টি রিমার্কস-ধাঁচ × ১০টি Comment × ৪ ট্রিপ-ধরন × ২ অবস্থা = ২৬৪০ সমন্বয়ে পুরনো (Version 4) ও নতুন ইঞ্জিন পাশাপাশি চালানো হয়েছে: (ক) House / Office / Bank ট্রিপে Done / Due আর Comment-এর উপর নির্ভর করে না — পুরনো ইঞ্জিনে ৫২৪ সমন্বয়ে নির্ভর করত; (খ) Comment ফাঁকা রেখে পুরনো বনাম নতুন তুলনায় ২৬৪টির মধ্যে বদলেছে শুধু ৮টি — সবই Payslip-বাক্য (ভুল “Head office disagree” বাদ), বাকি সব রিমার্কসের ফল হুবহু আগের মতো; (গ) Comment-এর একমাত্র প্রভাব Document ট্রিপের **ধরন চেনা** (LOI / Payslip / BS / Rental) — পরীক্ষাগুলো `tests/test_v5.py`-তে।
+- **আসল ড্যাশবোর্ডে দেখা ত্রুটি (Version 5-এ ঠিক):** আসল ড্যাশবোর্ডের Remarks-এ বাক্যের মাঝে চোখে-না-দেখা চিহ্ন (LRM/ZWSP) থাকে; আগে সেগুলো মুছে ফেলায় দুটো বাক্য জুড়ে গিয়ে (“…me.Loi…”) “Sign” হারিয়ে যেত। এখন চিহ্নটি দাঁড়ির পরে থাকলে একটি ফাঁকা দিয়ে বসানো হয় — Done “App House, Office, Sign, LOI”। ডেটা নিরাপত্তার জন্য রিপোজিটরিতে কোনো আবেদনকারীর নাম/নম্বর রাখা হয়নি।
+- **File History ইনপুট:** ফাইল নম্বরের কলাম শিরোনাম-শব্দে (File No / Tracking No / Application …) বা সবচেয়ে বেশি নম্বর-ধাঁচের মানে চেনা হয়; নামের কলাম **শুধু শিরোনাম-শব্দে** (Applicant / Customer / Client / Borrower / Name / আবেদনকারী / নাম) — নাম কখনো আন্দাজ করা হয় না। একই নম্বর দুবার থাকলে প্রথম সারি থাকে (প্রথমটিতে নাম না থাকলে পরেরটির নাম)। শিটে একাধিক পাতা থাকলে যে পাতায় সবচেয়ে বেশি নম্বর সেটি পড়া হয় — তাই নমুনা Excel-এর ‘How to fill’ পাতায় কোনো নম্বর-ধাঁচের সংখ্যা রাখা হয়নি।
+- **Name Check:** Matches / Matches <Role> / Different (শুধু নাম দেওয়া থাকলে; দেখানো নাম ড্যাশবোর্ডের Applicant-এর)।
 
 ### Version 4.0.0 — বিস্তারিত নিয়ম: (১) Appointment ও যেকোনো নতুন ট্রিপে SLA **Restart** + নতুন কলাম “SLA Start / Restart Date”; (২) Report Summary (Done / Due) সবসময় **সর্বশেষ activity** ধরে
 
@@ -192,13 +230,13 @@ python run_app.py --cli --email you@barikoi.com --prime --mode tracker --slot 7p
 
 ### কী কী যাচাই হয়েছে
 
-- ১২৯টি স্বয়ংক্রিয় টেস্ট (CI-তে প্রতিবার; Version 4-এ SLA restart-এর ১৩টি নতুন) + আসল অ্যাপ-উইন্ডো মক সার্ভারে চালানো GUI smoke test (Windows / macOS / Linux): রিপোর্টের নিয়ম, ফেজ/৩টা কাট-অফ, কারণ-শ্রেণি, Excel কাঠামো, Check List বাদ দেওয়া (এডিট সহ রাউন্ডট্রিপ), মেইলের গঠন (লোগো, সিগনেচার, সংযুক্তি), লোকাল নকল SMTP সার্ভারে পাঠানো/ভুল পাসওয়ার্ড/ডুপ্লিকেট রোধ, ১০৬০ ফাইল × ৯০ দিনের বাল্ক সিনারিও (স্বতন্ত্র নিয়মে হিসাব করা প্রত্যাশার সাথে হুবহু মেলে)।
+- ১৬২টি স্বয়ংক্রিয় টেস্ট (CI-তে প্রতিবার; Version 4-এ SLA restart-এর ১৩টি, Version 5-এ Done/Due-Remarks (২৬৪০টি remark × comment × ট্রিপ-ধরনের “due check” সহ), File History ক্র্যাশ ও নাম-সহ ইনপুটের ৩৩টি নতুন) + আসল অ্যাপ-উইন্ডো মক সার্ভারে চালানো GUI smoke test (ট্র্যাকার, ইমেইল, ছুটি, তারিখ-সীমা, ফাইল হিস্টরি; Windows / macOS / Linux): রিপোর্টের নিয়ম, ফেজ/৩টা কাট-অফ, কারণ-শ্রেণি, Excel কাঠামো, Check List বাদ দেওয়া (এডিট সহ রাউন্ডট্রিপ), মেইলের গঠন (লোগো, সিগনেচার, সংযুক্তি), লোকাল নকল SMTP সার্ভারে পাঠানো/ভুল পাসওয়ার্ড/ডুপ্লিকেট রোধ, ১০৬০ ফাইল × ৯০ দিনের বাল্ক সিনারিও (স্বতন্ত্র নিয়মে হিসাব করা প্রত্যাশার সাথে হুবহু মেলে)।
 - লাইভ ড্যাশবোর্ড (শুধু GET): ৯০ দিনের সব ফাইল (১০৩১টি) ও তাদের activity log ত্রুটি ছাড়া পড়া যায় (~৯০ সেকেন্ড); ১৪ দিনের প্রতিটি দিনে ড্যাশবোর্ডের Submitted তালিকার প্রতিটি ফাইল log-ভিত্তিক Complete-এ আছে (অতিরিক্ত যেগুলো, সেগুলো পরে আবার Submitted/Hold হয়ে বর্তমান স্ট্যাটাস বদলেছে)।
 
 ## GitHub থেকে বিল্ড ও ডাউনলোড
 
-1. কোড GitHub-এর **Private** রিপোজিটরিতে থাকে। **Actions** চলে শুধু (ক) `v*` ট্যাগ দিলে অথবা (খ) হাতে *Run workflow* চাপলে — তখন আগে ১২৯টি টেস্ট, তারপর চারটি বিল্ড এবং তিন সিস্টেমে GUI smoke test চলে।
-2. **স্থায়ী ডাউনলোড লিংক (Release) বানাতে:** GitHub → **Releases → Draft a new release** → Tag লিখুন `v4.0.0` (Target: `main`) → **Publish**। (অথবা টার্মিনালে `git tag v4.0.0 && git push origin v4.0.0`।) ট্যাগ দেওয়ার পর Actions Windows 64/32-bit ও Mac Apple Silicon / Intel বিল্ড করে প্রায় ১৫–২০ মিনিটে Release-এ ফাইল জুড়ে দেয়। Release-এর নাম ও বিবরণ নিজে থেকে বসে (`RELEASE_NOTES.md` থেকে)।
+1. কোড GitHub-এর **Private** রিপোজিটরিতে থাকে। **Actions** চলে শুধু (ক) `v*` ট্যাগ দিলে অথবা (খ) হাতে *Run workflow* চাপলে — তখন আগে ১৬২টি টেস্ট, তারপর চারটি বিল্ড এবং তিন সিস্টেমে GUI smoke test চলে।
+2. **স্থায়ী ডাউনলোড লিংক (Release) বানাতে:** GitHub → **Releases → Draft a new release** → Tag লিখুন `v5.0.0` (Target: `main`) → **Publish**। (অথবা টার্মিনালে `git tag v5.0.0 && git push origin v5.0.0`।) ট্যাগ দেওয়ার পর Actions Windows 64/32-bit ও Mac Apple Silicon / Intel বিল্ড করে প্রায় ১৫–২০ মিনিটে Release-এ ফাইল জুড়ে দেয়। Release-এর নাম ও বিবরণ নিজে থেকে বসে (`RELEASE_NOTES.md` থেকে)।
 3. **শুধু বিল্ড চেক করতে:** **Actions → Build desktop app → Run workflow**; শেষে রানের পাতার নিচে **Artifacts** থেকে ডাউনলোড (`Windows-64bit`, `Windows-32bit`, `Mac-AppleSilicon`, `Mac-Intel`) — এটি Release নয়, কিছুদিন পরে মেয়াদ শেষ হয়।
 
 > আপনার MacBook Apple Silicon (M-সিরিজ) হলে `Mac-AppleSilicon`, Intel হলে `Mac-Intel` নিন। (Apple menu → About This Mac এ দেখা যায়।)
@@ -224,6 +262,7 @@ VERIFY_PASSWORD=... python run_app.py --cli --web https://verify.bmapsbd.com --e
 - `prime_excel.py`, `prime_pdf.py`, `report_text.py`, `theme.py` – Excel / PDF ও রং; `file_history.py`, `history_excel.py` – ফাইল হিস্টরি।
 - `mailer.py`, `mail_templates.py`, `signature.py`, `gui_mail.py` – Zoho SMTP মেইল, ৩টি নমুনা, সিগনেচার, ইমেইল উইন্ডো।
 - `gui.py`, `ui_kit.py` – অ্যাপের জানালা। `tests/gui_smoke.py` – আসল জানালা মক সার্ভারে চালানোর পরীক্ষা (CI-তে তিন সিস্টেমে)।
+- `templates/File_History_Format.xlsx` – File History-র নমুনা ইনপুট (`history_excel.write_history_template` বানায়; অ্যাপের বোতামও একই); `file_history.py`-এ ইনপুট পড়া (`parse_ids_file`) ও `name_check`।
 - `devtools/live_check` – লাইভ ড্যাশবোর্ড যাচাইয়ের সরঞ্জাম (শুধু GET; অ্যাপ বিল্ডের অংশ নয়)।
 - সেটিংস (`~/.verify_report_builder/settings.json`): `workers`, `org_name` বদলানো যায়। পাসওয়ার্ড কখনো লেখা হয় না।
 

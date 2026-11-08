@@ -1,10 +1,12 @@
-"""Report Summary engine: reads EVERY trip's full remarks / comment / appointment reasons
+"""Report Summary engine: reads EVERY trip's full remarks / appointment reasons (never the back-office comment)
 and writes the tracker-style two lines
 
     Done-App House, Office, Sign, LOI (Will be signed from head office)
     Due-LOI (Will be signed from head office)
 
 Rules (agreed with the user)
+  * Done / Due follow the verifier's REMARKS (what was found after the work), not the back-office COMMENT (the instruction given
+    to the verifier).  The comment is used only to tell what a "Document" trip is about (LOI, payslip, tuition ...).
   * Done lists every finished item in the tracker order  App -> Sign -> LOI -> BS -> Co-App -> PG.
     A problem found on an item is written in brackets next to it, in the bank's short wording.
   * Due repeats EVERY problem item with the same bracket (the report shows them in a soft highlight),
@@ -46,13 +48,24 @@ def xml_safe(s):
 def clean_text(s: str | None) -> str:
     if not s:
         return ""
-    s = xml_safe(_INVIS.sub("", str(s))).replace("\r", "\n")
+    # The dashboard separates a verifier's sentences with invisible marks ("...in front of me.<LRM><LRM>Loi pending."): dropping them
+    # glued the sentences together ("me.Loi") so "signed in front of me" was lost inside a sentence that names the LOI.  After a sentence
+    # end they become a space; elsewhere they are simply removed.
+    s = _INVIS.sub("", re.sub(r"(?<=[.!?;:])(?:%s)+(?=\S)" % _INVIS.pattern, " ", str(s)))
+    s = xml_safe(s).replace("\r", "\n")
     s = re.sub(r"[ \t ]+", " ", s)
     return re.sub(r"\n\s*\n+", "\n", s).strip()
 
 
 # ---------------------------------------------------------------------------------------
 # note rules: (regex, note, target).  target "loi" = about the LOI, "trip" = about the visit itself.
+# "HR payslip will be not verified. HR will verified only salary certificate." = HR verifies the salary certificate only.
+_PAYSLIP_ONLY = (r"(?:does\s*n[o']?t|do\s*n[o']?t|not)\s+(?:be\s+)?verif\w*[^.\n]{0,40}(?:pay\s*slip|payslip)|pay\s*slip[^.\n]{0,60}"
+                 r"(?:(?:will\s+)?(?:be\s+)?not\s+verif|does\s*n[o']?t\s+verif)|"
+                 r"only\s+(?:verif\w*\s+)?(?:the\s+)?salary\s+certificate|verif\w*\s+only\s+(?:the\s+)?salary\s+certificate")
+_PAYSLIP_RX = re.compile(_PAYSLIP_ONLY, re.IGNORECASE)
+
+
 def _r(p: str, note: str, target: str = "trip"):
     return (re.compile(p, _I), note, target)
 
@@ -72,8 +85,7 @@ NOTE_RULES = [
        r"|loi[^.\n]{0,30}will\s+be\s+(?:verif|sign)\w*[^.\n]{0,25}(?:head|hq|corporate)", "Will be signed from head office", "loi"),
     _r(r"(?:head|corporate|hr|human\s+resource)[^.\n]{0,70}(?:does\s*n[o']?t|do\s*n[o']?t|not|unwilling|refus\w+|disagree\w*|denied)[^.\n]{0,35}"
        r"(?:verif|sign)\w*", "Head office disagree", "loi"),
-    _r(r"(?:does\s*n[o']?t|do\s*n[o']?t|not)\s+verif\w*[^.\n]{0,40}(?:pay\s*slip|payslip)|pay\s*slip[^.\n]{0,60}"
-       r"(?:not\s+verif|does\s*n[o']?t\s+verif)|only\s+verif\w*\s+(?:the\s+)?salary\s+certificate", "HR verifies salary certificate only", "loi"),
+    _r(_PAYSLIP_ONLY, "HR verifies salary certificate only", "loi"),
     _r(r"(?:can|could|must|should|will)\s+(?:be\s+)?(?:verif\w*|sign\w*)[^.\n]{0,30}(?:from|by|at|through)\s+"
        r"(?:the\s+)?(?:respective\s+|applicant'?s?\s+|[\w'’-]+\s+){0,2}branch", "Can be verified from branch", "loi"),
     _r(r"(?:verif\w*|sign\w*)[^.\n]{0,25}(?:by|via|through|on)\s+e-?mail|need\s+to\s+verif\w*\s+by\s+(?:e-?)?mail|by\s+e-?mail|"
@@ -254,7 +266,7 @@ def _doc_name(trip: dict) -> str:
     if re.search(r"pay\s*slip", cl) and not re.search(r"\bloi\b|salary\s*cert", cl):
         return "Payslip"
     for rx, name in (
-        (r"car\s*(?:quo|qua|quat)", "Car Quotation"), (r"chamber", "Chamber"), (r"rent", "Rental"),
+        (r"car\s*(?:quo|qua|quat)", "Car Quotation"), (r"chamber", "Chamber"), (r"\brent", "Rental"),      # \b: "different", "current", "parent" are not rent
         (r"\bpec\b|experience\s+certificate", "PEC"),
         (r"tuition|tution", "Tuition"), (r"\bloi\b|letter of intro|salary cert|pay\s*slip", "LOI"),
         (r"voucher", "Cash Voucher"), (r"sign|sing", "Sign"), (r"statement|\bbs\b", "BS"),
@@ -338,9 +350,10 @@ def _collect(text: str, rules) -> dict:
     about_loi = "\n".join(x for x in sl if _LOI_WORD.search(x))
     other = "\n".join(x for x in sl if not _LOI_WORD.search(x))
     found: dict[str, list[str]] = {"loi": [], "trip": []}
+    no_payslip = "\n".join(x for x in sl if not _PAYSLIP_RX.search(x))
     for rx, note, target in rules:
         if target == "loi":
-            dest = "loi" if rx.search(text) else None
+            dest = "loi" if rx.search(no_payslip if note == "Head office disagree" else text) else None
         elif rx.search(other):
             dest = "trip"
         elif note in _LOI_ATTRIBUTED and rx.search(about_loi):
@@ -428,8 +441,10 @@ def analyze(views: list[TripView], submitted: bool, bank_label: str = "BS") -> S
 
     for v in views:
         t = v.trip
-        outcome, comment = _trip_text(t)
-        text_all = f"{outcome}\n{comment}"
+        outcome, _comment = _trip_text(t)
+        # The back-office COMMENT is the instruction given to the verifier ("LOI will be signed from head office"), the REMARKS are what
+        # the verifier reports after the work: Done / Due are written from the remarks only (the comment still names what the trip is).
+        text_all = outcome
         code = t.get("type_code", "")
         status = t.get("status_code")
         finished = status == FINISHED

@@ -19,7 +19,7 @@ from openpyxl.worksheet.filters import FilterColumn
 from . import theme as T
 from .billing import concern_info
 from .excel import _clean
-from .file_history import FileData, HistoryData, overview, submission_history, timeline, trip_label
+from .file_history import FileData, HistoryData, name_check, overview, submission_history, timeline, trip_label
 
 FONT = "Calibri"
 DT = "dd/mm/yyyy hh:mm:ss"
@@ -123,9 +123,12 @@ def _sheet(wb: Workbook, title: str, heading: str, sub: str, cols: list[Col], ro
         for i in range(n):
             if i != fkeys[0]:
                 ws.auto_filter.filterColumn.append(FilterColumn(colId=i, hiddenButton=True))
-        ws.freeze_panes = ws.cell(hdr + 1, fkeys[0] + 2)       # headers + everything up to the File No column
+        # headers + everything up to the File No column. A coordinate string, never a cell object: on an EMPTY sheet that
+        # cell sits inside the merged "nothing to show" row (a MergedCell) and openpyxl raised
+        # "TypeError: 'MergedCell' object is not iterable" (File History run failed).
+        ws.freeze_panes = f"{get_column_letter(fkeys[0] + 2)}{hdr + 1}"
     else:
-        ws.freeze_panes = ws.cell(hdr + 1, 1)
+        ws.freeze_panes = f"A{hdr + 1}"
     ws.page_setup.orientation = "landscape"
     ws.page_setup.fitToWidth = 1
     ws.page_setup.fitToHeight = 0
@@ -160,6 +163,12 @@ def _summary_style(ws, r, cols, row):
         _colour(ws.cell(r, idx["area"]), IN_FILL, T.IN, True)
     if row.get("match_note"):
         _colour(ws.cell(r, idx["match_note"]), None, CAUTION, True)
+    nc = row.get("name_check") or ""
+    if "name_check" in idx and nc:
+        if nc.startswith("Matches"):
+            _colour(ws.cell(r, idx["name_check"]), POS_FILL, T.POS, True)
+        else:
+            _colour(ws.cell(r, idx["name_check"]), None, CAUTION, True)
     sla = row.get("sla") or ""
     if "SLA Breach" in sla:
         _colour(ws.cell(r, idx["sla"]), None, CAUTION)
@@ -177,19 +186,26 @@ def _event_style_submission(ws, r, cols, row):
 
 
 # ------------------------------------------------------------------------------ rows of each sheet
+def _has_names(h: HistoryData) -> bool:
+    return any(getattr(e, "name", "") for e in h.entries)
+
+
 def _summary_rows(h: HistoryData) -> list[dict]:
     rows = []
     for m in h.matches:
+        given = getattr(m.entry, "name", "")
         if not m.found or m.file_id not in h.files:
-            rows.append({"searched": m.entry.raw, "file_no": "File not found", "_missing": True, "match_note": m.note})
+            rows.append({"searched": m.entry.raw, "given_name": given, "file_no": "File not found", "_missing": True, "match_note": m.note})
             continue
         fd = h.files[m.file_id]
         if fd.error:
-            rows.append({"searched": m.entry.raw, "file_no": fd.file_no, "type": "", "status": "Could not read",
+            rows.append({"searched": m.entry.raw, "given_name": given, "file_no": fd.file_no, "type": "", "status": "Could not read",
                          "match_note": " · ".join(x for x in (m.note, f"File could not be read: {fd.error}") if x)})
             continue
         o = overview(fd)
+        res, app = name_check(given, fd.file)
         rows.append({
+            "given_name": given, "name_check": res, "file_applicant": app,
             "searched": m.entry.raw, "file_no": o["file_no"], "type": o["type"], "status": o["status"], "created": o["created"],
             "area": o["area"], "bill_rows": "\n".join(o["bill_rows"]) or "-", "sla": "\n".join(o["sla"]) or "-",
             "last_update": "\n".join(o["last_update"]) or "N/A", "appointments": "Yes" if o["appointments"] else "No",
@@ -289,7 +305,8 @@ def _not_found_rows(h: HistoryData) -> list[dict]:
     rows = []
     for m in h.matches:
         if not m.found:
-            rows.append({"searched": m.entry.raw, "kind": "Full file number" if m.entry.kind == "full" else "Last digits",
+            rows.append({"searched": m.entry.raw, "given_name": getattr(m.entry, "name", ""),
+                         "kind": "Full file number" if m.entry.kind == "full" else "Last digits",
                          "result": "File not found", "where": m.note.replace("File not found", "").strip(" ()")})
     return rows
 
@@ -307,8 +324,11 @@ def build_history_excel(h: HistoryData, path) -> Path:
             f"{len(h.not_found)} not found · {when:%d/%m/%Y %H:%M}" + (f" · {h.server_label}" if h.server_label else ""))
 
     S = lambda t, w, k, c=False, f=None: Col(t, w, k, c, f)                      # noqa: E731
+    names = _has_names(h)
+    name_cols = [S("Applicant Name (given)", 26, "given_name"), S("Name Check", 22, "name_check", True),
+                 S("Applicant on the file", 26, "file_applicant")] if names else []
     _sheet(wb, "Summary", "File History - Summary", head, [
-        S("Searched", 17, "searched", True), S("File No", 24, "file_no", True), S("Type", 8, "type", True),
+        S("Searched", 17, "searched", True), *name_cols, S("File No", 24, "file_no", True), S("Type", 8, "type", True),
         S("Current Status", 16, "status", True), S("Created", 17, "created", True, DT_SHORT), S("Area", 9, "area", True),
         S("Bill Rows (history)", 48, "bill_rows"), S("SLA / TAT", 44, "sla"),
         S("Last Update (newest first)", 56, "last_update"), S("Appointments", 13, "appointments", True),
@@ -343,7 +363,8 @@ def build_history_excel(h: HistoryData, path) -> Path:
         S("File No", 24, "file_no", True), S("No.", 6, "no", True), S("Role", 16, "role", True), S("Name", 32, "name"),
         S("Designation", 22, "designation"), S("Trips", 34, "trips")], _concern_rows(h), empty="No concerns.")
     _sheet(wb, "Not Found", "File History - Not Found", "These numbers matched no file of the organisation.", [
-        S("Searched", 24, "searched", True), S("Kind", 18, "kind", True), S("Result", 18, "result", True),
+        S("Searched", 24, "searched", True), *([S("Applicant Name (given)", 26, "given_name")] if names else []),
+        S("Kind", 18, "kind", True), S("Result", 18, "result", True),
         S("Searched Where", 60, "where")], _not_found_rows(h), file_key="searched", empty="Every number was found.")
     if h.notes:
         _sheet(wb, "Notes", "File History - Notes", "Things that could not be read completely.",
@@ -357,3 +378,48 @@ def write_history_outputs(h: HistoryData, out_dir) -> list[Path]:
     when = h.generated_at or datetime.now()
     stem = re.sub(r"[^A-Za-z0-9_.-]+", "_", f"File_History_{when:%Y-%m-%d_%H%M}")
     return [build_history_excel(h, out_dir / f"{stem}.xlsx")]
+
+
+# ------------------------------------------------------------------------------ input template
+def write_history_template(path) -> Path:
+    """The ready-to-fill input sheet of the File History option:  File No | Applicant Name.
+    The software reads it as it is (header words decide the columns; the sheet with the most numbers is used)."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "File History"
+    ws.sheet_properties.tabColor = T.NAVY
+    for i, (title, w) in enumerate((("File No", 30), ("Applicant Name", 44)), 1):
+        c = ws.cell(1, i, title)
+        c.font, c.fill, c.border = Font(name=FONT, bold=True, color=T.WHITE, size=11), HEAD, BOX
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        ws.column_dimensions[get_column_letter(i)].width = w
+    ws.row_dimensions[1].height = 24
+    for r in range(2, 502):                                  # 500 ready rows; File No is TEXT so leading zeros are never lost
+        a, b = ws.cell(r, 1), ws.cell(r, 2)
+        a.number_format = "@"
+        for c in (a, b):
+            c.border, c.font = BOX, Font(name=FONT, size=11, color=T.TEXT)
+    ws.freeze_panes = "A2"
+    g = wb.create_sheet("How to fill")
+    g.sheet_view.showGridLines = False
+    g.column_dimensions["A"].width = 120
+    lines = [
+        ("File History - how to fill the first sheet", True),
+        ("", False),
+        ("1. Column A (File No): the full file number, for example the letters CC or PL, a dash and the long number - OR only the last digits of the number.", False),
+        ("2. Column B (Applicant Name): the applicant's name. It is optional - the file is found by the File No; the name is shown in the report and checked against the dashboard.", False),
+        ("3. One file per row. Do not leave the header row out and do not add other columns in front of these two.", False),
+        ("4. Open the software > Report type: File History > choose this Excel > Create history.", False),
+        ("5. The result is one Excel: Summary (with Applicant Name (given) + Name Check), Timeline, Submission History, Trips, Appointments, Re-CPV & Extra, Concerns, Not Found.", False),
+        ("6. Name Check: Matches = the same person; Matches Guarantor / Co-Applicant = the name belongs to another concern of the file; Different = the file's applicant is another name (shown beside it).", False),
+        ("7. If the number matches nothing the row is shown as File not found - the other files are not affected.", False),
+    ]
+    for i, (t, bold) in enumerate(lines, 1):
+        c = g.cell(i, 1, t)
+        c.font = Font(name=FONT, size=13 if bold else 11, bold=bold, color=T.NAVY if bold else T.TEXT)
+        c.alignment = Alignment(wrap_text=True, vertical="top")
+        g.row_dimensions[i].height = 22 if bold else 32
+    wb.save(path)
+    return path
