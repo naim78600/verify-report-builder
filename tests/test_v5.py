@@ -232,3 +232,36 @@ def test_a_comment_word_that_only_contains_rent_does_not_make_a_rental_item():
     assert "Rental" not in done
     done, _due = _dd("Information ok.", "Rental agreement verification")
     assert "Rental" in done
+
+
+# ------------------------------------------------------------------------------ the "due check": comment-invariance over many remark styles
+_REMARKS = [
+    "", "Information ok.", "Information ok. Applicant signed in front of me. LOI signed infront of me.", REM_500204, "HR does not verify payslip.",
+    "HR does not agree to verify the LOI.", "LOI will be signed from head office.", "Need forwarding letter for LOI verification.",
+    "LOI not verified. Signatory not available.", "Applicant disagree to verify.", "Applicant not available. Will come again tomorrow.",
+    "Office closed.", "Given address wrong.", "Call not received. Phone switch off.", "Bank statement not verified. Insufficient fund.",
+    "Signature mismatch. Seal missing.", "Previous signatory not available.. LOI sing by new signatory",
+    "Signatory said LOI can be verified from the Sylhet branch.", "Verification need to be done by email.",
+]
+_COMMENTS = ["", "LOI VERIFICATION", COMMENT, "Collect LOI. Signatory may disagree to verify", "Need forwarding letter",
+             "Applicant not available on Saturday. Not verified earlier.", "Verify at a different address"]
+
+
+@pytest.mark.parametrize("code", ["HOUSE", "OFFICE", "BANK", "GUARANTOR_HOUSE", "GUARANTOR_OFFICE"])
+@pytest.mark.parametrize("status,submitted", [(5, True), (2, False), (4, False)])
+def test_due_check_house_office_bank_trips_ignore_the_comment_completely(code, status, submitted):
+    for rem in _REMARKS:
+        want = None
+        for com in _COMMENTS:
+            s = _sum([_trip(1, code, rem, com, status=status)], submitted=submitted)
+            got = (s.done, s.due)
+            assert want in (None, got), (code, status, rem, com, want, got)
+            want = got
+
+
+def test_due_check_a_loi_document_trip_ignores_the_comment_text():
+    for status, submitted in ((5, True), (2, False), (4, False)):
+        for rem in _REMARKS:
+            outs = {_dd(rem, com, submitted=submitted, status=status) for com in ("LOI VERIFICATION", COMMENT, "Collect LOI. Signatory may disagree to verify",
+                                                                                    "LOI sign. Need forwarding letter. Applicant not available")}
+            assert len(outs) == 1, (status, rem, outs)

@@ -19,7 +19,7 @@ Prime Bank PLC-এর দৈনিক সাবমিশন ট্র্যা�
 - **File History ক্র্যাশ ঠিক:** ফাঁকা শিট থাকলে (যেমন সব নম্বর পাওয়া গেলে) `'MergedCell' object is not iterable` দিয়ে থেমে যেত — আর যায় না।
 - **File History ইনপুট = File No + Applicant Name:** নমুনা Excel (অ্যাপের বোতামে বা `templates/File_History_Format.xlsx`); ফাইল নম্বর দিয়ে খোঁজা হয়, নামের জন্য Summary শিটে **Name Check** (Matches / Matches Guarantor / Different)।
 - **আগের সব অপশন অপরিবর্তিত** (ট্র্যাকার, তারিখ-সীমা, Re-CPV, সাধারণ এক্সেল, ইমেইল, ছুটি, SLA ও Incomplete নিয়ম)।
-- ১৪৩টি স্বয়ংক্রিয় টেস্ট + আসল অ্যাপ-উইন্ডোর GUI smoke test (File History সহ; Windows, macOS, Linux)।
+- ১৫৯টি স্বয়ংক্রিয় টেস্ট + আসল অ্যাপ-উইন্ডোর GUI smoke test (File History সহ; Windows, macOS, Linux)।
 
 ## Version 4 থেকে চলছে
 
@@ -130,7 +130,7 @@ Prime Bank PLC-এর দৈনিক সাবমিশন ট্র্যা�
 - **Name Check:** নাম দেওয়া থাকলে Summary শিটে তিনটি নতুন কলাম — *Applicant Name (given)*, *Name Check*, *Applicant on the file*। **Matches** = একই ব্যক্তি (Md. / Mohammad, শব্দের ক্রম, একটি শব্দ কম, ছোট বানান-ভুল সহনীয়); **Matches Guarantor 1 / Co-Applicant** = নামটি ফাইলের অন্য concern-এর; **Different** = ফাইলের Applicant অন্য নাম (পাশের কলামে দেখানো)। ‘Not Found’ শিটেও দেওয়া নাম থাকে। নাম না দিলে শিটগুলো হুবহু আগের মতো।
 - **নমুনা Excel:** ‘ফাইল হিস্টরি’ বাছলে ‘⬇ নমুনা Excel (File No + Applicant Name) সংরক্ষণ করুন’ বোতাম; রিপোজিটরিতেও আছে: `templates/File_History_Format.xlsx` (প্রথম শিটে দুই কলাম + ৫০০ প্রস্তুত সারি; File No কলাম Text ফরম্যাটে যাতে শুরুর শূন্য কখনো হারায় না; দ্বিতীয় শিটে কীভাবে ভরতে হবে)।
 - **আগের কোনো অপশন বদলায়নি:** ট্র্যাকার, তারিখ-সীমা, Re-CPV, সাধারণ এক্সেল, ইমেইল, ছুটি, SLA নিয়ম, Incomplete নিয়ম — সবই Version 4-এর মতো (শুধু Done / Due-র Comment-নির্ভরতা বাদ)।
-- **পরীক্ষা:** মোট **১৪৩টি স্বয়ংক্রিয় টেস্ট** (Version 5-এর ১৪টি নতুন: ক্র্যাশ, নাম-সহ ইনপুট, Name Check, নমুনা Excel, Comment-বনাম-Remarks, এবং ড্যাশবোর্ড→ট্র্যাকার Excel পর্যন্ত end-to-end) এবং আসল অ্যাপ-উইন্ডোর GUI smoke test-এ এখন File History ধাপও আছে (Windows, macOS, Linux)।
+- **পরীক্ষা:** মোট **১৫৯টি স্বয়ংক্রিয় টেস্ট** (Version 5-এর ৩০টি নতুন: ক্র্যাশ, নাম-সহ ইনপুট, Name Check, নমুনা Excel, Comment-বনাম-Remarks “due check”, এবং ড্যাশবোর্ড→ট্র্যাকার Excel পর্যন্ত end-to-end) এবং আসল অ্যাপ-উইন্ডোর GUI smoke test-এ এখন File History ধাপও আছে (Windows, macOS, Linux)।
 
 ---
 
