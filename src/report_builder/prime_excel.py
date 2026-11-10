@@ -51,7 +51,7 @@ FONT = "Calibri"
 
 COLS = [  # internal title, width - v6 order (20 columns), as the bank reads it
     ("SL", 4.5), ("File No", 21), ("Type", 6.5), ("Applicant Name", 20), ("Concerns", 26),
-    ("Receive Date", 13.5), ("Submission Date-Time", 14), ("Report Status", 11), ("Report Summary", 44), ("Last Update Date", 11),
+    ("Receive Date", 16), ("Submission Date-Time", 16), ("Report Status", 11), ("Report Summary", 44), ("Last Update Date", 11),
     ("Re-CPV / Extra Trip (ID)", 24), ("Bill Slab", 26), ("Area", 6.5), ("SLA Start / Restart Date", 12.5), ("SLA", 10.5),
     ("TAT", 5), ("Extra TAT", 6.5), ("Appointment", 26), ("Last Update Details", 32), ("Before / After 3 PM", 10.5),
 ]
