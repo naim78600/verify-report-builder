@@ -399,7 +399,9 @@ def write_bill_pdf(bill: Bill, path: Path) -> Path:
         story.append(P(line, bold if i < 3 else base))
 
     # detail lists ---------------------------------------------------------------------------------
-    dw = [W * 0.06, W * 0.215, W * 0.22, W * 0.12, W * 0.12, W * 0.065, W * 0.09, W * 0.11]
+    dw = [W * 0.05, W * 0.225, W * 0.25, W * 0.115, W * 0.115, W * 0.055, W * 0.085, W * 0.105]
+    small = ParagraphStyle("d", parent=cen, fontSize=7.4, leading=9.2)           # a 22-character file number stays on one line
+    dhead = ParagraphStyle("dh", parent=cenb, fontSize=7.8, leading=9.6)
     period = f"{month_name(bill.month)} {bill.year}"
     order = [k for k, *_r in SECTIONS[bill.file_type]]
     items = _ordered(bill)
@@ -410,8 +412,9 @@ def write_bill_pdf(bill: Bill, path: Path) -> Path:
         station = "In" if key.startswith("in_") else "Out"
         story += [PageBreak(), P(f"Contact Point Verification Bill - ({period}) - {bill.file_type}", cenb), P(_station(station), cenb),
                   P(_sec_title(bill, key, detail=True), cenb), Spacer(1, 3)]
-        data = [[P(h, cenb) for h in ("SL.", "Ref. No.", "Applicants Name", "Rec. Date", "Sub. Date", "TAT", "Amount", "Category")]]
-        style = list(grid)
+        data = [[P(h, dhead) for h in ("SL.", "Ref. No.", "Applicants Name", "Rec. Date", "Sub. Date", "TAT", "Amount", "Category")]]
+        style = list(grid) + [("LEFTPADDING", (0, 0), (-1, -1), 2), ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+                              ("TOPPADDING", (0, 0), (-1, -1), 3.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 3.5)]
         for n, it in enumerate(rows, 1):
             data.append([P(n, small), P(it.file_no, small), P(it.applicant, small), P(f"{it.rec:%d/%m/%Y}" if it.rec else "", small),
                          P(f"{it.sub:%d/%m/%Y}" if it.sub else "", small), P("" if it.tat is None else it.tat, small), P(it.amount, small),
