@@ -207,7 +207,7 @@ def _report_summary(srv, tmp, fid):
     head = {c.value: c.column for c in ws[next(r[0].row for r in ws.iter_rows(max_row=12) if any(c.value == "File No" for c in r))]}
     for row in ws.iter_rows():
         if any(isinstance(c.value, str) and c.value == f"PL-{fid}" for c in row):
-            return str(row[head["Report Summary"] - 1].value)
+            return str(row[head["Report Summary (Done / Due)"] - 1].value)
     raise AssertionError("file row not found in the Complete Report")
 
 

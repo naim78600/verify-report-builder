@@ -30,6 +30,8 @@ PACKAGE_MAX = 5
 CUTOFF_HOUR = 15          # "before / after 3 PM"
 SLA_IN = 2                # working days allowed, In area (Dhaka / Chattogram city corporation)
 SLA_OUT = 4               # working days allowed, Out area
+SLA_APPT = 1              # after an appointment: the report is due on the next working day after the scheduled date (In and Out alike)
+APPT_CUTOFF = time(17, 59, 59)   # ... by 5:59 PM of that day; a later submission counts one more day
 
 BASE_TYPE = {
     "HOUSE": "House", "GUARANTOR_HOUSE": "House", "OFFICE": "Office", "GUARANTOR_OFFICE": "Office",
@@ -120,6 +122,8 @@ class BillRow:
     sla_start: date | None = None                      # the day the SLA clock starts: Receive Date, or the appointment day (restart)
     sla_appt: date | None = None                       # the scheduled appointment date that restarted it (None = no restart)
     sla_trip: date | None = None                       # the day a new (Re-CPV) trip was created that restarted it (None = no restart)
+    appt_late: bool = False                            # appointment SLA: submitted after 5:59 PM (counts one more day)
+    applicant: str = ""                                # name of the file's applicant (tracker column "Applicant Name")
     folded_rows: list = field(default_factory=list)    # the BillRows shown inside this one (their appointments / new trips count for the SLA too)
     file_rows: list = field(default_factory=list)      # every other bill row of the same file (a new trip of the file restarts the SLA of all)
     bill_note: str = ""                                # "Out bill" / "In bill" (single-trip rows)
@@ -387,11 +391,14 @@ def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileL
 
     rows: list[BillRow] = []
     ftype = file_type_of(file["file_no"], file.get("type", ""))
+    applicant = next((c["name"] for c in sorted(file["concerns"], key=lambda c: info[c["id"]]["no"])
+                      if c["role"].upper() == "APPLICANT"), "") or (file["concerns"][0]["name"] if file["concerns"] else "")
     total_rows = len(groups)
     single_no = 0
     labels = {t["id"]: _trip_label(t) for _c, t in flat}
     for kind, trips in groups:
         r = BillRow(file_id=file["id"], file_no=file["file_no"], file_type=ftype, kind=kind, trips=trips)
+        r.applicant = applicant
         t0 = trips[0][1]
         if kind == "Package":
             r.slab = "Package"
@@ -515,8 +522,9 @@ def sla_start_for(r: BillRow, report_date: date, holiday_set: set[date]) -> tupl
       * a NEW TRIP of the file - ANY kind (Re-CPV, additional / Extra document trip, a single trip ...): the SLA restarts on the day
         the trip is created, at once (In 2 / Out 4 working days again; the day after it is day 1).  A trip that is Canceled /
         Inactive / Withdrawn does not count;
-      * an appointment: the scheduled date of the LATEST-CREATED appointment (the dashboard does the same, 38 of 38 files checked),
-        moved to the next working day when it is a Friday / Saturday / holiday.
+      * an appointment: the scheduled date of the LATEST-CREATED appointment.  From v6 the report is then due on the NEXT
+        WORKING DAY after that date, by 5:59 PM - for In and Out alike (SLA_APPT = 1 working day; a Friday / Saturday / holiday
+        simply is not counted, so the due day moves to the next working day).
     The whole file counts (its other bill rows too), but only what existed at the time of the report: created before the
     submission, or before the end of the report date for a pending row.  Something on a day before the Receive Date changes nothing."""
     if r.receive_dt is None:
@@ -537,7 +545,7 @@ def sla_start_for(r: BillRow, report_date: date, holiday_set: set[date]) -> tupl
     if known:
         last = max(known, key=lambda a: (a.get("created_at") or datetime.min, a["time"], a.get("trip_id") or 0))
         day = last["time"].date()
-        cands.append((hol.next_working_day(day, holiday_set), day, None))
+        cands.append((day, day, None))
     best = max(cands, key=lambda c: c[0])             # a tie keeps the earlier entry: the plain Receive Date, then the new trip
     return best if best[0] > base else (base, None, None)
 
@@ -553,8 +561,13 @@ def compute_tat(r: BillRow, report_date: date, holiday_set: set[date]) -> None:
     end = (r.sub_day or r.submitted_at.date()) if r.submitted_at else report_date
     start = r.sla_start + timedelta(days=1)
     r.tat = max(0, hol.count_business_days(start, end, holiday_set))
-    r.sla_days = SLA_OUT if r.area == "Out" else SLA_IN
-    r.extra_tat = max(0, r.tat - r.sla_days)
+    if r.sla_appt:                                    # appointment: due the next working day, 5:59 PM (In / Out alike)
+        r.sla_days = SLA_APPT
+        r.appt_late = bool(r.submitted_at and r.submitted_at.time() > APPT_CUTOFF)
+    else:
+        r.sla_days = SLA_OUT if r.area == "Out" else SLA_IN
+        r.appt_late = False
+    r.extra_tat = max(0, r.tat - r.sla_days + (1 if r.appt_late else 0))
     r.sla_breach = r.extra_tat > 0
 
 

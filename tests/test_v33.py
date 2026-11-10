@@ -1,4 +1,5 @@
-"""v3.3: an appointment RESTARTS the SLA - 2 (In) / 4 (Out) working days again from the scheduled date of the latest appointment."""
+"""v3.3: an appointment RESTARTS the SLA from the scheduled date of the latest appointment.
+v6: the report is then due on the next working day by 5:59 PM, In and Out alike."""
 import sys
 from datetime import date, datetime as D
 from pathlib import Path
@@ -35,32 +36,40 @@ def test_without_an_appointment_the_clock_starts_at_the_receive_date_as_before()
     assert (r.tat, r.sla_days, r.extra_tat, r.sla_breach) == (3, 2, 1, True)       # Tue, Wed, Thu are 3 working days after Mon
 
 
-def test_an_appointment_restarts_the_sla_from_its_scheduled_date_in_area():
+def test_after_an_appointment_the_report_is_due_the_next_working_day_by_5_59_pm():
+    """v6: scheduled date + 1 working day, 5:59 PM - whatever the area."""
     ap = [_appt(D(2026, 11, 11, 15, 0), D(2026, 11, 2, 11, 0))]                    # asked on 02 Nov for Wed 11 Nov
-    ok = _tat(_row("In", ap, D(2026, 11, 15, 12, 0)))                              # Thu 12 (1), Sun 15 (2)
+    ok = _tat(_row("In", ap, D(2026, 11, 12, 17, 59)))                             # Thu 12, 5:59 PM = on time
     assert ok.sla_start == date(2026, 11, 11) and ok.sla_appt == date(2026, 11, 11)
-    assert (ok.tat, ok.extra_tat, ok.sla_breach) == (2, 0, False)
-    late = _tat(_row("In", ap, D(2026, 11, 16, 12, 0)))                            # Mon 16 = the 3rd working day
-    assert (late.tat, late.extra_tat, late.sla_breach) == (3, 1, True)
+    assert (ok.sla_days, ok.tat, ok.extra_tat, ok.sla_breach) == (1, 1, 0, False)
+    same_day = _tat(_row("In", ap, D(2026, 11, 11, 16, 0)))                        # submitted on the appointment day itself
+    assert (same_day.tat, same_day.extra_tat, same_day.sla_breach) == (0, 0, False)
+    evening = _tat(_row("In", ap, D(2026, 11, 12, 18, 0)))                         # the due day, but after 5:59 PM
+    assert evening.appt_late and (evening.tat, evening.extra_tat, evening.sla_breach) == (1, 1, True)
+    late = _tat(_row("In", ap, D(2026, 11, 15, 12, 0)))                            # Sun 15 = the 2nd working day
+    assert (late.tat, late.extra_tat, late.sla_breach) == (2, 1, True)
 
 
-def test_out_area_gets_four_working_days_from_the_appointment_date():
+def test_in_and_out_area_get_the_same_one_day_after_an_appointment():
     ap = [_appt(D(2026, 11, 9, 11, 0), D(2026, 11, 1, 10, 0))]
-    ok = _tat(_row("Out", ap, D(2026, 11, 15, 12, 0)))                             # Tue 10, Wed 11, Thu 12, Sun 15 = 4
-    assert (ok.sla_days, ok.tat, ok.sla_breach) == (4, 4, False)
-    late = _tat(_row("Out", ap, D(2026, 11, 16, 12, 0)))
-    assert (late.tat, late.sla_breach) == (5, True)
+    ok = _tat(_row("Out", ap, D(2026, 11, 10, 12, 0)))                             # Tue 10
+    assert (ok.sla_days, ok.tat, ok.sla_breach) == (1, 1, False)
+    late = _tat(_row("Out", ap, D(2026, 11, 11, 12, 0)))
+    assert (late.tat, late.extra_tat, late.sla_breach) == (2, 1, True)
+    plain = _tat(_row("Out", sub=D(2026, 10, 29, 12, 0)))                          # no appointment: Out still has 4 working days
+    assert (plain.sla_days, plain.sla_breach) == (4, False)
 
 
-def test_a_friday_saturday_or_holiday_appointment_date_moves_to_the_next_working_day():
-    fri = _tat(_row("In", [_appt(D(2026, 11, 13, 10, 0), D(2026, 11, 2, 9, 0))], D(2026, 11, 17, 12, 0)))
-    assert fri.sla_start == date(2026, 11, 15) and fri.sla_appt == date(2026, 11, 13)       # Friday -> Sunday
-    assert (fri.tat, fri.sla_breach) == (2, False)                                           # Mon 16, Tue 17
-    assert _tat(_row("In", [_appt(D(2026, 11, 13, 10, 0), D(2026, 11, 2, 9, 0))], D(2026, 11, 18, 12, 0))).sla_breach
-    sat = _tat(_row("In", [_appt(D(2026, 11, 14, 10, 0), D(2026, 11, 2, 9, 0))]))
-    assert sat.sla_start == date(2026, 11, 15)
-    off = _tat(_row("In", [_appt(D(2026, 11, 11, 10, 0), D(2026, 11, 2, 9, 0))]), hol={date(2026, 11, 11)})
-    assert off.sla_start == date(2026, 11, 12)                                               # a public holiday
+def test_a_friday_saturday_or_holiday_after_the_appointment_is_not_counted():
+    thu = [_appt(D(2026, 11, 12, 10, 0), D(2026, 11, 2, 9, 0))]                    # Thursday appointment -> due Sunday 15
+    r = _tat(_row("In", thu, D(2026, 11, 15, 17, 0)))
+    assert r.sla_start == date(2026, 11, 12) and (r.tat, r.sla_breach) == (1, False)
+    assert _tat(_row("In", thu, D(2026, 11, 16, 12, 0))).sla_breach                # Monday = one day late
+    fri = _tat(_row("In", [_appt(D(2026, 11, 13, 10, 0), D(2026, 11, 2, 9, 0))], D(2026, 11, 15, 12, 0)))
+    assert fri.sla_start == date(2026, 11, 13) and fri.sla_appt == date(2026, 11, 13)       # a Friday appointment: due Sunday too
+    assert (fri.tat, fri.sla_breach) == (1, False)
+    off = _tat(_row("In", [_appt(D(2026, 11, 11, 10, 0), D(2026, 11, 2, 9, 0))], D(2026, 11, 15, 12, 0)), hol={date(2026, 11, 12)})
+    assert (off.tat, off.sla_breach) == (1, False)                                           # Thu 12 is a holiday -> due Sunday 15
 
 
 def test_the_latest_created_appointment_decides_not_the_latest_scheduled_one():

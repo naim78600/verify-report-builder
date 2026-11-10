@@ -10,12 +10,12 @@ has a "Pending Reason" column: a Hold with its written reason (and any Appointme
 documents named in Due for a Partially Submitted file.
 
 TAT and Extra TAT are LIVE Excel formulas:
-    SLA Start / Restart Date = the Receive Date, or - when an appointment was given - the scheduled date of the latest appointment
-                               (a Fri / Sat / holiday date moves to the next working day), or - when ANY new trip of the file
-                               (Re-CPV, extra / additional, ...) was created - its creation day; the latest of them.  The SLA
-                               restarts from it at once.
+    SLA Start / Restart Date = the Receive Date, or - when ANY new trip of the file (Re-CPV, extra / additional, ...) was created -
+                               its creation day, or - when an appointment was given - the scheduled date of the latest appointment;
+                               the latest of them.
     TAT       = MAX(0, NETWORKDAYS.INTL(SLA Start+1, Submission, "0000110", Holidays))    (Fri + Sat off)
     Extra TAT = MAX(0, TAT - 4) when Area = Out,  MAX(0, TAT - 2) when Area = In          (SLA 4 / 2 working days)
+                after an APPOINTMENT (v6): MAX(0, TAT - 1 [+1 when submitted after 5:59 PM]) - due the next working day, In and Out alike
     SLA       = "SLA Breach" when Extra TAT > 0
 For an Incomplete row the end date is the report date (running TAT).
 """
@@ -35,7 +35,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.filters import FilterColumn
 
 from . import theme as T
-from .billing import SLA_IN, SLA_OUT, before_after
+from .billing import SLA_APPT, SLA_IN, SLA_OUT, before_after
 from .collect_prime import PrimeData, title_for
 from .excel import _clean
 from .summary import xml_safe
@@ -49,12 +49,15 @@ THIN = Side(style="thin", color=T.BORDER)
 BOX = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 FONT = "Calibri"
 
-COLS = [  # title, width
-    ("SL", 4.5), ("File No", 21), ("Type", 6.5), ("Concerns", 26), ("Re-CPV / Extra Trip (ID)", 24),
-    ("Bill Slab", 26), ("Area", 6.5), ("Receive Date", 10.5), ("SLA Start / Restart Date", 12.5), ("Submission Date-Time", 14),
-    ("Before / After 3 PM", 10.5), ("TAT", 5), ("Extra TAT", 6.5), ("SLA", 10.5), ("Report Status", 11),
-    ("Report Summary", 44), ("Last Update Date", 11), ("Last Update Details", 32), ("Appointment", 26),
+COLS = [  # internal title, width - v6 order (20 columns), as the bank reads it
+    ("SL", 4.5), ("File No", 21), ("Type", 6.5), ("Applicant Name", 20), ("Concerns", 26),
+    ("Receive Date", 13.5), ("Submission Date-Time", 14), ("Report Status", 11), ("Report Summary", 44), ("Last Update Date", 11),
+    ("Re-CPV / Extra Trip (ID)", 24), ("Bill Slab", 26), ("Area", 6.5), ("SLA Start / Restart Date", 12.5), ("SLA", 10.5),
+    ("TAT", 5), ("Extra TAT", 6.5), ("Appointment", 26), ("Last Update Details", 32), ("Before / After 3 PM", 10.5),
 ]
+# what the header cell shows (the internal titles stay, so every other writer keeps working)
+SHOWN = {"Type": "File Type", "Concerns": "Concerns Name", "Receive Date": "Receive Date-Time", "Re-CPV / Extra Trip (ID)": "Re-CPV / Extra Trip",
+         "Report Summary": "Report Summary (Done / Due)", "Appointment": "Appointment History"}
 REASON_COL = ("Pending Reason", 30)
 
 
@@ -72,7 +75,7 @@ def col_index(cols: list) -> dict:
 
 
 COL = col_index(COLS)
-FILTER_ONLY = ("File No", "Last Update Date")
+FILTER_ONLY = ("File No", "Receive Date", "Submission Date-Time", "Last Update Date")
 HOLIDAY_RANGE = "Holidays!$A$2:$A$3000"
 CENTER_COLS = ("SL", "Type", "Area", "Receive Date", "SLA Start / Restart Date", "Submission Date-Time", "Before / After 3 PM", "Report Status",
                "SLA", "TAT", "Extra TAT", "Last Update Date")
@@ -185,7 +188,8 @@ def _banner(ws, d: PrimeData, name: str, rows, is_incomplete: bool, cols: list) 
         ws.cell(2, 3).value = "=ReportDate"
     note = (f"Generated {d.generated_at:%d/%m/%Y %I:%M %p}   |   BS = Bank Statement   |   SLA: In area {SLA_IN} working days, "
             f"Out area {SLA_OUT} working days (Fri, Sat and holidays excluded), counted from the SLA Start Date = Receive Date; "
-            f"an appointment (latest scheduled date) or any new trip (its creation day) restarts the SLA from that day (plum cell)")
+            f"any new trip restarts the SLA from its creation day; after an appointment the report is due on the next working day "
+            f"after the scheduled date, by 5:59 PM, In and Out alike (plum cell)")
     if is_incomplete:
         note += "   |   TAT is counted up to the Report Date"
     note += "   |   Light-blue cell = reason / detail not found"
@@ -209,7 +213,7 @@ def _banner(ws, d: PrimeData, name: str, rows, is_incomplete: bool, cols: list) 
 
 def _header(ws, r, cols: list):
     for i, (t, _w) in enumerate(cols, 1):
-        _put(ws, r, i, t, font=Font(name=FONT, bold=True, color=T.WHITE, size=10), fill=_fill(T.NAVY_DARK), border=BOX,
+        _put(ws, r, i, SHOWN.get(t, t), font=Font(name=FONT, bold=True, color=T.WHITE, size=10), fill=_fill(T.NAVY_DARK), border=BOX,
              alignment=Alignment(horizontal="center", vertical="center", wrap_text=True))
     ws.row_dimensions[r].height = 34
 
@@ -229,9 +233,9 @@ def _write_rows(ws, r0: int, rows, checks: list, section: str, cols: list) -> in
         slab_l, sum_l, upd_l, app_l = bill_slab_lines(row), summary_lines(row), last_update_lines(row), appointment_lines(row)
         lu = last_update_date(row)
         base = {
-            "SL": row.sl, "File No": row.file_no, "Type": row.file_type, "Concerns": concerns,
+            "SL": row.sl, "File No": row.file_no, "Type": row.file_type, "Applicant Name": row.applicant, "Concerns": concerns,
             "Re-CPV / Extra Trip (ID)": history, "Area": row.area,
-            "Receive Date": row.receive_dt.date() if row.receive_dt else None,
+            "Receive Date": row.receive_dt if row.receive_dt else None,
             "SLA Start / Restart Date": row.sla_start or (row.receive_dt.date() if row.receive_dt else None),
             "Submission Date-Time": row.reported_at if sub else "Pending",
             "Before / After 3 PM": before_after(row) if sub else "-",
@@ -247,8 +251,10 @@ def _write_rows(ws, r0: int, rows, checks: list, section: str, cols: list) -> in
                 c.fill = zebra
         for t, v in base.items():
             c = _put(ws, r, col[t], v)
-            if t in ("Receive Date", "SLA Start / Restart Date", "Last Update Date") and not isinstance(v, str):
+            if t in ("SLA Start / Restart Date", "Last Update Date") and not isinstance(v, str):
                 c.number_format = "dd/mm/yyyy"
+            elif t == "Receive Date" and v is not None:
+                c.number_format = "dd/mm/yyyy hh:mm"
             elif t == "Submission Date-Time" and sub:
                 c.number_format = "dd/mm/yyyy hh:mm"
         kc = T.KIND_TX.get(row.kind)
@@ -265,7 +271,11 @@ def _write_rows(ws, r0: int, rows, checks: list, section: str, cols: list) -> in
         ac = get_column_letter(col["Area"])
         end = f"INT({sc}{r})" if sub else "ReportDate"
         _put(ws, r, col["TAT"], f'=MAX(0,NETWORKDAYS.INTL({rc}{r}+1,{end},"0000110",{HOLIDAY_RANGE}))', formula=True)
-        _put(ws, r, col["Extra TAT"], f'=IF({ac}{r}="Out",MAX(0,{tc}{r}-{SLA_OUT}),MAX(0,{tc}{r}-{SLA_IN}))', formula=True)
+        if row.sla_appt:                                      # appointment: due the next working day by 5:59 PM, In and Out alike
+            late = f'+IF(MOD({sc}{r},1)>=0.75,1,0)' if sub else ""
+            _put(ws, r, col["Extra TAT"], f'=MAX(0,{tc}{r}-{SLA_APPT}{late})', formula=True)
+        else:
+            _put(ws, r, col["Extra TAT"], f'=IF({ac}{r}="Out",MAX(0,{tc}{r}-{SLA_OUT}),MAX(0,{tc}{r}-{SLA_IN}))', formula=True)
         _put(ws, r, col["SLA"], f'=IF({ec}{r}>0,"SLA Breach","Within SLA")', formula=True)
         # look ---------------------------------------------------------------
         ws.cell(r, col["Bill Slab"]).fill = _fill(T.KIND_BG.get(row.kind, "FFFFFF"))
