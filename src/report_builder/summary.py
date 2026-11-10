@@ -374,6 +374,7 @@ def _trip_text(trip: dict) -> tuple[str, str]:
     return outcome, clean_text(trip.get("comment"))
 
 
+_NOT_INFRONT = re.compile(r"\bloi\s+(?:was\s+|is\s+|did\s+)?not\s+sign\w*\s+(?:in\s*front|infront)[^.\n]*", _I)
 _POSITIVE = re.compile(r"information\s+(?:is\s+)?ok|address\s+(?:is\s+)?ok", _I)
 
 
@@ -430,6 +431,12 @@ def _notes_for(text_all: str, outcome: str, rules, loi_trip: bool = False) -> tu
             r"verified\s+and\s+returned|loi\s+(?:has\s+been\s+)?verified", text_all, _I) \
             and not re.search(r"dis\s?agre\w*|refus\w+|not\s+verif\w*\s+(?:the\s+)?hard|does\s*n[o']?t\s+verif", text_all, _I):
         found["loi"].remove("LOI not verified")
+    if "LOI not verified" in found["loi"]:
+        # v6: "LOI not signed in front of me. LOI signatory name: ..." - it WAS signed (by the named signatory), only not before the verifier
+        bare = _NOT_INFRONT.sub(" ", text_all)
+        if bare != text_all and re.search(r"signator\w*\s*(?:name|:)|sign\w*\s+by\b", text_all, _I) \
+                and not any(rx.search(bare) for rx, note, _t in rules if note == "LOI not verified"):
+            found["loi"].remove("LOI not verified")
     if "Submitted for verification" in found["loi"] and "Need to verify by email" in found["loi"]:
         found["loi"].remove("Need to verify by email")           # "they send the verified LOI by e-mail" answers a submitted LOI, it is not a request
     if "New address found & verified" in found["trip"] and "Given address wrong" in found["trip"]:
@@ -497,13 +504,36 @@ def appt_upcoming(trip: dict) -> bool:
     return bool(t and t.date() >= _report_day())
 
 
+_PEC_HEAD = re.compile(r"\bpec\b|experience\s+cert\w*|previous\s+(?:company|employer|office)", _I)
+_PEC_NEG = re.compile(r"unable|not\s+(?:available|possible|verif\w*|found|sign\w*)|\bclosed\b|disagre\w*|refus\w*|does\s*n[o']?t|did\s*n[o']?t|can\s*n[o']?t", _I)
+_INACTIVE_NEG = re.compile(r"\bnot\b|n[o']?t\b|\bno\s+(?:response|one|body)|unable|disagre|refus|mismatch|missing|wrong|switch\w*\s+off|"
+                           r"invalid|insufficient|closed|different|required|without", _I)
+
+
+def _inactive_fine(outcome: str) -> bool:
+    """The remark of an Inactive trip reads as a finished visit ("Information ok ...", "LOI verification complete")."""
+    if _POSITIVE.search(outcome) and not _INFO_NOT_OK.search(outcome):
+        return True
+    sl = _sentences(outcome)
+    return bool(sl) and _done_sentence(sl[-1])
+
+
+def _reason_of(outcome: str) -> str:
+    """Short reason for a remark no rule knows: what follows "... not verified." when there is something, else the remark itself."""
+    m = re.search(r"not\s+verif\w*\s*[.:,-]+\s*(.+)", outcome, _I | re.S)
+    return _short(m.group(1) if m and len(m.group(1).strip()) > 5 else outcome)
+
+
 def analyze(views: list[TripView], submitted: bool, bank_label: str = "BS") -> Summary:
     rules = _user_rules() + NOTE_RULES
     info = info_notes()
     done: list[Item] = []
     due: list[Item] = []                 # items that are still pending (not finished)
     n_bank = 0
-    total_bank = sum(1 for v in views if v.trip.get("type_code") == "BANK" and v.trip.get("status_code") not in (6, 7, 8))
+    def _bank_counts(t: dict) -> bool:       # an Inactive bank trip that carries a remark is a statement of its own (BS2 ...)
+        st = t.get("status_code")
+        return st not in (6, 7, 8) or (st == 7 and (t.get("remarks") or "").strip() not in ("", "-"))
+    total_bank = sum(1 for v in views if v.trip.get("type_code") == "BANK" and _bank_counts(v.trip))
     skipped: list[str] = []
 
     for v in views:
@@ -519,6 +549,25 @@ def analyze(views: list[TripView], submitted: bool, bank_label: str = "BS") -> S
                                      loi_trip=code not in ("HOUSE", "GUARANTOR_HOUSE", "OFFICE", "GUARANTOR_OFFICE", "BANK") and _doc_name(t) == "LOI")
         who = v.who
         src = (t.get("created_at") or datetime.min, t.get("id") or 0)
+        # v6: "LOI signed in front of me ... PEC verify. Mentioned signatory not available" - the LOI is done, the problem written after
+        # the PEC heading belongs to the PEC (previous employer's experience certificate), not to the LOI
+        pec_notes: list[str] = []
+        pec_unruled = ""
+        if finished and code in ("OFFICE", "DOCUMENT", "DOC_SERVICE"):
+            sl_ = _sentences(outcome)
+            k_ = next((i for i, x in enumerate(sl_) if _PEC_HEAD.search(x)), None)
+            if k_:
+                head_ = "\n".join(sl_[:k_])
+                if (_LOI_POS.search(head_) and not _LOI_NEG.search(head_)) or re.search(r"verified\s+and\s+returned", head_, _I):
+                    before_ = _collect(head_, rules)["loi"]
+                    pec_notes = [n for n in notes["loi"] if n not in before_ and n not in INFO_NOTES]
+                    if pec_notes:
+                        notes["loi"] = [n for n in notes["loi"] if n in before_ or n in INFO_NOTES]
+                    else:                    # no rule knows the wording: a plainly negative PEC part is still shown (and flagged)
+                        tail_ = [x for x in sl_[k_:] if len(x.split()) > 3 or not _PEC_HEAD.search(x)]
+                        bad_ = [x for x in tail_ if _PEC_NEG.search(x)]
+                        if bad_ and not any(_done_sentence(x) for x in tail_):
+                            pec_unruled = _short(re.sub(r"^\s*pec\s*(?:verif\w*)?\s*[.:-]*\s*", "", bad_[0], flags=_I))
 
         # ---- primary component ----
         if code in ("HOUSE", "GUARANTOR_HOUSE"):
@@ -526,7 +575,7 @@ def analyze(views: list[TripView], submitted: bool, bank_label: str = "BS") -> S
         elif code in ("OFFICE", "GUARANTOR_OFFICE"):
             primary = Item(who, "Office")
         elif code == "BANK":
-            if status not in (6, 7, 8):
+            if _bank_counts(t):
                 n_bank += 1
             primary = Item("", f"{bank_label}{n_bank}" if total_bank > 1 else bank_label)
         else:
@@ -573,6 +622,13 @@ def analyze(views: list[TripView], submitted: bool, bank_label: str = "BS") -> S
         if code == "BANK" and finished and re.search(r"bank\s+statement[^.\n]{0,30}not\s+verif", outcome, _I) and not primary.note:
             primary.note = "Statement not verified"
 
+        if pec_notes:
+            extra.append(Item("", "PEC", note="; ".join(pec_notes[:2])))
+        elif pec_unruled:
+            pi_ = Item("", "PEC", note=pec_unruled)
+            pi_.uncertain = True
+            pi_.reasons.append(f"ট্রিপ {t.get('id')}: PEC অংশে সমস্যা লেখা বলে মনে হয়েছে - যাচাই করুন")
+            extra.append(pi_)
         for it in extra:
             it.inferred = True
         for it in [primary] + extra:
@@ -585,9 +641,12 @@ def analyze(views: list[TripView], submitted: bool, bank_label: str = "BS") -> S
         if not finished:
             if status in (6, 7, 8):                      # canceled / inactive / withdrawn
                 problem_notes = [n for n in trip_notes if n not in INFO_NOTES]        # "New address found & verified" is good news, not a problem
-                if status in M1_STATUSES and (problem_notes or M1_ANY_TEXT and outcome.strip() not in ("", "-")):
+                # v6: an Inactive trip whose remark tells of a problem in words no rule knows is still Due (never dropped silently)
+                unruled = (not problem_notes and outcome.strip() not in ("", "-") and not _inactive_fine(outcome)
+                           and bool(_INACTIVE_NEG.search(outcome)))
+                if status in M1_STATUSES and (problem_notes or unruled or M1_ANY_TEXT and outcome.strip() not in ("", "-")):
                     primary.rank = 1
-                    primary.note = "; ".join(problem_notes[:2]) if problem_notes else _short(outcome)
+                    primary.note = "; ".join(problem_notes[:2]) if problem_notes else _reason_of(outcome)
                     primary.pending = True
                     primary.uncertain = True
                     primary.reasons.append(f"ট্রিপ {t.get('id')} {_STATUS_TEXT[status]} কিন্তু রিমার্কে সমস্যা লেখা (Due-তে দেখানো)")

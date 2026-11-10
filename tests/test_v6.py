@@ -168,3 +168,41 @@ def test_bill_totals_and_penalty_choices(october, tmp_path):
     assert pdf_from_excel(xlsx).stat().st_size > 3000
     check = [[c.value for c in row] for row in wb["Check"].iter_rows(max_row=14)]
     assert any(r[0] == "Result" and str(r[1]).startswith("OK") for r in check)
+
+
+# ------------------------------------------------------------------------------ Done / Due (v6 training against the manual tracker)
+def _sum(trips):
+    from report_builder.summary import TripView, analyze
+    return analyze([TripView(t, "APPLICANT", "App") for t in trips], True, "BS")
+
+
+def _rt(tid, code, remarks, status=5, comment=""):
+    return {"id": tid, "type_code": code, "status_code": status, "remarks": remarks, "comment": comment, "created_at": D(2026, 9, 1, 10, 0),
+            "appointments": []}
+
+
+def test_an_inactive_bank_trip_with_a_problem_is_its_own_statement_and_stays_due():
+    s = _sum([_rt(1, "HOUSE", "Information ok."), _rt(2, "BANK", "Bank statement verified. Hard copy provided."),
+              _rt(3, "BANK", "Bank statement not verified.Applicant account seal not available.", status=7)])
+    assert "BS1" in s.done and s.due.startswith("BS2 (") and s.uncertain                      # was lost: both were "BS", the Done one hid the Due one
+    s = _sum([_rt(1, "HOUSE", "Applicant is very ill and not at the address now, he does not know when he returns.", status=7)])
+    assert s.due.startswith("App House (") and s.uncertain                                    # words no rule knows: still Due, flagged
+    s = _sum([_rt(1, "DOCUMENT", "Loi Verification complete.", status=7, comment="LOI VERIFICATION")])
+    assert s.due == "0"                                                                       # an Inactive trip that reads finished is not a problem
+
+
+def test_a_problem_written_under_the_pec_heading_belongs_to_the_pec_not_the_loi():
+    s = _sum([_rt(1, "OFFICE", "Information ok. LOI signed infront of me. LOI sign by Name: A B, Designation: Manager. PEC verify. "
+                               "Mention signatory person not available. The signatory is currently in Dhaka.")])
+    assert "LOI" in s.done.replace("PEC", "") and s.due == "PEC (Signatory not available)"
+    s = _sum([_rt(1, "OFFICE", "Information ok. LOI signed in front of me. LOI signatory name: A B. PEC verify.Address found but unable "
+                               "to contact with office anyone.")])
+    assert s.due.startswith("PEC (Address found but unable") and s.uncertain
+
+
+def test_loi_not_signed_in_front_of_me_with_a_named_signatory_is_a_signed_loi():
+    s = _sum([_rt(1, "DOCUMENT", "Information ok. LOI not signed in front of me. LOI signatory name: A B. Designation: Manager, HR.",
+                  comment="LOI VERIFICATION")])
+    assert (s.done, s.due) == ("LOI", "0")
+    s = _sum([_rt(1, "DOCUMENT", "LOI not signed in front of me. Signatory not available today.", comment="LOI VERIFICATION")])
+    assert "LOI" in s.due
