@@ -137,6 +137,28 @@ def main():
     if ".xlsx" not in {p.suffix for p in app.out_files}:
         fail("range report has no Excel")
 
+    step("monthly bill through the window (October 2026: Card + Loan, Excel + PDF)")
+    app.rtype.set("bill")
+    app.bill_month.set("October")
+    app.bill_year.set("2026")
+    app._sync_ui()
+    pump(app, 0.3)
+    if not app.c_bill.winfo_ismapped():
+        fail("the month card is not shown for the monthly bill")
+    app.password.set("secret")
+    app.out_files = []
+    app._go()
+    if not pump(app, until=lambda: finished(app)):
+        fail(f"monthly bill did not finish; status: {app.status.get()!r}; boxes: {shown}")
+    names = sorted(p.name for p in app.out_files)
+    if names != ["Prime_Bank_PLC_Card_Invoice_October_2026.pdf", "Prime_Bank_PLC_Card_Invoice_October_2026.xlsx",
+                 "Prime_Bank_PLC_Loan_Invoice_October_2026.pdf", "Prime_Bank_PLC_Loan_Invoice_October_2026.xlsx"]:
+        fail(f"monthly bill files: {names}; status: {app.status.get()!r}")
+    from report_builder.bill_out import read_bill_excel
+    loan = read_bill_excel(next(p for p in app.out_files if p.name.startswith("Prime_Bank_PLC_Loan") and p.suffix == ".xlsx"))
+    if len(loan.items) != 5 or loan.subtotal != 1720:
+        fail(f"monthly Loan bill: {len(loan.items)} rows, subtotal {loan.subtotal} (expected 5 rows, 1720)")
+
     step("file history through the window (input Excel = File No + Applicant Name, every file found)")
     from openpyxl import load_workbook
     from report_builder.file_history import parse_ids_file

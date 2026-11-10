@@ -35,6 +35,7 @@ LOG_STATUSES = {1, 2, 3, 4, 5, 6, 7, 8}  # every file: the log gives Submitted t
 @dataclass
 class PrimeConfig(RunConfig):
     mode: str = "tracker"                  # "tracker" (daily 3pm/7pm) | "range" (all files of a period; "billing" = old name)
+                                           # | "bill" (v6 monthly bill: date_from / date_till = the month, everything counted up to today)
     report_date: date | None = None        # tracker: the date in the title (default today)
     date_from: date | None = None          # period start / end (None = use `days`)
     date_till: date | None = None
@@ -199,6 +200,8 @@ def collect_prime(cfg: PrimeConfig, progress: Progress = _noop, cancel: threadin
         d.report_date = d.w_till
     if d.w_from > d.w_till:
         raise ApiError("শুরুর তারিখ শেষ তারিখের পরে হতে পারে না।")
+    bill = cfg.mode == "bill"
+    calc_till = max(today, d.w_till) if bill else d.w_till      # monthly bill: submissions made after the month still count
     d.mode = "tracker" if cfg.mode == "tracker" else "range"
     d.incomplete_scope = cfg.incomplete_scope if cfg.incomplete_scope in INCOMPLETE_SCOPES else "sla_partial"
     d.after3_only = bool(cfg.after3_only and d.slot == "7pm")
@@ -231,7 +234,7 @@ def collect_prime(cfg: PrimeConfig, progress: Progress = _noop, cancel: threadin
                                     statuses=NO_STATUS)
     if len(items) != site_total:
         d.notes.append(f"সতর্কতা: সাইটের মোট ফাইল {site_total}, তালিকায় পাওয়া গেছে {len(items)}।")
-    by_status, total_b = _list_files(client, org_uuid, d.w_from, d.w_till, workers, cancel,
+    by_status, total_b = _list_files(client, org_uuid, d.w_from, calc_till, workers, cancel,
                                      lambda a, b: progress("list", a, b, f"তালিকা (স্ট্যাটাস অনুযায়ী): পেজ {a}/{b}"))
     if len(by_status) != total_b:
         d.notes.append(f"সতর্কতা: স্ট্যাটাস-তালিকায় সাইটের মোট {total_b}, পাওয়া গেছে {len(by_status)}।")
@@ -303,8 +306,11 @@ def collect_prime(cfg: PrimeConfig, progress: Progress = _noop, cancel: threadin
         if ids:
             threshold = min(ids) - TRIP_ID_MARGIN
             try:
+                # monthly bill: by the day the file was RECEIVED (no status filter), so an old file is found whatever happened
+                # to it since - nothing created in the month may be missed
                 old_items, _tot = _list_files(client, org_uuid, hist_from, d.w_from - timedelta(days=1), workers,
-                                              cancel, lambda a, b: progress("old", a, b, f"পুরনো ফাইলের তালিকা: পেজ {a}/{b}"))
+                                              cancel, lambda a, b: progress("old", a, b, f"পুরনো ফাইলের তালিকা: পেজ {a}/{b}"),
+                                              statuses=NO_STATUS if bill else None)
             except (AuthError, Cancelled):
                 raise
             except Exception as exc:                      # noqa: BLE001
@@ -356,6 +362,8 @@ def collect_prime(cfg: PrimeConfig, progress: Progress = _noop, cancel: threadin
     d.holidays = holiday_map
     since = datetime.combine(d.w_till, datetime.min.time()) - timedelta(days=HISTORY_DAYS)
     rows: list[BillRow] = []
+    from . import summary as _summary
+    _summary.AS_OF = d.report_date if d.mode == "tracker" else None       # "is the appointment still to come?" is asked for the report day
     tests = [f["file_no"] for f in d.files if is_test_file(f["file_no"])]
     for f in d.files:
         if is_test_file(f["file_no"]):
@@ -363,10 +371,10 @@ def collect_prime(cfg: PrimeConfig, progress: Progress = _noop, cancel: threadin
         rows.extend(build_rows(f, recpv_by_trip, recpv_by_file, logs.get(f["id"]), since))
     if tests:
         d.notes.append(f"টেস্ট ফাইল বাদ দেওয়া হয়েছে: {', '.join(sorted(tests)[:4])}" + ("…" if len(tests) > 4 else ""))
-    report_date = d.report_date
+    report_date = calc_till if bill else d.report_date
     until = datetime.combine(d.report_date, PHASE1_CUTOFF) if (d.mode == "tracker" and d.slot == "3pm") else None
-    later = apply_as_of(rows, d.w_till, until)             # submitted after the report moment (last day / 3 PM) = still waiting then
-    d.rolled = assign_sub_days(rows, d.w_till, hset)       # Fri / Sat / holiday submissions are reported on the next working day
+    later = apply_as_of(rows, calc_till, until)            # submitted after the report moment (last day / 3 PM) = still waiting then
+    d.rolled = assign_sub_days(rows, calc_till, hset)      # Fri / Sat / holiday submissions are reported on the next working day
     link_siblings(rows)
     for r in rows:
         compute_tat(r, report_date, hset)

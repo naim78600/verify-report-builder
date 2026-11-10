@@ -1,6 +1,6 @@
 """Prime Bank Report - PDF for bankers (reportlab, no other tools needed).
 
-Design goals: simple, same two parts as the daily e-mail (Complete / Incomplete), A3 landscape (the 14 columns
+Design goals: simple, same two parts as the daily e-mail (Complete / Incomplete), A3 landscape (the 16 columns
 stay big and readable; prints scaled on A4), header row repeated on every page, rows never split across pages,
 status and area shown both by colour AND by words (still readable on a black-and-white printer), embedded fonts,
 calm colours (no red, no yellow).  Problems written in Done are amber; the same problems repeated in Due sit on a
@@ -176,9 +176,14 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
     head = ParagraphStyle("h", parent=base, fontName="Vera-Bold", textColor=colors.white, alignment=1, fontSize=8.8)
     small = ParagraphStyle("s", parent=base, fontSize=7.8, leading=9.6, textColor=GREY)
 
-    heads = ["SL", "File No", "Concerns", "Re-CPV / Extra Trip (ID)", "Bill Slab", "Area", "Receive Date", "SLA Start / Restart Date",
-             "Submission Date-Time", "TAT", "Extra TAT / SLA", "Report Status", "Report Summary", "Last Update", "Appointment"]
-    widths_mm = [7, 40, 29, 26, 40, 12, 23, 23, 23, 10, 17, 22, 40, 36, 34]
+    # v6 order - the same reading order as the Excel tracker (File Type sits under the File No, Before / After 3 PM under the
+    # submission time, SLA under the Extra TAT, the last-update date inside "Last Update")
+    heads = ["SL", "File No", "Applicant Name", "Concerns", "Receive Date", "Submission Date-Time", "Report Status", "Report Summary",
+             "Last Update", "Re-CPV / Extra Trip (ID)", "Bill Slab", "Area", "SLA Start / Restart Date", "TAT", "Extra TAT / SLA",
+             "Appointment"]
+    widths_mm = [7, 38, 24, 28, 21, 22, 21, 40, 34, 25, 38, 11, 22, 9, 17, 33]
+    SHOWN = {"Concerns": "Concerns Name", "Receive Date": "Receive Date-Time", "Re-CPV / Extra Trip (ID)": "Re-CPV / Extra Trip",
+             "Report Summary": "Report Summary (Done / Due)", "Appointment": "Appointment History"}
     REASON_MM = 34                       # Incomplete table only: "Pending Reason" right after "Report Status"
     cur = {"w": []}
 
@@ -210,7 +215,7 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
         if reason:
             hs.insert(hs.index("Report Status") + 1, "Pending Reason")
         ix = {h: i for i, h in enumerate(hs)}                    # column index by name (the Incomplete table has one more column)
-        data = [[Paragraph(h, head) for h in hs]]
+        data = [[Paragraph(SHOWN.get(h, h), head) for h in hs]]
         style = [
             ("BACKGROUND", (0, 0), (-1, 0), NAVY),
             ("GRID", (0, 0), (-1, -1), 0.4, _c(T.BORDER)),
@@ -244,11 +249,12 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
             cells = {
                 "SL": _p(r.sl, center),
                 "File No": Paragraph(f"<b><font color='#{T.NAVY}'>{escape(_safe(r.file_no))}</font></b><br/><font color='#{T.MUTED}'>{escape(r.file_type)}</font>", base),
+                "Applicant Name": _p(getattr(r, "applicant", "") or "", base),
                 "Concerns": cap(_p("\n".join(r.concern_lines), base), ix["Concerns"], LINES["concerns"]),
                 "Re-CPV / Extra Trip (ID)": cap(_p(hist, base), ix["Re-CPV / Extra Trip (ID)"], LINES["history"]),
                 "Bill Slab": cap(Paragraph(_markup(bill_slab_lines(r), kc), base), ix["Bill Slab"], LINES["slab"]),
                 "Area": Paragraph(f'<font color="#{T.OUT if out else T.IN}"><b>{r.area}</b></font>', center),
-                "Receive Date": _p(f"{r.receive_dt:%d/%m/%Y}" if r.receive_dt else "", center),
+                "Receive Date": _p(f"{r.receive_dt:%d/%m/%Y}\n{r.receive_dt:%I:%M %p}" if r.receive_dt else "", center),
                 "SLA Start / Restart Date": start_cell,
                 "Submission Date-Time": Paragraph(when, center),
                 "TAT": _p(r.tat if r.tat is not None else "", center),
@@ -270,7 +276,7 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
             if has_due(r):
                 style.append(("BACKGROUND", (ix["Report Summary"], i), (ix["Report Summary"], i), _c(T.DUE_CELL_BG)))
             if i % 2 == 0:
-                zebra_cols = ["SL", "File No", "Concerns", "Re-CPV / Extra Trip (ID)", "Receive Date", "Submission Date-Time", "TAT",
+                zebra_cols = ["SL", "File No", "Applicant Name", "Concerns", "Re-CPV / Extra Trip (ID)", "Receive Date", "Submission Date-Time", "TAT",
                               "Extra TAT / SLA", "Last Update", "Appointment"]
                 if not r.sla_restarted:
                     zebra_cols.append("SLA Start / Restart Date")
@@ -329,7 +335,7 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
         cv.setFillColor(GREY)
         cv.drawString(left, 6 * mm, f"Generated {d.generated_at:%d/%m/%Y %I:%M %p}   |   BS = Bank Statement   |   "
                                     f"SLA: In area {SLA_IN} working days, Out area {SLA_OUT} working days (Fri, Sat and holidays excluded), from the "
-                                    f"SLA Start Date = Receive Date; an appointment (latest scheduled date) or any new trip (creation day) restarts it from that day")
+                                    f"SLA Start Date = Receive Date; a new trip restarts it; after an appointment the report is due the next working day by 5:59 PM")
         cv.restoreState()
 
     story = []

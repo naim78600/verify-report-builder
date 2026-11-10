@@ -81,7 +81,8 @@ def test_summary_text(data):
     d, _ = data
     f2 = next(r for r in d.complete if r.file_no == "CC-20261101000002")
     assert f2.summary.done.startswith("App House, Office, Sign, LOI")
-    assert "Head office disagree" in f2.summary.done and f2.canceled and "slab" in f2.flags
+    assert "Head office disagree" in f2.summary.done
+    assert not f2.canceled and f2.billable             # v6: a Canceled trip inside a living package changes nothing for the bill
     # problems in Done are repeated in Due with the same wording; good-news notes are not
     assert "Head office disagree" in f2.summary.due and "Signed from branch" not in f2.summary.due
     assert "BS" not in f2.summary.done.split("LOI")[-1] and f2.summary.uncertain    # canceled bank trip is not written, only flagged
@@ -110,14 +111,21 @@ def test_outputs(data, tmp_path):
     wb = load_workbook(xlsx)
     assert wb.sheetnames == ["Complete Report", "Incomplete Report", "Summary", "Holidays", "Check List"]   # check list: blue cells exist
     ws = wb["Complete Report"]
-    assert str(ws["L5"].value).startswith("=MAX(0,NETWORKDAYS.INTL(I5+1,")          # TAT counts from the SLA Start / Restart Date (column I)
-    # filter buttons only on File No (B) and Last Update Date; every other button is hidden
-    for sh, ncols, date_col in ((wb["Complete Report"], 19, 16), (wb["Incomplete Report"], 20, 17)):
+    assert str(ws["P5"].value).startswith("=MAX(0,NETWORKDAYS.INTL(N5+1,")          # TAT counts from the SLA Start / Restart Date (column N)
+    # v6: the 20 columns in the order the bank reads them
+    assert [c.value for c in ws[4]] == [
+        "SL", "File No", "File Type", "Applicant Name", "Concerns Name", "Receive Date-Time", "Submission Date-Time", "Report Status",
+        "Report Summary (Done / Due)", "Last Update Date", "Re-CPV / Extra Trip", "Bill Slab", "Area", "SLA Start / Restart Date", "SLA",
+        "TAT", "Extra TAT", "Appointment History", "Last Update Details", "Before / After 3 PM"]
+    assert ws["D5"].value and isinstance(ws["F5"].value, __import__("datetime").datetime)   # applicant name; receive date WITH its time
+    assert ws["F5"].number_format == "dd/mm/yyyy hh:mm"
+    # filter buttons only on File No, Receive Date-Time, Submission Date-Time and Last Update Date; every other button is hidden
+    for sh, ncols, shown in ((wb["Complete Report"], 20, {1, 5, 6, 9}), (wb["Incomplete Report"], 21, {1, 5, 6, 10})):
         hidden = {fc.colId for fc in sh.auto_filter.filterColumn if fc.hiddenButton}
-        assert hidden == set(range(ncols)) - {1, date_col}, (sh.title, hidden)
-        assert sh.cell(4, date_col + 1).value == "Last Update Date" and sh.cell(4, date_col + 2).value == "Last Update Details"
+        assert hidden == set(range(ncols)) - shown, (sh.title, hidden)
+        assert sh.cell(4, max(shown) + 1).value == "Last Update Date"
     heads = [c.value for c in wb["Incomplete Report"][4]]
-    assert heads[14:17] == ["Report Status", "Pending Reason", "Report Summary"]            # the internal copy's reason column
+    assert heads[7:10] == ["Report Status", "Pending Reason", "Report Summary (Done / Due)"]   # the internal copy's reason column
     assert "Pending Reason" not in [c.value for c in wb["Complete Report"][4]]
     w = write_recpv_workbook(d, tmp_path)
     wb3 = load_workbook(w)
@@ -132,16 +140,21 @@ def test_excel_and_pdf_show_the_sla_start_restart_date(data, tmp_path):
     wb = load_workbook(next(p for p in paths if p.suffix == ".xlsx"))
     for sh in (wb["Complete Report"], wb["Incomplete Report"]):
         heads = [c.value for c in sh[4]]
-        assert heads[7:9] == ["Receive Date", "SLA Start / Restart Date"]
+        assert heads[5] == "Receive Date-Time" and "SLA Start / Restart Date" in heads
     inc = wb["Incomplete Report"]
+    hc = {c.value: c.column for c in inc[4]}
+    st, rcv, tat, xt = hc["SLA Start / Restart Date"], hc["Receive Date-Time"], hc["TAT"], hc["Extra TAT"]
     row = next(r for r in range(5, inc.max_row + 1) if str(inc.cell(r, 2).value).endswith("0003"))
-    assert inc.cell(row, 9).value.date() == date(2026, 11, 4) and inc.cell(row, 8).value.date() == date(2026, 10, 20)
-    assert inc.cell(row, 9).fill.fgColor.rgb.endswith("FAE8FF")                              # plum = restarted by an appointment
-    assert str(inc.cell(row, 12).value).startswith("=MAX(0,NETWORKDAYS.INTL(I")               # TAT counts from the restart column
-    assert "SLA restarted from 04/11/2026" in str(inc.cell(row, 20).value)
+    assert inc.cell(row, st).value.date() == date(2026, 11, 4) and inc.cell(row, rcv).value.date() == date(2026, 10, 20)
+    assert inc.cell(row, st).fill.fgColor.rgb.endswith("FAE8FF")                             # plum = restarted by an appointment
+    assert str(inc.cell(row, tat).value).startswith("=MAX(0,NETWORKDAYS.INTL(O")              # TAT counts from the restart column
+    assert str(inc.cell(row, xt).value).startswith("=MAX(0,Q") and "-1" in str(inc.cell(row, xt).value)   # v6: 1 working day after an appointment
+    assert "SLA restarted from 04/11/2026" in str(inc.cell(row, hc["Appointment History"]).value)
+    assert "next working day by 5:59 PM" in str(inc.cell(row, hc["Appointment History"]).value)
     comp = wb["Complete Report"]
-    plain = next(r for r in range(5, comp.max_row + 1) if comp.cell(r, 9).fill.fgColor.rgb[-6:] != "FAE8FF")
-    assert comp.cell(plain, 9).value == comp.cell(plain, 8).value                             # no appointment: same as Receive Date
+    cc = {c.value: c.column for c in comp[4]}
+    plain = next(r for r in range(5, comp.max_row + 1) if comp.cell(r, cc["SLA Start / Restart Date"]).fill.fgColor.rgb[-6:] != "FAE8FF")
+    assert comp.cell(plain, cc["SLA Start / Restart Date"]).value.date() == comp.cell(plain, cc["Receive Date-Time"]).value.date()   # no appointment: the Receive Date
     assert any(p.suffix == ".pdf" and p.stat().st_size > 5000 for p in paths)
 
 
@@ -183,8 +196,13 @@ def test_remark_engine_samples():
 def test_bs_label_history_and_extra_trip_names(data):
     d, _ = data
     f6 = [r for r in d.all_rows if r.file_no.startswith("CC--")]
-    assert [r.category for r in f6 if r.kind == "Single"] == ["Created - Extra Trip 1", "Created - Extra Trip 2"]
-    assert any(r.slab == "BS" for r in f6 if r.kind == "Single")
+    # v6: house + office are Out (Savar), the two documents are in Gulshan -> each document is its own In bill; the three bank
+    # statements stay inside the Out package
+    assert [(r.category, r.area, r.split) for r in f6 if r.kind == "Single"] == [
+        ("Created - Extra Document", "In", True), ("Created - Extra Document(LOI)", "In", True)]
+    assert all(r.slab.startswith("Single Document") for r in f6 if r.kind == "Single")
+    pk6 = next(r for r in f6 if r.kind == "Package")
+    assert pk6.area == "Out" and len(pk6.trips) == 5 and pk6.file_history[1].startswith("2. Extra Document - Single Document - In")
     assert "Bank" not in " ".join(" ".join(r.concern_lines) for r in d.all_rows)
     f1 = sorted([r for r in d.all_rows if r.file_no == "PL-20261026000001"], key=lambda r: r.history_pos)
     assert [r.kind for r in f1] == ["Package", "Single", "ReCpv"]
@@ -263,8 +281,8 @@ def test_report_cells_done_due_colours_and_last_update(data, tmp_path):
     wb = load_workbook(paths[0])
     ws = wb["Complete Report"]
     heads = [c.value for c in ws[4]]
-    assert heads.index("Last Update Date") == 16 and heads[17] == "Last Update Details"
-    assert isinstance(ws.cell(5, 17).value, __import__("datetime").date)             # a real date, so Excel can filter it
+    assert heads.index("Last Update Date") == 9 and heads[18] == "Last Update Details"
+    assert isinstance(ws.cell(5, 10).value, __import__("datetime").date)             # a real date, so Excel can filter it
     banned = {"FFF200", "FFFF00", "FF0000", "FEF3C7", "FEE2E2", "DC2626", "EF4444", "FFE7A8", "F8C9C9"}
     for sh in wb.worksheets:
         for row in sh.iter_rows():

@@ -157,7 +157,8 @@ def test_the_reported_trip_reads_the_remarks_not_the_comment():
 
 
 def test_an_instruction_in_the_comment_alone_is_not_a_due_item():
-    assert _dd("", COMMENT) == ("LOI", "0")                                # finished trip, nothing reported = nothing due
+    # v6: a finished trip without one word of remarks is never passed silently - it says "Check" (and still not the comment's words)
+    assert _dd("", COMMENT) == ("LOI (Check - no remarks written)", "LOI (Check - no remarks written)")
     done, due = _dd("", COMMENT, submitted=False, status=2)                # not started: the reason is the status, not the comment
     assert due == "LOI (Not visited yet)" and done == "0"
 
@@ -207,7 +208,7 @@ def _report_summary(srv, tmp, fid):
     head = {c.value: c.column for c in ws[next(r[0].row for r in ws.iter_rows(max_row=12) if any(c.value == "File No" for c in r))]}
     for row in ws.iter_rows():
         if any(isinstance(c.value, str) and c.value == f"PL-{fid}" for c in row):
-            return str(row[head["Report Summary"] - 1].value)
+            return str(row[head["Report Summary (Done / Due)"] - 1].value)
     raise AssertionError("file row not found in the Complete Report")
 
 

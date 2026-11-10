@@ -70,3 +70,21 @@ def test_cli_report_only_has_no_mail(tmp_path):
         srv.shutdown()
     assert sorted(p.suffix for p in (tmp_path / "out").iterdir()) == [".pdf", ".xlsx"]
     assert not (tmp_path / "cfg" / "sent.json").exists()
+
+
+def test_cli_monthly_bill(tmp_path, capsys):
+    """v6: --bill YYYY-MM writes the Card and the Loan bill (Excel + PDF) with the same engine as the window."""
+    srv = mock_server.start_scenario(0)
+    base = f"http://127.0.0.1:{srv.server_address[1]}"
+    common = ["--cli", "--web", base, "--api", base, "--email", "test@example.com", "--outdir", str(tmp_path)]
+    try:
+        run_app.cli(common + ["--bill", "2026-10"])
+        out = capsys.readouterr().out
+        assert "Card: 4 rows, subtotal 1020" in out and "Loan: 5 rows, subtotal 1720" in out and "9 billed + 0 left out" in out
+        assert sorted(p.name for p in tmp_path.glob("Prime_Bank_PLC_*")) == [
+            "Prime_Bank_PLC_Card_Invoice_October_2026.pdf", "Prime_Bank_PLC_Card_Invoice_October_2026.xlsx",
+            "Prime_Bank_PLC_Loan_Invoice_October_2026.pdf", "Prime_Bank_PLC_Loan_Invoice_October_2026.xlsx"]
+        with pytest.raises(SystemExit):
+            run_app.cli(common + ["--bill", "2026-13"])
+    finally:
+        srv.shutdown()

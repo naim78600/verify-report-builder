@@ -80,8 +80,7 @@ def sla_restart_lines(r: BillRow) -> list:
         return []
     appt, trip = getattr(r, "sla_appt", None), getattr(r, "sla_trip", None)
     if appt:
-        note = (f"(appointment date {appt:%d/%m/%Y} is a day off, so the next working day)" if r.sla_start != appt
-                else f"({r.sla_days} working days again, from the latest appointment date)")
+        note = f"(appointment on {appt:%d/%m/%Y}: report due the next working day by 5:59 PM)"
     elif trip:
         note = f"({r.sla_days} working days again, from the new trip created on {trip:%d/%m/%Y})"
     else:

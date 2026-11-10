@@ -1,6 +1,6 @@
-# Verify Report Builder — Version 5 (ভেরিফাই রিপোর্ট বিল্ডার)
+# Verify Report Builder — Version 6 (ভেরিফাই রিপোর্ট বিল্ডার)
 
-**Version 5.0.0** · Prime Bank PLC · Barikoi Technologies Limited
+**Version 6.0.0** · Prime Bank PLC · Barikoi Technologies Limited
 
 Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্যার। Verify ড্যাশবোর্ড থেকে Prime Bank PLC-এর ফাইল সংগ্রহ করে **দৈনিক সাবমিশন ট্র্যাকার** (Complete + Incomplete, Excel + PDF) বানায় এবং **সরাসরি ব্যাংককে ইমেইল** পাঠায়।
 **Verify থেকে শুধু তথ্য পড়ে (GET); কোনো তথ্য বদলায় না।** লগইন পাসওয়ার্ড ও ইমেইলের App Password কোথাও সংরক্ষণ হয় না।
@@ -27,7 +27,7 @@ Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্�
 | Mac (Apple Silicon M1–M4) | `VerifyReportBuilder-Mac-AppleSilicon.dmg` | খুলে অ্যাপটি **Applications**-এ টেনে আনুন |
 | Mac (Intel) | `VerifyReportBuilder-Mac-Intel.dmg` | একই |
 
-ইনস্টলার না চাইলে `.zip` (portable) ফাইলও আছে। রিপোজিটরি **প্রাইভেট** — ডাউনলোডের জন্য GitHub-এ সাইন-ইন লাগবে (**Releases** পাতা; Release-এর নাম “Verify Report Builder Version 5 (v5.0.0)”)।
+ইনস্টলার না চাইলে `.zip` (portable) ফাইলও আছে। রিপোজিটরি **প্রাইভেট** — ডাউনলোডের জন্য GitHub-এ সাইন-ইন লাগবে (**Releases** পাতা; Release-এর নাম “Verify Report Builder Version 6 (v6.0.0)”)।
 প্রথমবার খুললে ডিজিটাল স্বাক্ষর নেই বলে সতর্কতা আসে: **Windows:** More info → Run anyway। **Mac:** System Settings → Privacy & Security → *Open Anyway* (অথবা `xattr -dr com.apple.quarantine /Applications/VerifyReportBuilder.app`)।
 
 ## প্রতিদিনের ওয়ার্কফ্লো (দিনে দুইবার)
@@ -60,7 +60,7 @@ Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্�
 5. **Excel খুলুন:** *Summary* (সঙ্গে Applicant Name (given) · Name Check · Applicant on the file) · *Timeline* · *Submission History* · *Trips* (পুরো Remarks সহ) · *Appointments* · *Re-CPV & Extra* · *Concerns* · *Not Found*। না-পাওয়া নম্বর ‘File not found’, বাকি ফাইল ঠিকই আসে।
 6. কমান্ড লাইনে: `python run_app.py --cli --email you@x.com --history numbers.xlsx --outdir out`।
 
-## সব ফিচার — প্রথম সংস্করণ থেকে Version 5 পর্যন্ত (বিস্তারিত)
+## সব ফিচার — প্রথম সংস্করণ থেকে Version 6 পর্যন্ত (বিস্তারিত)
 
 প্রতিটি ধাপে আগের সব ফিচার থেকে যায়; নিচে কোন সংস্করণে কী যোগ হয়েছে ক্রমানুসারে লেখা।
 
@@ -155,6 +155,24 @@ Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্�
 
 ---
 
+### Version 6.0.0 (১০ নভেম্বর) — মাসিক বিল, Appointment-এর নতুন SLA, ২০ কলামের ট্র্যাকার, Done / Due প্রশিক্ষণ
+
+- **মাসিক বিল (নতুন “মাসিক বিল” অংশ):** মাস বেছে নিলে ওই মাসের ১ তারিখ থেকে শেষ তারিখ পর্যন্ত ড্যাশবোর্ডে যা **তৈরি (create)** হয়েছে — নতুন ফাইল (Package), Re-CPV ও Extra ট্রিপ — সবকিছুর বিল হয়; Submit হয়েছে কি না দেখা হয় না। **Card ও Loan আলাদা**, প্রতিটির **Excel + PDF**, ব্যাংকে দেওয়া Invoice-এর একই ফরম্যাটে (সারাংশ পাতা + ক্যাটাগরি অনুযায়ী ফাইলের তালিকা, VAT 5%, কথায় টাকা)। কমান্ড লাইনে: `--bill 2026-09`।
+  - **Rate:** Card Package In 450 / Out 600; Loan Package In 600 / Out 700; In station-এর সব Re-CPV / Extra 140; Out: single document 170, house / office / bank 240, PG 230।
+  - **Penalty:** Extra TAT 1 দিন = 20%, 2 দিন = 30%, 3 বা বেশি = 50%। **Penalty** শিটে Extra TAT থাকা প্রতিটি সারি থাকে; দেরিতে Submit হওয়া **Package ও Bank Statement**-এ Apply = Yes, বাকি সারিতে (আলাদা LOI, extra document, Re-CPV, এখনো Submit হয়নি) Apply = No — কারণসহ। Yes / No বদলালে পুরো Excel-এর হিসাব সঙ্গে সঙ্গে বদলায়; **“সম্পাদিত Excel থেকে PDF”** বোতামে সেই Excel থেকেই PDF হয়।
+  - **Check শিট:** মাসে তৈরি সারি = Card + Loan + বাদ পড়া; বাদ পড়া প্রতিটি সারি কারণসহ (Canceled ট্রিপ যা কেউ শুরু করেনি, Withdrawn, test ফাইল)। কোনো ফাইল বা ট্রিপ চুপচাপ বাদ যায় না।
+- **বিলের সারি ম্যানুয়াল বিলের নিয়মে:** Out station-এর Package-এর LOI / document Dhaka বা Chattogram city-তে হলে আলাদা সারি (In rate); Guarantor-এর House + Office একসাথে = PG, Re-CPV-র Guarantor House / Office = Single House / Office; **Canceled** ট্রিপ ভেরিফায়ার শুরু করে থাকলে বিল হয়, না করলে হয় না; **Inactive** ট্রিপের বিল হয়।
+- **Appointment-এর SLA:** Appointment-এর *scheduled date*-এর **পরের কার্যদিবস বিকেল ৫:৫৯** পর্যন্ত (In ও Out একই); একাধিক Appointment থাকলে শেষটি।
+- **দৈনিক ট্র্যাকার — নতুন ২০ কলাম:** SL, File No, File Type, Applicant Name, Concerns Name, Receive Date-Time, Submission Date-Time, Report Status, Report Summary (Done / Due), Last Update Date, Re-CPV / Extra Trip, Bill Slab, Area, SLA Start / Restart Date, SLA, TAT, Extra TAT, Appointment History, Last Update Details, Before / After 3 PM। তারিখের ঘরগুলো আসল তারিখ — Excel-এ filter চলে। (Incomplete শিটে শেষে Pending Reason।)
+- **Done / Due — ম্যানুয়াল ট্র্যাকারের সঙ্গে মিলিয়ে শেখানো:**
+  - সামনের তারিখে Appointment থাকলে শুধু “Appointment on …” — নেতিবাচক কিছু নয়।
+  - **Inactive / Canceled** ট্রিপে ভেরিফায়ার সমস্যা লিখে থাকলে Due থাকে (হারিয়ে যায় না); প্রতিটি Bank Statement আলাদা (BS1, BS2 …)।
+  - “signature could not be collected”, “can not take applicant sign”, “Applicant wasn't present at office” → Sign Due।
+  - Office-এর লেখার ভেতরে **PEC** বা **Chamber**-এর সমস্যা → আলাদা PEC / Chamber Due (LOI নয়)।
+  - “LOI not signed in front of me” + signatory-র নাম = LOI signed; system generated LOI (“no sign required”) = Due নয়।
+  - লেখায় ভালো কিছুই না থাকলে বা নিয়মে না মিললে **Due + “Check”** (হলুদ) — চুপচাপ Done হয় না।
+- ১৭৭টি স্বয়ংক্রিয় টেস্ট + আসল অ্যাপ-উইন্ডোর GUI smoke test (Windows, macOS, Linux)।
+
 ### Version 5.0.0 (৮ নভেম্বর) — Done / Due শুধু Remarks থেকে, File History-র সংশোধন ও File No + Applicant Name Excel
 
 - **Done / Due (Report Summary) এখন শুধু ভেরিফায়ারের Remarks থেকে লেখা হয়, ব্যাক-অফিসের Comment থেকে নয়।** *Comment* = ফাইল তৈরির সময় ব্যাক-অফিস ভেরিফায়ারকে যে **নির্দেশ** দেয় (যেমন “LOI will be signed from head office”); *Remarks* = কাজ শেষে ভেরিফায়ার যা **পেয়েছে** তার বর্ণনা। আগে Comment-এর নির্দেশও Done / Due-তে নোট হিসেবে ঢুকে যেত (যেমন নির্দেশের “Will be signed from head office” Done ও Due দুটোতেই আসত)। এখন Comment কেবল একটি কাজে লাগে — “Document” ট্রিপটি আসলে কিসের (LOI, Payslip, Tuition, Rental …) তা চেনা; ফলাফল, সমস্যা ও কারণ সবই Remarks (ও চলমান ট্রিপের সর্বশেষ Appointment-এর কারণ) থেকে।
@@ -236,7 +254,7 @@ python run_app.py --cli --email you@barikoi.com --prime --mode tracker --slot 7p
 ## GitHub থেকে বিল্ড ও ডাউনলোড
 
 1. কোড GitHub-এর **Private** রিপোজিটরিতে থাকে। **Actions** চলে শুধু (ক) `v*` ট্যাগ দিলে অথবা (খ) হাতে *Run workflow* চাপলে — তখন আগে ১৬২টি টেস্ট, তারপর চারটি বিল্ড এবং তিন সিস্টেমে GUI smoke test চলে।
-2. **স্থায়ী ডাউনলোড লিংক (Release) বানাতে:** GitHub → **Releases → Draft a new release** → Tag লিখুন `v5.0.0` (Target: `main`) → **Publish**। (অথবা টার্মিনালে `git tag v5.0.0 && git push origin v5.0.0`।) ট্যাগ দেওয়ার পর Actions Windows 64/32-bit ও Mac Apple Silicon / Intel বিল্ড করে প্রায় ১৫–২০ মিনিটে Release-এ ফাইল জুড়ে দেয়। Release-এর নাম ও বিবরণ নিজে থেকে বসে (`RELEASE_NOTES.md` থেকে)।
+2. **স্থায়ী ডাউনলোড লিংক (Release) বানাতে:** GitHub → **Releases → Draft a new release** → Tag লিখুন `v6.0.0` (Target: `main`) → **Publish**। (অথবা টার্মিনালে `git tag v6.0.0 && git push origin v6.0.0`।) ট্যাগ দেওয়ার পর Actions Windows 64/32-bit ও Mac Apple Silicon / Intel বিল্ড করে প্রায় ১৫–২০ মিনিটে Release-এ ফাইল জুড়ে দেয়। Release-এর নাম ও বিবরণ নিজে থেকে বসে (`RELEASE_NOTES.md` থেকে)।
 3. **শুধু বিল্ড চেক করতে:** **Actions → Build desktop app → Run workflow**; শেষে রানের পাতার নিচে **Artifacts** থেকে ডাউনলোড (`Windows-64bit`, `Windows-32bit`, `Mac-AppleSilicon`, `Mac-Intel`) — এটি Release নয়, কিছুদিন পরে মেয়াদ শেষ হয়।
 
 > আপনার MacBook Apple Silicon (M-সিরিজ) হলে `Mac-AppleSilicon`, Intel হলে `Mac-Intel` নিন। (Apple menu → About This Mac এ দেখা যায়।)
