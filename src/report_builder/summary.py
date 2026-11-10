@@ -109,6 +109,8 @@ NOTE_RULES = [
        r"gmail\s+address", "Need to verify by email", "loi"),
     _r(r"signator\w*[^.\n]{0,50}(?:out\s+of\s+(?:the\s+)?country|abroad|not\s+available|not\s+present|on\s+leave)",
        "Signatory not available", "loi"),
+    _r(r"\bloi\b[^\n]{0,90}?\bno\s+sign(?:ature)?\s+(?:is\s+)?(?:required|needed)|\bloi\b[^\n]{0,60}?sign(?:ature)?\s+(?:is\s+)?not\s+(?:required|needed)",
+       "No sign required (system generated)", "loi"),
     _r(r"loi\s+not\s+(?:sign\w*|verif\w*)|loi[^.\n]{0,40}(?:could\s+not|couldn'?t|unable)[^.\n]{0,20}verif|"
        r"\bloi\b[^.\n]{0,40}(?:cannot|can\s*not|can't|will\s+not)\s+(?:be\s+)?(?:v[ae]rif\w*)|could\s*n[o']?t\s+get[^.\n]{0,25}loi\s+verif\w*|"
        r"will\s+not\s+do\s+(?:the\s+)?loi\s+verif\w*|no\s+senior\s+authority[^.\n]{0,30}loi|"
@@ -178,7 +180,8 @@ _NEG_FALLBACK = re.compile(
     r"\b(?:not\s+(?:verif\w*|found|available|possible|allowed|signed|provided|match\w*|willing|interested|cooperat\w*|present|"
     r"received|picked|responding|exist\w*|working|available)|n't|unable|cannot|can't|couldn't|refus\w*|wrong|missing|"
     r"mismatch\w*|pending|failed|problem|issue|disagree\w*|denied|never|without\s+(?:the\s+)?(?:applicant|help|assistance)|"
-    r"insufficient|no\s+(?:response|one|contact|access)|resign\w*|closed|locked)\b", _I)
+    r"insufficient|no\s+(?:response|one|contact|access)|resign\w*|closed|locked|"
+    r"away\s+(?:for|on|from)|expected\s+to\s+return|on\s+leave|abroad|out\s+of\s+(?:the\s+)?(?:country|station|town)|admitted)\b", _I)
 # second-tier negative words (contractions such as isn't / wasn't / didn't, shifted, vacated, not employed): only used when the first tier found nothing
 _NEG_EXTRA = re.compile(r"\b(?:\w+n't|shift\w*|vacat\w*|not\s+(?:currently\s+)?employed|not\s+(?:their|his|her)\s+office)\b", _I)
 # sentences that look negative but are normal verifier remarks - never turned into a note
@@ -328,7 +331,11 @@ _SIGN_POS = re.compile(
 _SIGN_POS2 = re.compile(r"sign\w*\s+(?:collect\w*|taken|done|verified)|collect\w*\s+(?:\w+\s+){0,3}sign\w*\s+(?:from|at|in)|"
                         r"signed\s+(?:\w+\s+){0,4}(?:front|me)", _I)
 _SIGN_NEG = re.compile(r"not\s+sign(?:ed|ature)?\b|\bsign(?:ed|ature)?\s+(?:is\s+)?(?:miss\w+|pending|panding|not)\b|"
-                       r"loi\s+not\s+sign\w*[^.\n]{0,25}front", _I)
+                       r"loi\s+not\s+sign\w*[^.\n]{0,25}front|"
+                       # v6 (tracker training): "the applicant's signature could not be collected / obtained", "can not take applicant sign"
+                       r"sign(?:ature)?\s+(?:could\s*n[o']?t|can\s*n[o']?t|cannot|was\s*n[o']?t|is\s+not)\s+(?:be\s+)?(?:collect\w*|obtain\w*|taken?|g[eo]t)|"
+                       r"(?:can\s*n[o']?t|cannot|could\s*n[o']?t|not\s+possible\s+to|unable\s+to)\s+(?:take|collect|get|obtain)\s+(?:the\s+)?"
+                       r"(?:(?:applicant|guarantor|grantor|gurantor|pg|co[- ]?applicant)(?:'s|’s|s)?\s+)?sign", _I)
 _LOI_POS = re.compile(r"\bloi\b[^.\n]{0,50}(?:sign\w*|verif\w*|varif\w*)|(?:sign\w*|verif\w*)[^.\n]{0,15}\bloi\b", _I)
 _LOI_NEG = re.compile(r"loi\s+not\s+(?:sign\w*|verif\w*)[^.\n]{0,40}|not\s+(?:sign\w*|verif\w*)\s+(?:the\s+)?loi|"
                       r"loi[^.\n]{0,20}(?:wasn'?t|was\s+not|couldn'?t|could\s+not)", _I)
@@ -455,7 +462,8 @@ def _notes_for(text_all: str, outcome: str, rules, loi_trip: bool = False) -> tu
             fallback = True
         elif neg:
             rest = re.sub(r"information\s+not\s+ok\.?", "", outcome, flags=_I).strip()
-            found["trip"].append(_short(rest) if rest else "Information not ok")
+            # "Information not ok. Mobile no is ok. Information confirmed by applicant's wife." - what follows is not the reason
+            found["trip"].append(_short(rest) if rest and not re.search(r"\bok\b|confirm\w*", rest, _I) else "Information not ok")
             fallback = True
     elif _INFO_NOT_OK.search(outcome) and not found["trip"] and found["loi"]:
         pass
@@ -470,7 +478,7 @@ M9_SEVERE = {"Does not sit in given office", "Does not live at given address", "
              "Given address wrong", "No longer operates at given address", "Office closed", "Signature missing", "Phone switch off"}
 M9_ON = __import__("os").environ.get("M9", "1") == "1"
 import os as _os
-M1_STATUSES = tuple(int(x) for x in _os.environ.get('M1_STATUSES', '7').split(',') if x)
+M1_STATUSES = tuple(int(x) for x in _os.environ.get('M1_STATUSES', '6,7').split(',') if x)     # Canceled / Inactive with a problem remark stay Due
 M1_ANY_TEXT = _os.environ.get('M1_ANY_TEXT') == '1'
 
 
@@ -504,9 +512,15 @@ def appt_upcoming(trip: dict) -> bool:
     return bool(t and t.date() >= _report_day())
 
 
+_CHAMBER_NEG = re.compile(r"no\s+longer|does\s*n[o']?t\s+have|do\s+not\s+have|\bclosed\b|not\s+(?:available|found|possible|operat\w*|verif\w*)|"
+                          r"is\s*n[o']?t\s+available|no\s+chamber|without\s+(?:the\s+)?applicant", _I)
+_CHAMBER_OK = re.compile(r"chamber\s+verif\w*\s+(?:is\s+|was\s+)?(?:done|complet\w*|ok)|chamber\s+(?:is\s+)?(?:ok|verified)|verif\w*\s+(?:the\s+)?chamber", _I)
+# a house / office remark that says nothing good at all ("The guarantor is currently away for training ...")
+_ANY_OK = re.compile(r"\bok\b|verif\w*|confirm\w*|\bsign\w*|\bfound\b|\bpresent\b|\blives?\b|\bresid\w*|\bworks?\b|\bsits?\b|correct|"
+                     r"proper\s+address|new\s+address|complet\w*|\bdone\b", _I)
 _PEC_HEAD = re.compile(r"\bpec\b|experience\s+cert\w*|previous\s+(?:company|employer|office)", _I)
 _PEC_NEG = re.compile(r"unable|not\s+(?:available|possible|verif\w*|found|sign\w*)|\bclosed\b|disagre\w*|refus\w*|does\s*n[o']?t|did\s*n[o']?t|can\s*n[o']?t", _I)
-_INACTIVE_NEG = re.compile(r"\bnot\b|n[o']?t\b|\bno\s+(?:response|one|body)|unable|disagre|refus|mismatch|missing|wrong|switch\w*\s+off|"
+_INACTIVE_NEG = re.compile(r"\bnot\b|\w+n['’]t\b|\b(?:cannot|cant|dont|doesnt)\b|\bno\s+(?:response|one|body)|unable|disagre|refus|mismatch|missing|wrong|switch\w*\s+off|"
                            r"invalid|insufficient|closed|different|required|without", _I)
 
 
@@ -515,6 +529,8 @@ def _inactive_fine(outcome: str) -> bool:
     if _POSITIVE.search(outcome) and not _INFO_NOT_OK.search(outcome):
         return True
     sl = _sentences(outcome)
+    if re.search(r"bank\s+statement\s+verified", outcome, _I) and not re.search(r"not\s+verif", outcome, _I):
+        return True
     return bool(sl) and _done_sentence(sl[-1])
 
 
@@ -622,6 +638,16 @@ def analyze(views: list[TripView], submitted: bool, bank_label: str = "BS") -> S
         if code == "BANK" and finished and re.search(r"bank\s+statement[^.\n]{0,30}not\s+verif", outcome, _I) and not primary.note:
             primary.note = "Statement not verified"
 
+        # v6: a chamber that could not be verified, written inside an Office / document remark ("Chamber - the applicant no longer
+        # operates a chamber at the given address"), is its own Due item
+        if finished and code in ("OFFICE", "GUARANTOR_OFFICE", "DOCUMENT", "DOC_SERVICE") and primary.label != "Chamber":
+            cs_ = [x for x in _sentences(outcome) if re.search(r"\bchamber\b", x, _I)]
+            bad_c = [x for x in cs_ if _CHAMBER_NEG.search(x) and not re.search(r"no\s+chamber\s+name", x, _I)]
+            if bad_c and not any(_CHAMBER_OK.search(x) for x in cs_):
+                ci_ = Item("", "Chamber", note=_short(re.sub(r"^\s*chamber\s*(?:verif\w*)?\s*[-.:]+\s*", "", bad_c[0], flags=_I)))
+                ci_.uncertain = True
+                ci_.reasons.append(f"ট্রিপ {t.get('id')}: চেম্বার যাচাই হয়নি বলে মনে হয়েছে - যাচাই করুন")
+                extra.append(ci_)
         if pec_notes:
             extra.append(Item("", "PEC", note="; ".join(pec_notes[:2])))
         elif pec_unruled:
@@ -633,6 +659,11 @@ def analyze(views: list[TripView], submitted: bool, bank_label: str = "BS") -> S
             it.inferred = True
         for it in [primary] + extra:
             it.src = src
+        if (finished and code in ("HOUSE", "GUARANTOR_HOUSE", "OFFICE", "GUARANTOR_OFFICE") and outcome.strip() not in ("", "-")
+                and not primary.note and not notes["trip"] and not notes["loi"] and not _ANY_OK.search(outcome)):
+            primary.note = "Check - " + _short(outcome, 50)           # nothing good is written: never passed as Done silently
+            primary.uncertain = True
+            primary.reasons.append(f"ট্রিপ {t.get('id')}: রিমার্কে কোনো ইতিবাচক কথা নেই - যাচাই করুন")
         if finished and not outcome.strip() and not primary.note:      # v6: a finished trip without one word of remarks is never passed silently
             primary.note = "Check - no remarks written"
             primary.uncertain = True
@@ -644,7 +675,9 @@ def analyze(views: list[TripView], submitted: bool, bank_label: str = "BS") -> S
                 # v6: an Inactive trip whose remark tells of a problem in words no rule knows is still Due (never dropped silently)
                 unruled = (not problem_notes and outcome.strip() not in ("", "-") and not _inactive_fine(outcome)
                            and bool(_INACTIVE_NEG.search(outcome)))
-                if status in M1_STATUSES and (problem_notes or unruled or M1_ANY_TEXT and outcome.strip() not in ("", "-")):
+                wrote = (t.get("remarks") or "").strip() not in ("", "-")       # a Canceled trip counts only for what the verifier wrote
+                if status in M1_STATUSES and (status != 6 or wrote) and not (status == 6 and _inactive_fine(outcome)) \
+                        and (problem_notes or unruled or M1_ANY_TEXT and outcome.strip() not in ("", "-")):
                     primary.rank = 1
                     primary.note = "; ".join(problem_notes[:2]) if problem_notes else _reason_of(outcome)
                     primary.pending = True

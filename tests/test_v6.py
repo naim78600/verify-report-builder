@@ -143,8 +143,16 @@ def test_bill_totals_and_penalty_choices(october, tmp_path):
     _d, mb = october
     loan = mb.bills["Loan"]
     assert loan.subtotal == 600 + 700 + 3 * 140
-    assert loan.deduction == sum(i.amount * i.pct / 100 for i in loan.items) > 0
-    assert loan.grand_total == round(loan.after_penalty * 1.05, 2)
+    # the starting choice follows the manual bill: a late row is charged only when it is a SUBMITTED package / bank statement;
+    # the pending package (F3) and the late extra-document / Re-CPV rows are listed with Apply = No
+    late = [i for i in loan.items if i.pct]
+    assert sorted((i.kind, i.pct, i.apply) for i in late) == [("Package", 50, False), ("ReCpv", 50, False), ("Single", 20, False)]
+    assert "not yet submitted" in next(i for i in late if i.kind == "Package").pen_note
+    assert loan.deduction == 0 and loan.grand_total == round(loan.subtotal * 1.05, 2)
+    f1 = next(i for i in loan.items if i.file_no.endswith("0001") and i.kind == "Package")
+    f1.extra_tat, f1.pct, f1.apply = 2, 30, True                      # a submitted package that is 2 days late IS charged
+    assert loan.deduction == 210 and loan.grand_total == round((loan.subtotal - 210) * 1.05, 2)
+    f1.extra_tat, f1.pct = 0, 0
     paths = write_month_bill(mb, tmp_path)
     assert sorted(p.name for p in paths) == ["Prime_Bank_PLC_Card_Invoice_October_2026.pdf", "Prime_Bank_PLC_Card_Invoice_October_2026.xlsx",
                                              "Prime_Bank_PLC_Loan_Invoice_October_2026.pdf", "Prime_Bank_PLC_Loan_Invoice_October_2026.xlsx"]
@@ -159,12 +167,13 @@ def test_bill_totals_and_penalty_choices(october, tmp_path):
     assert (len(back.items), back.subtotal, back.deduction, back.grand_total) == (len(loan.items), loan.subtotal, loan.deduction, loan.grand_total)
     # the user waives one penalty on the Penalty sheet -> the PDF made from the workbook follows
     pen = wb["Penalty"]
-    first = next(r for r in range(3, pen.max_row + 1) if pen.cell(r, 14).value == "Yes")
-    waived = pen.cell(first, 11).value * pen.cell(first, 12).value / 100
-    pen.cell(first, 14).value = "No"
+    assert pen.cell(2, 15).value == "Why (starting choice)" and all(pen.cell(r, 15).value for r in range(3, 6))
+    first = next(r for r in range(3, pen.max_row + 1) if pen.cell(r, 14).value == "No")
+    charged = pen.cell(first, 11).value * pen.cell(first, 12).value / 100
+    pen.cell(first, 14).value = "Yes"                                 # the user decides to charge a listed row
     wb.save(xlsx)
     after = read_bill_excel(xlsx)
-    assert after.deduction == loan.deduction - waived and after.grand_total > loan.grand_total
+    assert after.deduction == loan.deduction + charged and after.grand_total < loan.grand_total
     assert pdf_from_excel(xlsx).stat().st_size > 3000
     check = [[c.value for c in row] for row in wb["Check"].iter_rows(max_row=14)]
     assert any(r[0] == "Result" and str(r[1]).startswith("OK") for r in check)
@@ -206,3 +215,43 @@ def test_loi_not_signed_in_front_of_me_with_a_named_signatory_is_a_signed_loi():
     assert (s.done, s.due) == ("LOI", "0")
     s = _sum([_rt(1, "DOCUMENT", "LOI not signed in front of me. Signatory not available today.", comment="LOI VERIFICATION")])
     assert "LOI" in s.due
+
+
+def test_signature_that_could_not_be_taken_is_due_even_in_an_information_ok_remark():
+    s = _sum([_rt(1, "OFFICE", "Information is ok. The applicant resides in Dhaka and visits the business address very rarely. "
+                               "Therefore, the applicant's signature could not be obtained.")])
+    assert s.due == "App Sign (Signature missing)"
+    s = _sum([_rt(1, "OFFICE", "Information ok. LOI signed infront of me. LOI sign by (Name: A B). The applicant is on leave due to an "
+                               "accident. Thats why can not take applicant sign.")])
+    assert "App Sign (Signature missing)" in s.due and "LOI" in s.done
+    s = _sum([_rt(1, "OFFICE", "Information ok. Applicant was present at office and signed in front of me.")])
+    assert s.due == "0" and "Sign" in s.done
+
+
+def test_chamber_problem_inside_an_office_remark_is_its_own_due_item():
+    s = _sum([_rt(1, "OFFICE", "Information is ok. Applicant was present at office and signed in front of me. LOI signed in front of me. "
+                               "Loi verified by Name: Dr. M. Chamber-The applicant no longer operates a chamber at the given address.")])
+    assert s.due.startswith("Chamber (The applicant no longer operates") and "LOI" in s.done and s.uncertain
+    s = _sum([_rt(1, "OFFICE", "Information ok. Applicant was present office and signed front of me. Chamber verification done.")])
+    assert s.due == "0"
+    s = _sum([_rt(1, "OFFICE", "Information ok. LoI signed infront of me. Chamber verification- No Chamber Name Found. But people know "
+                               "this address is Dr. F chamber.")])
+    assert s.due == "0"                                                       # no name board, but the chamber is known: not a problem
+
+
+def test_a_remark_with_nothing_good_in_it_is_never_passed_as_done():
+    from report_builder.summary import TripView, analyze
+    t = _rt(1, "GUARANTOR_OFFICE", "The guarantor is currently away for training and is expected to return to the given address after one month.")
+    s = analyze([TripView(t, "GUARANTOR", "PG")], True, "BS")
+    assert s.due.startswith("PG Office (") and s.uncertain
+    s = _sum([_rt(1, "HOUSE", "Information not ok. Mobile no is ok. Information confirm by applicant wife.")])
+    assert s.due == "App House (Information not ok)"
+    s = _sum([_rt(1, "OFFICE", "Information ok. Applicant said the LOI is ibase generated. No sign required.")])
+    assert s.due == "LOI (No sign required (system generated))"
+
+
+def test_a_canceled_trip_counts_only_for_a_problem_the_verifier_wrote():
+    assert _sum([_rt(1, "OFFICE", "Information not ok.Given address is applicants head office address. He does not sit in this office.",
+                     status=6)]).due.startswith("App Office (")
+    assert _sum([_rt(1, "BANK", "Bank statement verified. Hard copy provided.", status=6)]).due == "0"
+    assert _sum([_rt(1, "HOUSE", "", status=6)]).due == "0"

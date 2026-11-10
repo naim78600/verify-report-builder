@@ -87,8 +87,11 @@ def _details(wb: Workbook, bill: Bill) -> tuple[dict, list]:
 def _penalty(wb: Workbook, bill: Bill, rowno: dict, items: list) -> int:
     ws = wb.create_sheet("Penalty")
     ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(PEN_COLS))
-    _cell(ws, 1, 1, "Every row with an Extra TAT.  Extra TAT 1 = 20 %, 2 = 30 %, 3 or more = 50 % of the amount.  "
-                    "Change Apply to No for a row that must not be charged - the Invoice sheet follows at once.", size=10, border=False)
+    _cell(ws, 1, 1, "Every row with an Extra TAT.  Extra TAT 1 = 20 %, 2 = 30 %, 3 or more = 50 % of the amount.  Apply starts as Yes for a "
+                    "submitted package / bank statement and as No for the other rows - change Yes / No freely, the Invoice sheet follows at once.",
+          size=10, border=False)
+    _cell(ws, 2, len(PEN_COLS) + 1, "Why (starting choice)", bold=True, align="center", fill="D9E1F2", wrap=True)
+    ws.column_dimensions[get_column_letter(len(PEN_COLS) + 1)].width = 60
     for i, (t, w) in enumerate(PEN_COLS, 1):
         _cell(ws, 2, i, t, bold=True, align="center", fill="D9E1F2", wrap=True)
         ws.column_dimensions[get_column_letter(i)].width = w
@@ -100,6 +103,7 @@ def _penalty(wb: Workbook, bill: Bill, rowno: dict, items: list) -> int:
                 it.rec, it.sub, it.tat, it.extra_tat, it.amount, it.pct, None, "Yes" if it.apply else "No"]
         for c, v in enumerate(vals, 1):
             _cell(ws, r, c, v, align="left" if c in (2, 3, 6) else "center", fmt="dd/mm/yyyy" if c in (7, 8) else None)
+        _cell(ws, r, len(PEN_COLS) + 1, it.pen_note, align="left", size=9)
         ws.cell(r, 13).value = f"=K{r}*L{r}/100"
         ws.cell(r, 14).fill = PatternFill("solid", fgColor="FFF2CC")
         r += 1

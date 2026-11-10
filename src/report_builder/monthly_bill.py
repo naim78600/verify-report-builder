@@ -17,9 +17,10 @@ RATES (BDT, from the September 2026 invoice)          In station (Dhaka / Chatto
     VAT 5 % on the amount after the penalty.
 
 PENALTY     Extra TAT 1 day = 20 %, 2 days = 30 %, 3 days or more = 50 % of the amount of that row (In and Out alike).
-    Every row with an Extra TAT is LISTED on the "Penalty" sheet with Apply = Yes; change it to No for a row that must not be
-    charged (the bank caused the delay ...) - every total in the workbook follows at once, and "PDF from the edited Excel" makes
-    the PDF with exactly those choices.
+    Every row with an Extra TAT is LISTED on the "Penalty" sheet.  Apply starts as Yes for a submitted PACKAGE or BANK STATEMENT (what
+    the manual bill charges) and as No for an extra document / Re-CPV row and for a row that is not submitted yet.  Change Yes / No
+    freely (the bank caused the delay ...) - every total in the workbook follows at once, and "PDF from the edited Excel" makes the
+    PDF with exactly those choices.
 
 CHECK SHEET   what the dashboard has for the month against what is on the bill, and every row that was left out, with the reason.
 """
@@ -147,6 +148,7 @@ class Item:
     note: str = ""
     pct: int = 0                 # penalty % this row is liable to (0 = none)
     apply: bool = True           # the penalty is charged (False = waived by the user)
+    pen_note: str = ""           # why Apply starts as Yes / No
 
     @property
     def deduction(self) -> float:
@@ -257,6 +259,15 @@ def build_month_bill(rows: list, year: int, month: int, bill_date: date | None =
                   extra_tat=int(r.extra_tat or 0), amount=rate_for(r.file_type, cls, area), category=category_of(r, cls),
                   kind=r.kind, slab=r.slab, trip_ids=_trip_ids(r), trip_status=_trip_status(r))
         it.pct = penalty_pct(it.extra_tat)
+        if it.pct:
+            # The manual bill (September 2026: 15 penalties, every one a submitted package) charges a late PACKAGE or BANK STATEMENT
+            # only.  Every other late row is still listed, with Apply = No, so nothing is hidden and the user decides.
+            if not r.submitted_at:
+                it.apply, it.pen_note = False, "not yet submitted - not charged until it is submitted"
+            elif cls != "Package" and r.slab != "BS":
+                it.apply, it.pen_note = False, "extra document / Re-CPV row - the manual bill charges packages and bank statements only"
+            else:
+                it.pen_note = "submitted after the SLA"
         notes = []
         if r.canceled:
             notes.append("Canceled, but it was started - billed")
