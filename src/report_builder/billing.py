@@ -6,14 +6,13 @@ Rules (agreed with the user)
     labelled Extra Trip 1, 2, 3 ... (billed In or Out by their own address).
   * Every trip created after the creation date is a single bill: in the Re-CPV tracker -> ReCpv,
     otherwise Extra Document / Extra Trip.
-  * Inactive trips are billable; Canceled trips are marked light-blue (internal copy).
+  * Inactive trips are billable; a Canceled trip is billable only if it had been started; a Withdrawn trip never.
   * In = inside Dhaka City Corporation or Chattogram City Corporation (lat/long); everything else = Out.
   * Package is Out if ANY of its trips is Out; a single row is judged on its own trip.
-  * SLA (working days): In = 2, Out = 4, counted from the SLA Start Date = the Receive Date.  An APPOINTMENT restarts the SLA
-    (the visit to the appointment is not the company's responsibility - the bank knows it): the SLA Start Date becomes the scheduled
-    date of the LATEST-CREATED appointment of the row's trips (a Fri / Sat / holiday date moves to the next working day), and the
-    2 / 4 working days are counted again from it.  A new trip does not restart anything - it is its own bill row with its own clock.
-    Extra TAT = TAT - SLA (never below 0).
+  * SLA (working days): In = 2, Out = 4, counted from the SLA Start Date = the Receive Date.  The clock restarts (the latest wins)
+    when a NEW TRIP of the file is created (full 2 / 4 days again) and when there is an APPOINTMENT: from v6 the report is then due
+    on the next working day after the scheduled date of the latest-created appointment, by 5:59 PM, In and Out alike.
+    Extra TAT = TAT - SLA (never below 0).  See sla_start_for / compute_tat and docs/V6_TECH_MEMO.md.
   * The number of trips never changes because of Re-CPV - Re-CPV only labels a trip.
   * Each row has its own Receive Date, Submission, TAT and Extra TAT.
 """
