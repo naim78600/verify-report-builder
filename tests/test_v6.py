@@ -247,7 +247,7 @@ def test_a_remark_with_nothing_good_in_it_is_never_passed_as_done():
     s = _sum([_rt(1, "HOUSE", "Information not ok. Mobile no is ok. Information confirm by applicant wife.")])
     assert s.due == "App House (Information not ok)"
     s = _sum([_rt(1, "OFFICE", "Information ok. Applicant said the LOI is ibase generated. No sign required.")])
-    assert s.due == "LOI (No sign required (system generated))"
+    assert s.due == "0" and "LOI (System generated - no sign required)" in s.done      # nothing to sign: not a Due
 
 
 def test_a_canceled_trip_counts_only_for_a_problem_the_verifier_wrote():
@@ -255,3 +255,15 @@ def test_a_canceled_trip_counts_only_for_a_problem_the_verifier_wrote():
                      status=6)]).due.startswith("App Office (")
     assert _sum([_rt(1, "BANK", "Bank statement verified. Hard copy provided.", status=6)]).due == "0"
     assert _sum([_rt(1, "HOUSE", "", status=6)]).due == "0"
+
+
+def test_applicant_absent_from_the_office_means_the_signature_is_still_due():
+    s = _sum([_rt(1, "OFFICE", "Applicant wasn’t present at office bcause his duty time start from 8:00pm, Loi signatory was present at "
+                               "office and signed in front of me. Loi verified by. Name: A B.")])
+    assert s.due == "App Sign (Signature missing)" and "LOI" in s.done
+    s = _sum([_rt(1, "OFFICE", "Information ok. Applicant was not present at office. Applicant signed in front of me at his house. "
+                               "LOI signed in front of me.")])
+    assert s.due == "0"
+    from report_builder.summary import TripView, analyze
+    t = _rt(1, "GUARANTOR_HOUSE", "Information ok. Grantor staying dhaka now, so it's not possible to take grantor sign.", status=7)
+    assert analyze([TripView(t, "GUARANTOR", "PG")], True, "BS").due == "PG House (Signature could not be taken)"

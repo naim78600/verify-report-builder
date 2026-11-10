@@ -1,6 +1,6 @@
-# Verify Report Builder — Version 5 (v5.0.0)
+# Verify Report Builder — Version 6 (v6.0.0)
 
-Prime Bank PLC-এর দৈনিক সাবমিশন ট্র্যাকার (Complete + Incomplete, Excel + PDF) বানায়, ফাইল হিস্টরি তৈরি করে এবং সরাসরি ব্যাংককে ইমেইল পাঠায়। Verify থেকে **শুধু তথ্য পড়ে (GET)**, কিছু বদলায় না; পাসওয়ার্ড কোথাও সংরক্ষণ হয় না।
+Prime Bank PLC-এর দৈনিক সাবমিশন ট্র্যাকার (Complete + Incomplete, Excel + PDF) ও **মাসিক বিল (Card + Loan, Excel + PDF)** বানায়, ফাইল হিস্টরি তৈরি করে এবং সরাসরি ব্যাংককে ইমেইল পাঠায়। Verify থেকে **শুধু তথ্য পড়ে (GET)**, কিছু বদলায় না; পাসওয়ার্ড কোথাও সংরক্ষণ হয় না।
 
 ## ডাউনলোড
 
@@ -13,7 +13,26 @@ Prime Bank PLC-এর দৈনিক সাবমিশন ট্র্যা�
 
 `.zip` (portable) ফাইলও নিচে আছে। প্রথমবার খুললে ডিজিটাল স্বাক্ষর নেই বলে সতর্কতা আসে — Windows: *More info → Run anyway*; Mac: *System Settings → Privacy & Security → Open Anyway*।
 
-## Version 5-এ নতুন
+## Version 6-এ নতুন
+
+- **মাসিক বিল (নতুন “মাসিক বিল” অংশ):** মাস বেছে নিলে ওই মাসের ১ তারিখ থেকে শেষ তারিখ পর্যন্ত ড্যাশবোর্ডে যা **তৈরি (create)** হয়েছে — নতুন ফাইল (Package), Re-CPV ও Extra ট্রিপ — সবকিছুর বিল হয়; Submit হয়েছে কি না দেখা হয় না। **Card ও Loan আলাদা**, প্রতিটির **Excel + PDF**, ব্যাংকে দেওয়া Invoice-এর একই ফরম্যাটে (সারাংশ পাতা + ক্যাটাগরি অনুযায়ী ফাইলের তালিকা, VAT 5%, কথায় টাকা)। কমান্ড লাইনে: `--bill 2026-09`।
+  - **Rate:** Card Package In 450 / Out 600; Loan Package In 600 / Out 700; In station-এর সব Re-CPV / Extra 140; Out: single document 170, house / office / bank 240, PG 230।
+  - **Penalty:** Extra TAT 1 দিন = 20%, 2 দিন = 30%, 3 বা বেশি = 50%। **Penalty** শিটে Extra TAT থাকা প্রতিটি সারি থাকে; দেরিতে Submit হওয়া **Package ও Bank Statement**-এ Apply = Yes, বাকি সারিতে (আলাদা LOI, extra document, Re-CPV, এখনো Submit হয়নি) Apply = No — কারণসহ। Yes / No বদলালে পুরো Excel-এর হিসাব সঙ্গে সঙ্গে বদলায়; **“সম্পাদিত Excel থেকে PDF”** বোতামে সেই Excel থেকেই PDF হয়।
+  - **Check শিট:** মাসে তৈরি সারি = Card + Loan + বাদ পড়া; বাদ পড়া প্রতিটি সারি কারণসহ (Canceled ট্রিপ যা কেউ শুরু করেনি, Withdrawn, test ফাইল)। কোনো ফাইল বা ট্রিপ চুপচাপ বাদ যায় না।
+- **বিলের সারি ম্যানুয়াল বিলের নিয়মে:** Out station-এর Package-এর LOI / document Dhaka বা Chattogram city-তে হলে আলাদা সারি (In rate); Guarantor-এর House + Office একসাথে = PG, Re-CPV-র Guarantor House / Office = Single House / Office; **Canceled** ট্রিপ ভেরিফায়ার শুরু করে থাকলে বিল হয়, না করলে হয় না; **Inactive** ট্রিপের বিল হয়।
+- **Appointment-এর SLA:** Appointment-এর *scheduled date*-এর **পরের কার্যদিবস বিকেল ৫:৫৯** পর্যন্ত (In ও Out একই); একাধিক Appointment থাকলে শেষটি।
+- **দৈনিক ট্র্যাকার — নতুন ২০ কলাম:** SL, File No, File Type, Applicant Name, Concerns Name, Receive Date-Time, Submission Date-Time, Report Status, Report Summary (Done / Due), Last Update Date, Re-CPV / Extra Trip, Bill Slab, Area, SLA Start / Restart Date, SLA, TAT, Extra TAT, Appointment History, Last Update Details, Before / After 3 PM। তারিখের ঘরগুলো আসল তারিখ — Excel-এ filter চলে। (Incomplete শিটে শেষে Pending Reason।)
+- **Done / Due — ম্যানুয়াল ট্র্যাকারের সঙ্গে মিলিয়ে শেখানো:**
+  - সামনের তারিখে Appointment থাকলে শুধু “Appointment on …” — নেতিবাচক কিছু নয়।
+  - **Inactive / Canceled** ট্রিপে ভেরিফায়ার সমস্যা লিখে থাকলে Due থাকে (হারিয়ে যায় না); প্রতিটি Bank Statement আলাদা (BS1, BS2 …)।
+  - “signature could not be collected”, “can not take applicant sign”, “Applicant wasn't present at office” → Sign Due।
+  - Office-এর লেখার ভেতরে **PEC** বা **Chamber**-এর সমস্যা → আলাদা PEC / Chamber Due (LOI নয়)।
+  - “LOI not signed in front of me” + signatory-র নাম = LOI signed; system generated LOI (“no sign required”) = Due নয়।
+  - লেখায় ভালো কিছুই না থাকলে বা নিয়মে না মিললে **Due + “Check”** (হলুদ) — চুপচাপ Done হয় না।
+- ১৭৭টি স্বয়ংক্রিয় টেস্ট + আসল অ্যাপ-উইন্ডোর GUI smoke test (Windows, macOS, Linux)।
+
+## Version 5 থেকে চলছে
+
 
 - **Done / Due শুধু ভেরিফায়ারের Remarks থেকে** — ব্যাক-অফিসের Comment (নির্দেশ) থেকে নয়। Payslip-বাক্য (“HR will verify only salary certificate”) এখন ঠিকভাবে পড়া হয়, ভুল “Head office disagree” আসে না।
 - **File History ক্র্যাশ ঠিক:** ফাঁকা শিট থাকলে (যেমন সব নম্বর পাওয়া গেলে) `'MergedCell' object is not iterable` দিয়ে থেমে যেত — আর যায় না।
@@ -21,12 +40,12 @@ Prime Bank PLC-এর দৈনিক সাবমিশন ট্র্যা�
 - **আগের সব অপশন অপরিবর্তিত** (ট্র্যাকার, তারিখ-সীমা, Re-CPV, সাধারণ এক্সেল, ইমেইল, ছুটি, SLA ও Incomplete নিয়ম)।
 - ১৬২টি স্বয়ংক্রিয় টেস্ট + আসল অ্যাপ-উইন্ডোর GUI smoke test (File History সহ; Windows, macOS, Linux)।
 
-## Version 4 থেকে চলছে
+## Version 4 থেকে চলছে (Appointment-এর SLA নিয়ম Version 6-এ বদলেছে — উপরে দেখুন)
 
 - **SLA Restart:** Appointment-এর *scheduled date* থেকে এবং **যেকোনো নতুন ট্রিপ** তৈরি হলে সঙ্গে সঙ্গে; In (Dhaka ও Chattogram City Corporation) = ২ কার্যদিবস, Out = ৪ কার্যদিবস। নতুন কলাম **“SLA Start / Restart Date”** (Excel ও PDF)।
 - **Incomplete** = শুধু Hold, Finished কিন্তু Submit হয়নি ও Partially Submitted।
 
-## সব ফিচার — প্রথম সংস্করণ থেকে Version 5 পর্যন্ত (বিস্তারিত)
+## সব ফিচার — প্রথম সংস্করণ থেকে Version 6 পর্যন্ত (বিস্তারিত)
 
 প্রতিটি ধাপে আগের সব ফিচার থেকে যায়; নিচে কোন সংস্করণে কী যোগ হয়েছে ক্রমানুসারে লেখা।
 
@@ -120,6 +139,24 @@ Prime Bank PLC-এর দৈনিক সাবমিশন ট্র্যা�
 - **লাইভ ৯০ দিনের ডেটায় ফল:** ১৫২৫ সারির মধ্যে ৫৯৪টিতে Appointment ও ২১৫টিতে নতুন ট্রিপের কারণে SLA restart; SLA Breach ৫১১ থেকে ১০২।
 
 ---
+
+### Version 6.0.0 (১০ নভেম্বর) — মাসিক বিল, Appointment-এর নতুন SLA, ২০ কলামের ট্র্যাকার, Done / Due প্রশিক্ষণ
+
+- **মাসিক বিল (নতুন “মাসিক বিল” অংশ):** মাস বেছে নিলে ওই মাসের ১ তারিখ থেকে শেষ তারিখ পর্যন্ত ড্যাশবোর্ডে যা **তৈরি (create)** হয়েছে — নতুন ফাইল (Package), Re-CPV ও Extra ট্রিপ — সবকিছুর বিল হয়; Submit হয়েছে কি না দেখা হয় না। **Card ও Loan আলাদা**, প্রতিটির **Excel + PDF**, ব্যাংকে দেওয়া Invoice-এর একই ফরম্যাটে (সারাংশ পাতা + ক্যাটাগরি অনুযায়ী ফাইলের তালিকা, VAT 5%, কথায় টাকা)। কমান্ড লাইনে: `--bill 2026-09`।
+  - **Rate:** Card Package In 450 / Out 600; Loan Package In 600 / Out 700; In station-এর সব Re-CPV / Extra 140; Out: single document 170, house / office / bank 240, PG 230।
+  - **Penalty:** Extra TAT 1 দিন = 20%, 2 দিন = 30%, 3 বা বেশি = 50%। **Penalty** শিটে Extra TAT থাকা প্রতিটি সারি থাকে; দেরিতে Submit হওয়া **Package ও Bank Statement**-এ Apply = Yes, বাকি সারিতে (আলাদা LOI, extra document, Re-CPV, এখনো Submit হয়নি) Apply = No — কারণসহ। Yes / No বদলালে পুরো Excel-এর হিসাব সঙ্গে সঙ্গে বদলায়; **“সম্পাদিত Excel থেকে PDF”** বোতামে সেই Excel থেকেই PDF হয়।
+  - **Check শিট:** মাসে তৈরি সারি = Card + Loan + বাদ পড়া; বাদ পড়া প্রতিটি সারি কারণসহ (Canceled ট্রিপ যা কেউ শুরু করেনি, Withdrawn, test ফাইল)। কোনো ফাইল বা ট্রিপ চুপচাপ বাদ যায় না।
+- **বিলের সারি ম্যানুয়াল বিলের নিয়মে:** Out station-এর Package-এর LOI / document Dhaka বা Chattogram city-তে হলে আলাদা সারি (In rate); Guarantor-এর House + Office একসাথে = PG, Re-CPV-র Guarantor House / Office = Single House / Office; **Canceled** ট্রিপ ভেরিফায়ার শুরু করে থাকলে বিল হয়, না করলে হয় না; **Inactive** ট্রিপের বিল হয়।
+- **Appointment-এর SLA:** Appointment-এর *scheduled date*-এর **পরের কার্যদিবস বিকেল ৫:৫৯** পর্যন্ত (In ও Out একই); একাধিক Appointment থাকলে শেষটি।
+- **দৈনিক ট্র্যাকার — নতুন ২০ কলাম:** SL, File No, File Type, Applicant Name, Concerns Name, Receive Date-Time, Submission Date-Time, Report Status, Report Summary (Done / Due), Last Update Date, Re-CPV / Extra Trip, Bill Slab, Area, SLA Start / Restart Date, SLA, TAT, Extra TAT, Appointment History, Last Update Details, Before / After 3 PM। তারিখের ঘরগুলো আসল তারিখ — Excel-এ filter চলে। (Incomplete শিটে শেষে Pending Reason।)
+- **Done / Due — ম্যানুয়াল ট্র্যাকারের সঙ্গে মিলিয়ে শেখানো:**
+  - সামনের তারিখে Appointment থাকলে শুধু “Appointment on …” — নেতিবাচক কিছু নয়।
+  - **Inactive / Canceled** ট্রিপে ভেরিফায়ার সমস্যা লিখে থাকলে Due থাকে (হারিয়ে যায় না); প্রতিটি Bank Statement আলাদা (BS1, BS2 …)।
+  - “signature could not be collected”, “can not take applicant sign”, “Applicant wasn't present at office” → Sign Due।
+  - Office-এর লেখার ভেতরে **PEC** বা **Chamber**-এর সমস্যা → আলাদা PEC / Chamber Due (LOI নয়)।
+  - “LOI not signed in front of me” + signatory-র নাম = LOI signed; system generated LOI (“no sign required”) = Due নয়।
+  - লেখায় ভালো কিছুই না থাকলে বা নিয়মে না মিললে **Due + “Check”** (হলুদ) — চুপচাপ Done হয় না।
+- ১৭৭টি স্বয়ংক্রিয় টেস্ট + আসল অ্যাপ-উইন্ডোর GUI smoke test (Windows, macOS, Linux)।
 
 ### Version 5.0.0 (৮ নভেম্বর) — Done / Due শুধু Remarks থেকে, File History-র সংশোধন ও File No + Applicant Name Excel
 

@@ -110,7 +110,7 @@ NOTE_RULES = [
     _r(r"signator\w*[^.\n]{0,50}(?:out\s+of\s+(?:the\s+)?country|abroad|not\s+available|not\s+present|on\s+leave)",
        "Signatory not available", "loi"),
     _r(r"\bloi\b[^\n]{0,90}?\bno\s+sign(?:ature)?\s+(?:is\s+)?(?:required|needed)|\bloi\b[^\n]{0,60}?sign(?:ature)?\s+(?:is\s+)?not\s+(?:required|needed)",
-       "No sign required (system generated)", "loi"),
+       "System generated - no sign required", "loi"),
     _r(r"loi\s+not\s+(?:sign\w*|verif\w*)|loi[^.\n]{0,40}(?:could\s+not|couldn'?t|unable)[^.\n]{0,20}verif|"
        r"\bloi\b[^.\n]{0,40}(?:cannot|can\s*not|can't|will\s+not)\s+(?:be\s+)?(?:v[ae]rif\w*)|could\s*n[o']?t\s+get[^.\n]{0,25}loi\s+verif\w*|"
        r"will\s+not\s+do\s+(?:the\s+)?loi\s+verif\w*|no\s+senior\s+authority[^.\n]{0,30}loi|"
@@ -174,7 +174,7 @@ NOTE_RULES = [
        r"verification\s+(?:could\s+not|cannot|can'?t)", "Could not verify"),
 ]
 # good-news notes: written in Done only, never repeated in Due
-INFO_NOTES = {"New address found & verified", "Signed from branch", "Signed from head office"}
+INFO_NOTES = {"System generated - no sign required", "New address found & verified", "Signed from branch", "Signed from head office"}
 
 _NEG_FALLBACK = re.compile(
     r"\b(?:not\s+(?:verif\w*|found|available|possible|allowed|signed|provided|match\w*|willing|interested|cooperat\w*|present|"
@@ -518,6 +518,8 @@ _CHAMBER_OK = re.compile(r"chamber\s+verif\w*\s+(?:is\s+|was\s+)?(?:done|complet
 # a house / office remark that says nothing good at all ("The guarantor is currently away for training ...")
 _ANY_OK = re.compile(r"\bok\b|verif\w*|confirm\w*|\bsign\w*|\bfound\b|\bpresent\b|\blives?\b|\bresid\w*|\bworks?\b|\bsits?\b|correct|"
                      r"proper\s+address|new\s+address|complet\w*|\bdone\b", _I)
+# "Applicant wasn't present at office because his duty starts at 8 pm, LOI signatory signed ..." - nobody took the applicant's signature
+_ABSENT = re.compile(r"\bapplicant\s+(?:was\s*n[o'’]?t|is\s*n[o'’]?t|not)\s+present\b", _I)
 _PEC_HEAD = re.compile(r"\bpec\b|experience\s+cert\w*|previous\s+(?:company|employer|office)", _I)
 _PEC_NEG = re.compile(r"unable|not\s+(?:available|possible|verif\w*|found|sign\w*)|\bclosed\b|disagre\w*|refus\w*|does\s*n[o']?t|did\s*n[o']?t|can\s*n[o']?t", _I)
 _INACTIVE_NEG = re.compile(r"\bnot\b|\w+n['’]t\b|\b(?:cannot|cant|dont|doesnt)\b|\bno\s+(?:response|one|body)|unable|disagre|refus|mismatch|missing|wrong|switch\w*\s+off|"
@@ -526,6 +528,8 @@ _INACTIVE_NEG = re.compile(r"\bnot\b|\w+n['’]t\b|\b(?:cannot|cant|dont|doesnt)
 
 def _inactive_fine(outcome: str) -> bool:
     """The remark of an Inactive trip reads as a finished visit ("Information ok ...", "LOI verification complete")."""
+    if _SIGN_NEG.search(outcome):                 # "Information ok ... so it's not possible to take guarantor sign"
+        return False
     if _POSITIVE.search(outcome) and not _INFO_NOT_OK.search(outcome):
         return True
     sl = _sentences(outcome)
@@ -616,7 +620,7 @@ def analyze(views: list[TripView], submitted: bool, bank_label: str = "BS") -> S
             sign_text = " . ".join(x for x in _sentences(outcome) if not re.search(r"\bloi\b", x, _I))
             if primary.label != "Sign" and (_SIGN_POS.search(sign_text) or _SIGN_POS2.search(sign_text)) and not _SIGN_NEG.search(sign_text):
                 extra.append(Item(who, "Sign"))
-            elif primary.label != "Sign" and _SIGN_NEG.search(sign_text):
+            elif primary.label != "Sign" and (_SIGN_NEG.search(sign_text) or code == "OFFICE" and _ABSENT.search(outcome)):
                 miss = Item(who, "Sign", note="Signature missing", pending=True, rank=1)
                 miss.uncertain = True
                 miss.reasons.append(f"ট্রিপ {t.get('id')}: সাইন নেওয়া হয়নি বলে মনে হয়েছে")
@@ -679,7 +683,8 @@ def analyze(views: list[TripView], submitted: bool, bank_label: str = "BS") -> S
                 if status in M1_STATUSES and (status != 6 or wrote) and not (status == 6 and _inactive_fine(outcome)) \
                         and (problem_notes or unruled or M1_ANY_TEXT and outcome.strip() not in ("", "-")):
                     primary.rank = 1
-                    primary.note = "; ".join(problem_notes[:2]) if problem_notes else _reason_of(outcome)
+                    primary.note = ("; ".join(problem_notes[:2]) if problem_notes
+                                    else "Signature could not be taken" if _SIGN_NEG.search(outcome) else _reason_of(outcome))
                     primary.pending = True
                     primary.uncertain = True
                     primary.reasons.append(f"ট্রিপ {t.get('id')} {_STATUS_TEXT[status]} কিন্তু রিমার্কে সমস্যা লেখা (Due-তে দেখানো)")
