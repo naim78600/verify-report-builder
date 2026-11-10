@@ -240,10 +240,16 @@ def build_month_bill(rows: list, year: int, month: int, bill_date: date | None =
     for ft in ("Card", "Loan"):
         mb.bills[ft] = Bill(year=year, month=month, file_type=ft, bill_date=bill_date or date.today())
     in_month = [r for r in rows if r.receive_dt and lo <= r.receive_dt.date() <= hi]
+    # A file that was created twice (the first copy Canceled, the same file number created again) is ONE package: the living copy
+    # is billed, the Canceled copy is left out and listed - never two packages for one file number (live September 2026: 6 files).
+    living_pkg = {r.file_no.strip().upper() for r in rows if r.kind == "Package" and not r.canceled}
     for r in sorted(in_month, key=lambda r: (r.receive_dt, r.file_no, r.trips[0][1]["id"] or 0 if r.trips else 0)):
         what = f"{r.slab} / {r.category} (trip {_trip_ids(r)})"
         if is_test_file(r.file_no):
             mb.excluded.append((r.file_no, what, "test file"))
+            continue
+        if r.kind == "Package" and r.canceled and r.file_no.strip().upper() in living_pkg:
+            mb.excluded.append((r.file_no, what, "Canceled copy of the file - the same file number was created again and that one is billed"))
             continue
         if not getattr(r, "billable", True):
             mb.excluded.append((r.file_no, what, f"{_trip_status(r)} - never started (not billed)"))

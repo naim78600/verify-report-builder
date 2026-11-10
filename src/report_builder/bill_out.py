@@ -346,21 +346,22 @@ def write_bill_pdf(bill: Bill, path: Path) -> Path:
                 from reportlab.lib.utils import ImageReader
                 img = ImageReader(str(logo))
                 iw, ih = img.getSize()
-                h = 17 * mm
+                h = 27 * mm                                # the logo as large as on the manual invoice
                 w = h * iw / ih
                 cv.drawImage(img, (A4[0] - w) / 2, top - h, w, h, mask="auto")
         except Exception:                                  # noqa: BLE001 - the bill is still right without the logo
             pass
         cv.setFont("Vera-Bold", 8.5)
-        cv.drawCentredString(A4[0] / 2, top - 22 * mm, ADDRESS[0])
-        cv.drawCentredString(A4[0] / 2, top - 26 * mm, ADDRESS[1])
-        cv.setLineWidth(0.8)
-        cv.line(15 * mm, top - 29 * mm, A4[0] - 15 * mm, top - 29 * mm)
+        cv.drawCentredString(A4[0] / 2, top - 31 * mm, ADDRESS[0])
+        cv.drawCentredString(A4[0] / 2, top - 35 * mm, ADDRESS[1])
+        cv.setLineWidth(0.5)
+        cv.setStrokeColorRGB(0.55, 0.55, 0.55)
+        cv.line(15 * mm, top - 39 * mm, A4[0] - 15 * mm, top - 39 * mm)
         cv.setFont("Vera", 7.5)
         cv.drawCentredString(A4[0] / 2, 8 * mm, f"Page {doc.page}")
         cv.restoreState()
 
-    doc = SimpleDocTemplate(str(path), pagesize=A4, leftMargin=15 * mm, rightMargin=15 * mm, topMargin=45 * mm, bottomMargin=14 * mm,
+    doc = SimpleDocTemplate(str(path), pagesize=A4, leftMargin=15 * mm, rightMargin=15 * mm, topMargin=54 * mm, bottomMargin=14 * mm,
                             title=bill.title, author="Barikoi Technologies Limited")
     grid = [("GRID", (0, 0), (-1, -1), 0.7, colors.black), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]
@@ -386,8 +387,18 @@ def write_bill_pdf(bill: Bill, path: Path) -> Path:
     style.append(("SPAN", (0, n), (-1, n)))
     data.append([P(h, cenb) for h in ("Station", "Verification Type", "Qty", "Penalty %", "Deduction Amount(BDT)")])
     pl = bill.penalty_lines()
+    first = len(data)
     for station, title, pct, qty, dedn in pl:
         data.append([P(_station(station)), P(title), P(qty), P(f"{pct}%"), P(_num(dedn))])
+    for col, keyf in ((0, lambda x: x[0]), (1, lambda x: (x[0], x[1]))):      # one Station / Verification Type cell per group, as on the manual invoice
+        i = 0
+        while i < len(pl):
+            j = i
+            while j + 1 < len(pl) and keyf(pl[j + 1]) == keyf(pl[i]):
+                j += 1
+            if j > i:
+                style.append(("SPAN", (col, first + i), (col, first + j)))
+            i = j + 1
     if not pl:
         data.append([P("No penalty."), "", "", "", ""])
         style.append(("SPAN", (0, len(data) - 1), (-1, len(data) - 1)))
@@ -396,6 +407,8 @@ def write_bill_pdf(bill: Bill, path: Path) -> Path:
                           ("Grand-Total", bill.grand_total, True)):
         data.append([P(label, cenb if b else cen), "", "", "", P(_num(val), cenb)])
         style.append(("SPAN", (0, len(data) - 1), (3, len(data) - 1)))
+    if len(data) > 22:                                     # many penalty lines: the whole summary still has to be ONE page
+        style += [("TOPPADDING", (0, 0), (-1, -1), 2.2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.2)]
     t = Table(data, colWidths=cw)
     t.setStyle(TableStyle(style))
     story += [t, Spacer(1, 3), Paragraph(f"<b>In words</b>: {escape(in_words(bill.grand_total))}", base)]
@@ -404,7 +417,7 @@ def write_bill_pdf(bill: Bill, path: Path) -> Path:
 
     # detail lists ---------------------------------------------------------------------------------
     dw = [W * 0.05, W * 0.225, W * 0.25, W * 0.115, W * 0.115, W * 0.055, W * 0.085, W * 0.105]
-    small = ParagraphStyle("d", parent=cen, fontSize=7.4, leading=9.2)           # a 22-character file number stays on one line
+    small = ParagraphStyle("d", parent=cen, fontSize=7.8, leading=9.6)           # a 22-character file number stays on one line
     dhead = ParagraphStyle("dh", parent=cenb, fontSize=7.8, leading=9.6)
     period = f"{month_name(bill.month)} {bill.year}"
     order = [k for k, *_r in SECTIONS[bill.file_type]]
@@ -418,7 +431,7 @@ def write_bill_pdf(bill: Bill, path: Path) -> Path:
                   P(_sec_title(bill, key, detail=True), cenb), Spacer(1, 3)]
         data = [[P(h, dhead) for h in ("SL.", "Ref. No.", "Applicants Name", "Rec. Date", "Sub. Date", "TAT", "Amount", "Category")]]
         style = list(grid) + [("LEFTPADDING", (0, 0), (-1, -1), 2), ("RIGHTPADDING", (0, 0), (-1, -1), 2),
-                              ("TOPPADDING", (0, 0), (-1, -1), 3.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 3.5)]
+                              ("TOPPADDING", (0, 0), (-1, -1), 6.6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6.6)]       # 25 rows a page, as on the manual invoice
         for n, it in enumerate(rows, 1):
             data.append([P(n, small), P(it.file_no, small), P(it.applicant, small), P(f"{it.rec:%d/%m/%Y}" if it.rec else "", small),
                          P(f"{it.sub:%d/%m/%Y}" if it.sub else "", small), P("" if it.tat is None else it.tat, small), P(it.amount, small),

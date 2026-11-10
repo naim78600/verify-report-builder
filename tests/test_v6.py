@@ -267,3 +267,17 @@ def test_applicant_absent_from_the_office_means_the_signature_is_still_due():
     from report_builder.summary import TripView, analyze
     t = _rt(1, "GUARANTOR_HOUSE", "Information ok. Grantor staying dhaka now, so it's not possible to take grantor sign.", status=7)
     assert analyze([TripView(t, "GUARANTOR", "PG")], True, "BS").due == "PG House (Signature could not be taken)"
+
+
+def test_a_file_created_twice_is_one_package_on_the_bill():
+    """Live September 2026: 6 file numbers had a Canceled copy (started, then created again) - the bill had two packages for them."""
+    from report_builder.monthly_bill import build_month_bill
+    c = D(2026, 9, 1, 10, 0)
+    dead = _file([("APPLICANT", [_t(1, "HOUSE", c, status=6), _t(2, "OFFICE", c, status=6)])])     # Canceled, but had been started
+    dead["id"] = 8
+    live = _file([("APPLICANT", [_t(3, "HOUSE", c), _t(4, "OFFICE", c)])])
+    mb = build_month_bill(_rows(dead) + _rows(live), 2026, 9, date(2026, 10, 1))
+    assert [i.trip_ids for i in mb.bills["Loan"].items] == ["3, 4"]
+    assert len(mb.excluded) == 1 and "created again" in mb.excluded[0][2]
+    mb = build_month_bill(_rows(dead), 2026, 9, date(2026, 10, 1))             # stopped by the bank, never re-created: billed (v6 rule)
+    assert [i.trip_ids for i in mb.bills["Loan"].items] == ["1, 2"]
