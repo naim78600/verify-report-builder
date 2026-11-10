@@ -22,6 +22,8 @@ from .gui_mail import MailDialog, SentLogDialog, SignatureDialog
 from .file_history import HistoryConfig, collect_history, parse_ids_file, parse_ids_text
 from .history_excel import write_history_outputs, write_history_template
 from .reports import write_prime_outputs, write_recpv_workbook
+from .monthly_bill import build_month_bill, month_name, month_window
+from .bill_out import pdf_from_excel, write_month_bill
 from .ui_kit import (Button, Card, DateField, Entry, Fonts, P, Progress, Segmented, Stepper, Tile, parse_date,
                      pick_font_family)
 
@@ -204,6 +206,7 @@ class App(tk.Tk):
         for val, title, help_ in (
                 ("tracker", "দৈনিক সাবমিশন ট্র্যাকার", "Complete + Incomplete রিপোর্ট, ইমেইলের মতো সাজানো (3pm / 7pm)"),
                 ("range", "সময়সীমার সব ফাইলের রিপোর্ট", "বাছাই করা সময়ের সব সারি: Submitted ও Incomplete"),
+                ("bill", "মাসিক বিল (Card + Loan)", "মাস বাছুন: ওই মাসে তৈরি হওয়া সব ফাইল / Re-CPV / extra ট্রিপের বিল — Excel + PDF"),
                 ("recpv", "Re-CPV সহ বিস্তারিত এক্সেল", "প্রতি ফাইলের নিচে Re-CPV/Extra + Calculation শিট"),
                 ("v1", "সাধারণ বিস্তারিত এক্সেল", "ফাইল ও ট্রিপের পুরো রিপোর্ট (আগের ভার্সনের মতো)"),
                 ("history", "ফাইল হিস্টরি", "ফাইল নম্বরের Excel/CSV দিন: প্রতিটি ফাইলের শুরু থেকে শেষ পর্যন্ত পুরো ইতিহাস")):
@@ -250,6 +253,27 @@ class App(tk.Tk):
                                  fg=P["text"], anchor="w", highlightthickness=0, selectcolor="white", command=self._sync_ui)
             cbx.pack(fill="x", anchor="w")
             self.opt_boxes.append((key, cbx))
+
+        # ---- 2 (monthly bill only): month ---------------------------------------------------
+        cbill = Card(colA, f, "বিলের মাস", "২")
+        self.c_bill = cbill
+        b = cbill.body
+        mrow = tk.Frame(b, bg=P["card"])
+        mrow.pack(fill="x")
+        prev = (today.replace(day=1) - timedelta(days=1))
+        tk.Label(mrow, text="মাস", bg=P["card"], fg=P["text"], font=f.body).pack(side="left")
+        self.bill_month = tk.StringVar(value=month_name(prev.month))
+        ttk.Combobox(mrow, textvariable=self.bill_month, values=[month_name(m) for m in range(1, 13)], state="readonly", width=12,
+                     font=f.body).pack(side="left", padx=(6, 12))
+        tk.Label(mrow, text="বছর", bg=P["card"], fg=P["text"], font=f.body).pack(side="left")
+        self.bill_year = tk.StringVar(value=str(prev.year))
+        ttk.Combobox(mrow, textvariable=self.bill_year, values=[str(y) for y in range(today.year - 2, today.year + 1)], state="readonly",
+                     width=6, font=f.body).pack(side="left", padx=6)
+        tk.Label(b, text="ওই মাসের ১ তারিখ থেকে শেষ তারিখ পর্যন্ত ড্যাশবোর্ডে যা তৈরি (create) হয়েছে—নতুন ফাইল, Re-CPV, extra ট্রিপ—সবকিছুর বিল। "
+                         "Submit হয়েছে কি না দেখা হয় না। Card ও Loan-এর আলাদা Excel + PDF তৈরি হয়; প্রতিটি Excel-এ ‘Penalty’ শিটে "
+                         "Apply = No করলে সেই জরিমানা বাদ যায়, আর ‘Check’ শিটে কোন সারি কেন বাদ পড়েছে তা লেখা থাকে।",
+                 bg=P["card"], fg=P["mute"], font=f.tiny, anchor="w", justify="left", wraplength=380).pack(fill="x", pady=(8, 4))
+        Button(b, "📄  সম্পাদিত বিল Excel থেকে PDF বানান", self._bill_pdf_from_excel, kind="secondary", font=f.small, padx=10, pady=6).pack(anchor="w")
 
         # ---- 2/4 (file history only) -------------------------------------------------------
         ch = Card(colA, f, "ফাইল নম্বর দিন", "২")
@@ -323,14 +347,16 @@ class App(tk.Tk):
     def _sync_ui(self):
         hist = self.rtype.get() == "history"
         rt = self.rtype.get()
-        for w in (self.c2, self.c_trk, self.c_hist, self.c4):
+        for w in (self.c2, self.c_trk, self.c_hist, self.c4, self.c_bill):
             w.pack_forget()
         if hist:
             self.c_hist.pack(fill="x")
+        elif rt == "bill":
+            self.c_bill.pack(fill="x")
         else:
             (self.c_trk if rt == "tracker" else self.c2).pack(fill="x")
             self.c4.pack(fill="x", pady=(10, 0))
-        self.go_btn.config(text="ইতিহাস তৈরি করুন" if hist else "রিপোর্ট তৈরি করুন")
+        self.go_btn.config(text="ইতিহাস তৈরি করুন" if hist else ("বিল তৈরি করুন" if rt == "bill" else "রিপোর্ট তৈরি করুন"))
         rng = self.period.get() == "range"
         self.days_entry.enable(not rng)
         for ch in self.chips:
@@ -369,7 +395,7 @@ class App(tk.Tk):
             messagebox.showwarning("তথ্য ঠিক নেই", "ইমেইল ও পাসওয়ার্ড দিন।")
             return None
         days, d_from, d_till = None, None, None
-        if self.rtype.get() in ("history", "tracker"):
+        if self.rtype.get() in ("history", "tracker", "bill"):
             days = int(self.settings.get("days", config.DEFAULT_DAYS))
         elif self.period.get() == "range":
             d_from, d_till = self.d_from.get(), self.d_till.get()
@@ -425,6 +451,18 @@ class App(tk.Tk):
             self.worker = threading.Thread(target=self._work_history, args=(cfg,), daemon=True)
             self.worker.start()
             return
+        if rt == "bill":
+            year, month = int(self.bill_year.get()), [month_name(m) for m in range(1, 13)].index(self.bill_month.get()) + 1
+            lo, hi = month_window(year, month)
+            if lo > date.today():
+                messagebox.showwarning("মাস ঠিক নেই", "এই মাস এখনো শুরু হয়নি।")
+                return
+            cfg = PrimeConfig(web=inp["web"], api=inp["api"], server_label=self.server.get(), email=inp["email"], password=inp["pw"],
+                              days=inp["days"], mode="bill", date_from=lo, date_till=hi, workers=workers, org_name=org)
+            self._busy()
+            self.worker = threading.Thread(target=self._work_bill, args=(cfg, year, month), daemon=True)
+            self.worker.start()
+            return
         if rt in ("tracker", "range", "recpv"):
             mode = "tracker" if rt == "tracker" else "range"
             rdate = self.rdate.get() or date.today() if rt == "tracker" else (inp["till"] or date.today())
@@ -474,6 +512,35 @@ class App(tk.Tk):
             self.q.put(("error", str(exc)))
         except Exception as exc:                      # unexpected
             self.q.put(("error", f"অপ্রত্যাশিত সমস্যা: {type(exc).__name__}: {exc}"))
+
+    def _work_bill(self, cfg: PrimeConfig, year: int, month: int):
+        try:
+            d = collect_prime(cfg, lambda *a: self.q.put(("progress", *a)), self.cancel)
+            self.q.put(("progress", "write", 0, 1, "বিলের Excel / PDF তৈরি হচ্ছে…"))
+            mb = build_month_bill(d.all_rows, year, month, date.today(), d.files)
+            paths = write_month_bill(mb, self.out_dir, excel=True, pdf=True)
+            self.q.put(("bill_done", paths, mb, d))
+        except Cancelled:
+            self.q.put(("cancelled",))
+        except (AuthError, ApiError, PermissionError) as exc:
+            self.q.put(("error", str(exc)))
+        except Exception as exc:                      # unexpected
+            self.q.put(("error", f"অপ্রত্যাশিত সমস্যা: {type(exc).__name__}: {exc}"))
+
+    def _bill_pdf_from_excel(self):
+        path = filedialog.askopenfilename(title="বিলের Excel বাছুন", initialdir=str(self.out_dir), filetypes=[("Excel", "*.xlsx")])
+        if not path:
+            return
+        try:
+            out = pdf_from_excel(Path(path))
+        except PermissionError:
+            messagebox.showerror("সমস্যা হয়েছে", "PDF ফাইলটি অন্য কোথাও খোলা আছে। বন্ধ করে আবার চেষ্টা করুন।")
+            return
+        except Exception as exc:                      # noqa: BLE001
+            messagebox.showerror("সমস্যা হয়েছে", f"এই Excel থেকে PDF বানানো যায়নি।\n{exc}")
+            return
+        self.status.set(f"PDF তৈরি হয়েছে: {out.name}  (Penalty শিটের Apply = Yes / No অনুযায়ী)")
+        self._show_results([out], False)
 
     def _work_history(self, cfg: HistoryConfig):
         try:
@@ -629,6 +696,23 @@ class App(tk.Tk):
                     self._show_results(paths, d.mode == "tracker" and any(p.suffix.lower() == ".xlsx" for p in paths), d)
                     if open_mail:
                         self.after(300, self._open_mail)
+                elif kind == "bill_done":
+                    _, paths, mb, d = msg
+                    self.out_files = paths
+                    self._finish_ui()
+                    self.bar.set(1)
+                    self.stepper.set(len(STAGES))
+                    card, loan = mb.bills["Card"], mb.bills["Loan"]
+                    txt = (f"সম্পন্ন!  {month_name(mb.month)} {mb.year} এর বিল  —  Card {len(card.items)} সারি · {card.grand_total:,.2f} টাকা   |   "
+                           f"Loan {len(loan.items)} সারি · {loan.grand_total:,.2f} টাকা (জরিমানা সব Apply ধরে, VAT সহ)")
+                    if mb.excluded:
+                        txt += f"\nবিলের বাইরে {len(mb.excluded)} টি সারি (কারণসহ ‘Check’ শিটে)।"
+                    if mb.review:
+                        txt += f"  একবার দেখে নিন: {len(mb.review)} টি সারি (‘Check’ শিটে)।"
+                    if d.failed:
+                        txt += f"\n⚠ {len(d.failed)} টি ফাইল পড়া যায়নি — বিল অসম্পূর্ণ হতে পারে, আবার চালান।"
+                    self.status.set(txt)
+                    self._show_results(paths, False)
                 elif kind == "hist_done":
                     _, paths, h = msg
                     self.out_files = paths
