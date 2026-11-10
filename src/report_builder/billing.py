@@ -42,17 +42,48 @@ SLAB_DOC = "Single Document(Salary Certificate/Pay Slip/LOI/Signature) Verificat
 SLAB_PG = "PG Verification(House+Office/Business+Signature)"
 
 
-def slab_for(trip: dict, role: str) -> str:
+def is_guarantor_trip(trip: dict, role: str) -> bool:
+    return role == "GUARANTOR" or trip.get("type_code", "") in ("GUARANTOR_HOUSE", "GUARANTOR_OFFICE")
+
+
+def slab_for(trip: dict, role: str, recpv: bool = False) -> str:
+    """Bill slab of ONE single trip (v6 = the way the manual bill has always been written).
+
+    Guarantor: a house or an office visit that is a Re-CPV of an earlier visit is a "Single House" / "Single Office"; a NEW
+    guarantor visit is "PG Verification"; a guarantor signature / document alone is a "Single Document".  (Two or more guarantor
+    visits created together are ONE "PG Verification" row - see build_rows.)"""
     code = trip.get("type_code", "")
-    if role == "GUARANTOR" or code in ("GUARANTOR_HOUSE", "GUARANTOR_OFFICE"):
-        return SLAB_PG
-    if code == "HOUSE":
-        return "Single House"
-    if code == "OFFICE":
-        return "Single Office"
+    pg = is_guarantor_trip(trip, role)
+    if code in ("HOUSE", "GUARANTOR_HOUSE"):
+        return SLAB_PG if (pg and not recpv) else "Single House"
+    if code in ("OFFICE", "GUARANTOR_OFFICE"):
+        return SLAB_PG if (pg and not recpv) else "Single Office"
     if code == "BANK":
         return "BS"
     return SLAB_DOC
+
+
+def is_doc_trip(trip: dict, role: str) -> bool:
+    """An applicant-side document trip (LOI / salary certificate / pay slip / rental / quotation ...)."""
+    return not is_guarantor_trip(trip, role) and trip.get("type_code", "") not in ("HOUSE", "OFFICE", "BANK")
+
+
+CANCELED, WITHDRAWN = 6, 8
+
+
+def trip_billable(trip: dict) -> bool:
+    """v6 billing rule: everything that was CREATED is billed (also an Inactive trip), except a Withdrawn trip and a Canceled
+    trip that nobody ever started (created by mistake / a duplicate)."""
+    st = trip.get("status_code")
+    if st == WITHDRAWN:
+        return False
+    if st == CANCELED:
+        return bool(trip.get("start_time"))
+    return True
+
+
+def _dead_slot(trip: dict) -> bool:
+    return trip.get("status_code") in (CANCELED, WITHDRAWN)
 
 
 @dataclass
@@ -124,6 +155,8 @@ class BillRow:
     sla_trip: date | None = None                       # the day a new (Re-CPV) trip was created that restarted it (None = no restart)
     appt_late: bool = False                            # appointment SLA: submitted after 5:59 PM (counts one more day)
     applicant: str = ""                                # name of the file's applicant (tracker column "Applicant Name")
+    split: bool = False                                # v6: an In-station document taken out of an Out package (own row, In rate)
+    billable: bool = True                              # v6 monthly bill: False = Withdrawn / Canceled-never-started
     folded_rows: list = field(default_factory=list)    # the BillRows shown inside this one (their appointments / new trips count for the SLA too)
     file_rows: list = field(default_factory=list)      # every other bill row of the same file (a new trip of the file restarts the SLA of all)
     bill_note: str = ""                                # "Out bill" / "In bill" (single-trip rows)
@@ -360,6 +393,32 @@ def fill_history(rows: list[BillRow]) -> None:
 
 
 # ------------------------------------------------------------------------------ building
+def _pg_groups(cts: list, kind: str | None, recpv_by_trip: dict) -> list:
+    """One group per bill row.  Guarantor house / office visits of the SAME guarantor created on the same day are one
+    "PG Verification" row (v6, as in the manual bill); every other trip is a row of its own.
+    kind=None -> "ReCpv" when a trip is a Re-CPV, else "Extra"."""
+    out: list = []
+    used: set = set()
+    for i, (c, t) in enumerate(cts):
+        if i in used:
+            continue
+        grp = [(c, t)]
+        if t.get("type_code") in ("GUARANTOR_HOUSE", "GUARANTOR_OFFICE") or (c["role"].upper() == "GUARANTOR" and t.get("type_code") in ("HOUSE", "OFFICE")):
+            day = t["created_at"].date() if t.get("created_at") else None
+            for j in range(i + 1, len(cts)):
+                c2, t2 = cts[j]
+                if j in used or c2["id"] != c["id"] or _dead_slot(t2) != _dead_slot(t):
+                    continue
+                if t2.get("type_code") not in ("GUARANTOR_HOUSE", "GUARANTOR_OFFICE", "HOUSE", "OFFICE"):
+                    continue
+                if (t2["created_at"].date() if t2.get("created_at") else None) == day:
+                    grp.append((c2, t2))
+                    used.add(j)
+        k = kind or ("ReCpv" if any((x["id"] in recpv_by_trip or x.get("re_cpv")) for _c, x in grp) else "Extra")
+        out.append((k, grp))
+    return out
+
+
 def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileLogs | None,
                history_since: datetime) -> list[BillRow]:
     info = concern_info(file)
@@ -381,13 +440,26 @@ def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileL
         else:
             later.append((c, t))
     groups: list[tuple[str, list]] = []
+    split: list = []
     if same_day:
-        groups.append(("Package", same_day[:PACKAGE_MAX]))
-        groups += [("Single", [ct]) for ct in same_day[PACKAGE_MAX:]]      # 6th, 7th, 8th ... = Extra Trip 1, 2, 3 ...
-    for ct in later:
-        t = ct[1]
-        kind = "ReCpv" if (t["id"] in recpv_by_trip or t.get("re_cpv")) else "Extra"
-        groups.append((kind, [ct]))
+        # v6: a Canceled / Withdrawn trip never takes one of the five package places while the file has a living trip
+        # (a batch created twice by mistake must not push the real trips out of the package)
+        alive = [ct for ct in same_day if not _dead_slot(ct[1])]
+        dead = [ct for ct in same_day if _dead_slot(ct[1])]
+        if alive:
+            # v6 (manual bill rule): the package is OUT station but a document (LOI ...) has to be verified IN Dhaka / Chattogram
+            # city -> that document is billed on its own row at the In rate, the package stays an Out package
+            # (the applicant's own house / office decide: every one of them is Out)
+            core = [ct for ct in alive if ct[1].get("type_code") in ("HOUSE", "OFFICE") and not is_guarantor_trip(ct[1], ct[0]["role"].upper())]
+            if core and all(geo.trip_area(ct[1])[0] == "Out" for ct in core):
+                split = [ct for ct in alive if is_doc_trip(ct[1], ct[0]["role"].upper()) and geo.trip_area(ct[1])[0] == "In"]
+                alive = [ct for ct in alive if not any(ct is x for x in split)]
+            groups.append(("Package", alive[:PACKAGE_MAX] + dead))
+            groups += _pg_groups(alive[PACKAGE_MAX:], "Single", recpv_by_trip)   # 6th, 7th, 8th ... = Extra Trip 1, 2, 3 ...
+            groups += [("Split", [ct]) for ct in split]
+        else:
+            groups.append(("Package", same_day))
+    groups += _pg_groups(later, None, recpv_by_trip)
 
     rows: list[BillRow] = []
     ftype = file_type_of(file["file_no"], file.get("type", ""))
@@ -397,7 +469,11 @@ def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileL
     single_no = 0
     labels = {t["id"]: _trip_label(t) for _c, t in flat}
     for kind, trips in groups:
+        is_split = kind == "Split"
+        if is_split:
+            kind = "Single"                                         # a bill of its own, created with the file (never folded away)
         r = BillRow(file_id=file["id"], file_no=file["file_no"], file_type=ftype, kind=kind, trips=trips)
+        r.split = is_split
         r.applicant = applicant
         t0 = trips[0][1]
         if kind == "Package":
@@ -413,8 +489,13 @@ def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileL
                     r.concern_lines.append(f'{ci["no"]}. {ci["label"]}: {c["name"]}')
             r.concern_lines.sort(key=lambda s: int(re.match(r"(\d+)\.", s).group(1)))
         else:
-            r.slab = slab_for(t0, trips[0][0]["role"].upper())
-            if kind == "Single":
+            many = len(trips) > 1                                   # guarantor house + office created together = one PG row
+            r.slab = SLAB_PG if many else slab_for(t0, trips[0][0]["role"].upper(), recpv=(kind == "ReCpv"))
+            if is_split:
+                r.category = "Created - " + (extra_category(t0) if extra_category(t0).startswith("Extra Document") else "Extra Document")
+                r.receive_dt = created or t0.get("created_at")
+                r.info.append("Out package, document verified In station: billed on its own row at the In rate (v6 rule)")
+            elif kind == "Single":
                 single_no += 1
                 r.category = f"Created - Extra Trip {single_no}"
                 r.receive_dt = created or t0.get("created_at")
@@ -423,7 +504,7 @@ def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileL
                 tr = recpv_by_trip.get(t0["id"])
                 r.receive_dt = t0.get("created_at") or (tr["created_at"] if tr else None)
             else:
-                r.category = extra_category(t0)
+                r.category = "Extra Trip" if many else extra_category(t0)
                 r.receive_dt = t0.get("created_at")
             r.concern_lines = concern_lines(file, info, trips)
         r.history_lines = history_for(file["file_no"], file, recpv_by_file, {t["id"] for _c, t in trips}, history_since)
@@ -439,9 +520,11 @@ def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileL
                 r.info.append(f"ড্যাশবোর্ডের Station = {file.get('station')}, কিন্তু ম্যাপ অনুযায়ী {r.area}")
         r.appointments = appointments_for(trips)
         r.last_file, r.last_trips = last_update_for(logs, trips, labels)
-        if any(t.get("status_code") == 6 for _c, t in trips):
+        r.billable = any(trip_billable(t) for _c, t in trips)
+        if all(_dead_slot(t) for _c, t in trips):
             r.canceled = True
-            r.flags["slab"] = "Canceled ট্রিপ আছে (বিলযোগ্য কি না সিদ্ধান্ত বাকি)"
+            r.flags["slab"] = ("Canceled ট্রিপ - শুরু হয়েছিল, তাই বিলযোগ্য (v6 নিয়ম)" if r.billable
+                               else "Canceled / Withdrawn ট্রিপ - শুরুই হয়নি, বিল হবে না (v6 নিয়ম)")
         _assign_submission(r, file, logs, has_followups=total_rows > 1 and any(g[0] in ("ReCpv", "Extra") for g in groups))
         r.partial_events = list(logs.partial) if logs is not None and logs.ok else []
         r.file_status = int(file.get("status_code") or 0)

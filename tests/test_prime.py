@@ -81,7 +81,8 @@ def test_summary_text(data):
     d, _ = data
     f2 = next(r for r in d.complete if r.file_no == "CC-20261101000002")
     assert f2.summary.done.startswith("App House, Office, Sign, LOI")
-    assert "Head office disagree" in f2.summary.done and f2.canceled and "slab" in f2.flags
+    assert "Head office disagree" in f2.summary.done
+    assert not f2.canceled and f2.billable             # v6: a Canceled trip inside a living package changes nothing for the bill
     # problems in Done are repeated in Due with the same wording; good-news notes are not
     assert "Head office disagree" in f2.summary.due and "Signed from branch" not in f2.summary.due
     assert "BS" not in f2.summary.done.split("LOI")[-1] and f2.summary.uncertain    # canceled bank trip is not written, only flagged
@@ -195,8 +196,13 @@ def test_remark_engine_samples():
 def test_bs_label_history_and_extra_trip_names(data):
     d, _ = data
     f6 = [r for r in d.all_rows if r.file_no.startswith("CC--")]
-    assert [r.category for r in f6 if r.kind == "Single"] == ["Created - Extra Trip 1", "Created - Extra Trip 2"]
-    assert any(r.slab == "BS" for r in f6 if r.kind == "Single")
+    # v6: house + office are Out (Savar), the two documents are in Gulshan -> each document is its own In bill; the three bank
+    # statements stay inside the Out package
+    assert [(r.category, r.area, r.split) for r in f6 if r.kind == "Single"] == [
+        ("Created - Extra Document", "In", True), ("Created - Extra Document(LOI)", "In", True)]
+    assert all(r.slab.startswith("Single Document") for r in f6 if r.kind == "Single")
+    pk6 = next(r for r in f6 if r.kind == "Package")
+    assert pk6.area == "Out" and len(pk6.trips) == 5 and pk6.file_history[1].startswith("2. Extra Document - Single Document - In")
     assert "Bank" not in " ".join(" ".join(r.concern_lines) for r in d.all_rows)
     f1 = sorted([r for r in d.all_rows if r.file_no == "PL-20261026000001"], key=lambda r: r.history_pos)
     assert [r.kind for r in f1] == ["Package", "Single", "ReCpv"]
