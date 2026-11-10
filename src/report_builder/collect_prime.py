@@ -362,6 +362,8 @@ def collect_prime(cfg: PrimeConfig, progress: Progress = _noop, cancel: threadin
     d.holidays = holiday_map
     since = datetime.combine(d.w_till, datetime.min.time()) - timedelta(days=HISTORY_DAYS)
     rows: list[BillRow] = []
+    from . import summary as _summary
+    _summary.AS_OF = d.report_date if d.mode == "tracker" else None       # "is the appointment still to come?" is asked for the report day
     tests = [f["file_no"] for f in d.files if is_test_file(f["file_no"])]
     for f in d.files:
         if is_test_file(f["file_no"]):

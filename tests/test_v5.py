@@ -157,7 +157,8 @@ def test_the_reported_trip_reads_the_remarks_not_the_comment():
 
 
 def test_an_instruction_in_the_comment_alone_is_not_a_due_item():
-    assert _dd("", COMMENT) == ("LOI", "0")                                # finished trip, nothing reported = nothing due
+    # v6: a finished trip without one word of remarks is never passed silently - it says "Check" (and still not the comment's words)
+    assert _dd("", COMMENT) == ("LOI (Check - no remarks written)", "LOI (Check - no remarks written)")
     done, due = _dd("", COMMENT, submitted=False, status=2)                # not started: the reason is the status, not the comment
     assert due == "LOI (Not visited yet)" and done == "0"
 

@@ -76,10 +76,28 @@ def test_an_unfinished_trip_shows_only_the_newest_appointment_reason():
     s = _sum([t], submitted=False)
     assert "Appointment 11-11-2026" in s.due
     assert "Phone switch off" not in s.due and "Not available" not in s.due
+    from report_builder import summary as S
+    try:
+        S.AS_OF = D(2026, 11, 9).date()                    # v6: the appointment of 11 Nov is still to come -> its date only
+        assert _sum([t], submitted=False).due == "App House (Appointment 11-11-2026 01:30 PM)"
+    finally:
+        S.AS_OF = None
 
 
 def test_an_unfinished_trip_with_a_single_appointment_keeps_its_reason():
+    """v6: while the appointment is still to come only its date is written (nothing negative about the applicant); once the day
+    has passed and the trip is still open, the reason written with it is shown."""
+    from report_builder import summary as S
     t = _trip(1, "HOUSE", "", status=4, appts=[
         _appt(1, D(2026, 11, 3, 14, 47), D(2026, 11, 4, 13, 30), "Applicant disagree to verify")])
-    s = _sum([t], submitted=False)
-    assert "Appointment 04-11-2026" in s.due and "Disagree to verify" in s.due
+    try:
+        S.AS_OF = D(2026, 11, 3).date()                    # the day before the appointment
+        s = _sum([t], submitted=False)
+        assert s.due == "App House (Appointment 04-11-2026 01:30 PM)"
+        S.AS_OF = D(2026, 11, 4).date()                    # the appointment day itself: still nothing negative
+        assert "Disagree" not in _sum([t], submitted=False).due
+        S.AS_OF = D(2026, 11, 5).date()                    # the day is over, the visit did not happen
+        s = _sum([t], submitted=False)
+        assert "Appointment 04-11-2026" in s.due and "Disagree to verify" in s.due
+    finally:
+        S.AS_OF = None
