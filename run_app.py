@@ -84,6 +84,7 @@ def cli(argv):
     p.add_argument("--till", default="")
     p.add_argument("--slot", default="", choices=["", "3pm", "7pm"])
     p.add_argument("--outdir", default=".")
+    p.add_argument("--bill", default="", help="v6: monthly bill for YYYY-MM (Card + Loan, Excel + PDF) into --outdir")
     p.add_argument("--history", default="", help="v2.2: File History - Excel/CSV/TXT of file numbers (full or last digits) into --outdir")
     p.add_argument("--refresh-index", action="store_true", help="File History: read the whole file list again")
     a = p.parse_args(argv)
@@ -102,6 +103,28 @@ def cli(argv):
         for p_ in write_history_outputs(h, Path(a.outdir)):
             print("Saved", p_)
         print(f"found {len(h.results)} file(s), not found {len(h.not_found)} number(s)")
+        return
+    if a.bill:
+        from datetime import date
+        from report_builder.bill_out import write_month_bill
+        from report_builder.collect_prime import PrimeConfig, collect_prime
+        from report_builder.monthly_bill import build_month_bill, month_window
+        try:
+            year, month = (int(x) for x in a.bill.split("-"))
+            lo, hi = month_window(year, month)
+        except ValueError:
+            raise SystemExit("--bill needs a month like 2026-09")
+        pc = PrimeConfig(web=cfg.web, api=cfg.api, server_label=cfg.server_label, email=a.email, password=pw, days=a.days,
+                         org_name=a.org, workers=a.workers, mode="bill", date_from=lo, date_till=hi)
+        d = collect_prime(pc, lambda s, n, t, m: print(m, flush=True), threading.Event())
+        mb = build_month_bill(d.all_rows, year, month, date.today(), d.files)
+        for p_ in write_month_bill(mb, Path(a.outdir), excel=True, pdf=True):
+            print("Saved", p_)
+        for ft, b_ in mb.bills.items():
+            print(f"{ft}: {len(b_.items)} rows, subtotal {b_.subtotal}, penalty {b_.deduction}, grand total {b_.grand_total}")
+        st = mb.stats
+        print(f"created in the month: {st['rows_in_month']} bill rows = {st['billed']} billed + {st['excluded']} left out"
+              f" ({len(mb.review)} to look at - see the Check sheet)")
         return
     if a.prime:
         from datetime import date, datetime, timedelta
