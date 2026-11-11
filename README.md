@@ -1,6 +1,6 @@
-# Verify Report Builder — Version 6 (ভেরিফাই রিপোর্ট বিল্ডার)
+# Verify Report Builder — Version 7 (ভেরিফাই রিপোর্ট বিল্ডার)
 
-**Version 6.0.0** · Prime Bank PLC · Barikoi Technologies Limited
+**Version 7.0.0** · Prime Bank PLC · Barikoi Technologies Limited
 
 Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্যার। Verify ড্যাশবোর্ড থেকে Prime Bank PLC-এর ফাইল সংগ্রহ করে **দৈনিক সাবমিশন ট্র্যাকার** (Complete + Incomplete, Excel + PDF) বানায় এবং **সরাসরি ব্যাংককে ইমেইল** পাঠায়।
 **Verify থেকে শুধু তথ্য পড়ে (GET); কোনো তথ্য বদলায় না।** লগইন পাসওয়ার্ড ও ইমেইলের App Password কোথাও সংরক্ষণ হয় না।
@@ -27,7 +27,7 @@ Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্�
 | Mac (Apple Silicon M1–M4) | `VerifyReportBuilder-Mac-AppleSilicon.dmg` | খুলে অ্যাপটি **Applications**-এ টেনে আনুন |
 | Mac (Intel) | `VerifyReportBuilder-Mac-Intel.dmg` | একই |
 
-ইনস্টলার না চাইলে `.zip` (portable) ফাইলও আছে। রিপোজিটরি **প্রাইভেট** — ডাউনলোডের জন্য GitHub-এ সাইন-ইন লাগবে (**Releases** পাতা; Release-এর নাম “Verify Report Builder Version 6 (v6.0.0)”)।
+ইনস্টলার না চাইলে `.zip` (portable) ফাইলও আছে। রিপোজিটরি **প্রাইভেট** — ডাউনলোডের জন্য GitHub-এ সাইন-ইন লাগবে (**Releases** পাতা; Release-এর নাম “Verify Report Builder Version 7 (v7.0.0)”)।
 প্রথমবার খুললে ডিজিটাল স্বাক্ষর নেই বলে সতর্কতা আসে: **Windows:** More info → Run anyway। **Mac:** System Settings → Privacy & Security → *Open Anyway* (অথবা `xattr -dr com.apple.quarantine /Applications/VerifyReportBuilder.app`)।
 
 ## প্রতিদিনের ওয়ার্কফ্লো (দিনে দুইবার)
@@ -60,7 +60,7 @@ Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্�
 5. **Excel খুলুন:** *Summary* (সঙ্গে Applicant Name (given) · Name Check · Applicant on the file) · *Timeline* · *Submission History* · *Trips* (পুরো Remarks সহ) · *Appointments* · *Re-CPV & Extra* · *Concerns* · *Not Found*। না-পাওয়া নম্বর ‘File not found’, বাকি ফাইল ঠিকই আসে।
 6. কমান্ড লাইনে: `python run_app.py --cli --email you@x.com --history numbers.xlsx --outdir out`।
 
-## সব ফিচার — প্রথম সংস্করণ থেকে Version 6 পর্যন্ত (বিস্তারিত)
+## সব ফিচার — প্রথম সংস্করণ থেকে Version 7 পর্যন্ত (বিস্তারিত)
 
 প্রতিটি ধাপে আগের সব ফিচার থেকে যায়; নিচে কোন সংস্করণে কী যোগ হয়েছে ক্রমানুসারে লেখা।
 
@@ -152,6 +152,14 @@ Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্�
 - **Report Summary (Done / Due) সবসময় সর্বশেষ activity ধরে:** একই বাক্যের বিষয় ধরে সমস্যা বসে (Office-এর লেখায় ‘LOI verify করতে রাজি নয়’ = LOI-এর সমস্যা); ভুল বানানের ‘LOI signed’ চেনা যায়; ‘..’ দিয়ে আলাদা বাক্য; একই সাবমিশনের পরের LOI ট্রিপ পুরনো Done/Due খুলে বা বন্ধ করে দেয়; ‘Can be verified from <নাম> branch’ নোট চেনা যায়।
 - **নতুন স্বয়ংক্রিয় পরীক্ষা:** মোট **১২৯টি টেস্ট** (SLA restart-এর ১৩টিসহ) এবং **GUI smoke test** — আসল অ্যাপ-উইন্ডো মক সার্ভারে চালিয়ে ট্র্যাকার (Excel + PDF), ইমেইল উইন্ডো, ছুটির উইন্ডো, তারিখ-সীমার রিপোর্ট ও ‘পাসওয়ার্ড সেভ হয় না’ যাচাই; GitHub Actions-এ Windows, macOS ও Linux তিনটিতেই।
 - **লাইভ ৯০ দিনের ডেটায় ফল:** ১৫২৫ সারির মধ্যে ৫৯৪টিতে Appointment ও ২১৫টিতে নতুন ট্রিপের কারণে SLA restart; SLA Breach ৫১১ থেকে ১০২।
+
+---
+
+### Version 7.0.0 (১১ নভেম্বর) — সেপ্টেম্বরের পূর্ণ যাচাই, প্যাকেজের document আলাদা সারি, সীমানার পিন
+
+- প্যাকেজের সাথে একই দিনে তৈরি প্রতিটি document নিজের সারিতে বিল (In বা Out নিজের ঠিকানায়), ম্যানুয়াল বিলের মতো; ট্র্যাকারে এক ফাইল = এক লাইন থাকে।
+- সীমানার কাছের পিন ম্যাপ-ঠিকানার প্রশাসনিক এলাকা (Tongi / Gazipur, Keraniganj) দেখে Out।
+- সেপ্টেম্বর ২০২৬: ৪৮৭টি ফাইলের সব বিলে; ম্যানুয়ালের সাথে টাকায় ৯৯.২%, সারির ধরনে ৯৪.২% মিল; ৩৮টি In/Out বিরোধের ৩৭টিতে সফটওয়্যার ঠিক।
 
 ---
 
@@ -254,7 +262,7 @@ python run_app.py --cli --email you@barikoi.com --prime --mode tracker --slot 7p
 ## GitHub থেকে বিল্ড ও ডাউনলোড
 
 1. কোড GitHub-এর **Private** রিপোজিটরিতে থাকে। **Actions** চলে শুধু (ক) `v*` ট্যাগ দিলে অথবা (খ) হাতে *Run workflow* চাপলে — তখন আগে ১৬২টি টেস্ট, তারপর চারটি বিল্ড এবং তিন সিস্টেমে GUI smoke test চলে।
-2. **স্থায়ী ডাউনলোড লিংক (Release) বানাতে:** GitHub → **Releases → Draft a new release** → Tag লিখুন `v6.0.0` (Target: `main`) → **Publish**। (অথবা টার্মিনালে `git tag v6.0.0 && git push origin v6.0.0`।) ট্যাগ দেওয়ার পর Actions Windows 64/32-bit ও Mac Apple Silicon / Intel বিল্ড করে প্রায় ১৫–২০ মিনিটে Release-এ ফাইল জুড়ে দেয়। Release-এর নাম ও বিবরণ নিজে থেকে বসে (`RELEASE_NOTES.md` থেকে)।
+2. **স্থায়ী ডাউনলোড লিংক (Release) বানাতে:** GitHub → **Releases → Draft a new release** → Tag লিখুন `v7.0.0` (Target: `main`) → **Publish**। (অথবা টার্মিনালে `git tag v7.0.0 && git push origin v7.0.0`।) ট্যাগ দেওয়ার পর Actions Windows 64/32-bit ও Mac Apple Silicon / Intel বিল্ড করে প্রায় ১৫–২০ মিনিটে Release-এ ফাইল জুড়ে দেয়। Release-এর নাম ও বিবরণ নিজে থেকে বসে (`RELEASE_NOTES.md` থেকে)।
 3. **শুধু বিল্ড চেক করতে:** **Actions → Build desktop app → Run workflow**; শেষে রানের পাতার নিচে **Artifacts** থেকে ডাউনলোড (`Windows-64bit`, `Windows-32bit`, `Mac-AppleSilicon`, `Mac-Intel`) — এটি Release নয়, কিছুদিন পরে মেয়াদ শেষ হয়।
 
 > আপনার MacBook Apple Silicon (M-সিরিজ) হলে `Mac-AppleSilicon`, Intel হলে `Mac-Intel` নিন। (Apple menu → About This Mac এ দেখা যায়।)

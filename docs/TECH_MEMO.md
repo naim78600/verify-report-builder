@@ -1,11 +1,11 @@
-# Technical memo — the rules behind Verify Report Builder Version 6
+# Technical memo — the rules behind Verify Report Builder Version 7
 
-**For:** the developers of the Verify dashboard · **From:** Barikoi operations (Prime Bank PLC desk) · **Version:** 6.0.0 · **Date:** 10 November 2026
+**For:** the developers of the Verify dashboard · **From:** Barikoi operations (Prime Bank PLC desk) · **Version:** 7.0.0 · **Date:** 11 November 2026
 
 Verify Report Builder is a desktop tool that reads the Verify dashboard (GET only) and produces what is sent to Prime Bank PLC:
 the daily submission tracker, the monthly bill, and the file history. This memo writes down every rule the tool applies, from the
 first one to the last, grouped by function, so the same logic can be built into the dashboard itself. Each section names the
-function in this repository that is the reference implementation; the automated tests (`tests/`, 178 of them) are the executable
+function in this repository that is the reference implementation; the automated tests (`tests/`, 179 of them) are the executable
 form of the rules.
 
 Words used below:
@@ -254,23 +254,33 @@ Input: an Excel with File No and Applicant Name. Each file is looked up by numbe
 
 ---
 
-## 12. Version 6 against the manual September 2026 bill
+## 12. Version 7 against the manual September 2026 bill
 
-The live dashboard was billed for September 2026 with Version 6 and compared row by row with the manual invoice and tracker.
+September 2026 was rebuilt from the live dashboard (read-only) with this code. Version 6 reproduced the software bill that was
+sent row for row (844 of 844 rows), so the comparison below is the real engine, not an estimate.
 
-| | Version 6 | Manual |
-|---|---|---|
-| Card rows / subtotal | 289 / 115,290 | 286 / 116,240 |
-| Loan rows / subtotal | 561 / 204,920 | 563 / 205,470 |
+**Completeness.** 411 files were created in September (Card 185, Loan 226; test file and re-created Canceled copies left out) and
+76 older files got a new trip in September: 487 files. The bill has exactly these 487 files - none missing. Trips created in
+October / November on September files go to those months' bills (bill by create date).
 
-347 of 492 files are identical; 722 of 849 manual rows have the same class and station. The differences, all by rule:
+| | Version 6.0 | Version 7.0 | Manual |
+|---|---|---|---|
+| Rows | 844 | 863 | 849 |
+| Same file + row type (Package / Single / PG) | 789 (92.9 %) | 800 (94.2 %) | - |
+| Same file + row type + In / Out | 721 (84.9 %) | 734 (86.5 %) | - |
+| ... with the manual's 37 In / Out mistakes corrected | - | 771 (90.8 %) | - |
+| Amount before penalty (BDT) | 316,210 | 319,170 (Card 115,140 · Loan 204,030) | 321,710 |
 
-- **In / Out** (38 packages, 35 other rows): the tool uses the map, the manual bill was decided by hand.
-- **Month** (about 40 rows): the manual sheet used its own receive date; the tool uses the dashboard's create date.
-- **Later trips** (24 rows): a trip added 1–3 days after the file is its own row; the manual bill kept it inside the package.
-- **Same-day LOI** (33 rows): the manual bill often billed it apart; the tool does so only for an Out package with an In-station LOI.
-- **Re-created files** (6 packages): found in this comparison and fixed in 6.0.0 (rule 8.4). With the fix the figures are Card 287 / 114,090 and Loan 557 / 202,120 by calculation.
-- **Penalty**: the tool charges 55 late submitted packages (35 of them one day late, at 20 %); the manual bill charged 15 and never charged one day.
+- **In / Out** - the 38 packages where the tool and the manual disagreed were checked visit by visit against the map: the tool was
+  right in 37 (23 inside Chattogram City Corporation, 8 inside Dhaka City Corporation, 2 in Faridpur / Khulna, 4 with a house
+  outside the city), the manual in 1 (an office in Tongi, Gazipur) - fixed in 7.0 (rule 3.4).
+- **Same-day documents** - the manual bills every document created with the package on its own row (50 of 56 files); 7.0 does the
+  same (rule 2.6).
+- **Receive date** - the manual writes the day the bank's request arrived, often the day before the trip was created on the
+  dashboard; the dashboard has no such date, so only 551 of 849 rows (64.9 %) have the same date. At month ends this moves a few
+  trips between months.
+- **Penalty** - the tool charges every late submitted package (20 / 30 / 50 %): about 9,437 BDT in September against 3,510 on the
+  manual bill (policy confirmed by the user, not a defect).
 
 ## 13. Known limits
 

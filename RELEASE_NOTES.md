@@ -1,4 +1,4 @@
-# Verify Report Builder — Version 6 (v6.0.0)
+# Verify Report Builder — Version 7 (v7.0.0)
 
 Prime Bank PLC-এর দৈনিক সাবমিশন ট্র্যাকার (Complete + Incomplete, Excel + PDF) ও **মাসিক বিল (Card + Loan, Excel + PDF)** বানায়, ফাইল হিস্টরি তৈরি করে এবং সরাসরি ব্যাংককে ইমেইল পাঠায়। Verify থেকে **শুধু তথ্য পড়ে (GET)**, কিছু বদলায় না; পাসওয়ার্ড কোথাও সংরক্ষণ হয় না।
 
@@ -15,12 +15,12 @@ Prime Bank PLC-এর দৈনিক সাবমিশন ট্র্যা�
 
 ## Technical memo — every rule, by function (for developers)
 
-**For:** the developers of the Verify dashboard · **From:** Barikoi operations (Prime Bank PLC desk) · **Version:** 6.0.0 · **Date:** 10 November 2026
+**For:** the developers of the Verify dashboard · **From:** Barikoi operations (Prime Bank PLC desk) · **Version:** 7.0.0 · **Date:** 11 November 2026
 
 Verify Report Builder is a desktop tool that reads the Verify dashboard (GET only) and produces what is sent to Prime Bank PLC:
 the daily submission tracker, the monthly bill, and the file history. This memo writes down every rule the tool applies, from the
 first one to the last, grouped by function, so the same logic can be built into the dashboard itself. Each section names the
-function in this repository that is the reference implementation; the automated tests (`tests/`, 178 of them) are the executable
+function in this repository that is the reference implementation; the automated tests (`tests/`, 179 of them) are the executable
 form of the rules.
 
 Words used below:
@@ -70,7 +70,7 @@ A file is cut into rows once; the tracker, the file history and the monthly bill
 3. A Canceled or Withdrawn trip never takes one of the five places while the file has a living trip (a batch created twice by mistake must not push the real trips out of the package).
 4. **Every trip created on a later day** is its own row: kind `ReCpv` when the trip is in the Re-CPV tracker (or flagged `is_for_recpv`), otherwise kind `Extra`.
 5. **Guarantor visits created together**: a guarantor's house and office trips created on the same day are ONE row.
-6. **LOI of an Out package verified In station** (the manual bill's rule): when every applicant house / office trip of the package is Out station but a document trip (LOI, salary certificate, pay slip …) is In station, that document is taken out of the package and is its own row at the In rate. The package stays an Out package.
+6. **A document created with the package is its own row** (v6.1, the manual bill of September 2026: 50 of 56 such files): every living applicant document trip (LOI, salary certificate, pay slip, rental, car quotation …) created on the package day is taken out of the package and billed on its own row, In or Out by the document's own address (`BillRow.split = True`). v6.0 did this only for an In document of an Out package. A Canceled / Withdrawn document stays with the package (not billed); a file of documents only stays one package. The package row's Report Summary still reads these documents, and the daily tracker folds them into the package line (`fold_complete`), so the tracker keeps one line per file.
 7. **Slab of a non-package row** (`slab_for`):
 
    | Trip | Slab |
@@ -94,8 +94,9 @@ Reference: `geo.trip_area`, `geo.classify_point`, `geo.classify_text`, `billing.
 1. **In** = inside Dhaka City Corporation (North + South) or Chattogram City Corporation. Everything else = **Out**.
 2. One trip: the address coordinates decide; if they are missing, the end-of-visit coordinates; if both are missing, the address text.
 3. The city outlines are approximate, so the answer is marked "not sure" when the point is close to the border, when address and visit coordinates disagree, or when the address text names a place on the other side. An address that names a place outside the two cities (Keraniganj, Gazipur, Savar …) wins over a pin that merely falls inside the outline.
-4. A **package is Out if any of its trips is Out**; a single row is judged on its own trip.
-5. Every "not sure" row is listed for a human to look at (tracker: flagged cell; bill: Check sheet). The dashboard's own Station field is not used for billing; a disagreement with it is shown as a note.
+4. **City-edge pins** (v6.1): a pin that is In but "not sure" (near the outline, or address and visit points disagree) is Out when the last two parts of the map address (`exact_address`, the administrative area the map gives, e.g. "Tongi Paurashava, Gazipur Sadar", "Washpur, Keraniganj") name a place outside the two cities. Only that tail is read, so a road name such as "Hathazari Road" never decides.
+5. A **package is Out if any of its trips is Out**; a single row is judged on its own trip.
+6. Every "not sure" row is listed for a human to look at (tracker: flagged cell; bill: Check sheet). The dashboard's own Station field is not used for billing; a disagreement with it is shown as a note.
 
 ---
 
@@ -268,23 +269,33 @@ Input: an Excel with File No and Applicant Name. Each file is looked up by numbe
 
 ---
 
-## 12. Version 6 against the manual September 2026 bill
+## 12. Version 7 against the manual September 2026 bill
 
-The live dashboard was billed for September 2026 with Version 6 and compared row by row with the manual invoice and tracker.
+September 2026 was rebuilt from the live dashboard (read-only) with this code. Version 6 reproduced the software bill that was
+sent row for row (844 of 844 rows), so the comparison below is the real engine, not an estimate.
 
-| | Version 6 | Manual |
-|---|---|---|
-| Card rows / subtotal | 289 / 115,290 | 286 / 116,240 |
-| Loan rows / subtotal | 561 / 204,920 | 563 / 205,470 |
+**Completeness.** 411 files were created in September (Card 185, Loan 226; test file and re-created Canceled copies left out) and
+76 older files got a new trip in September: 487 files. The bill has exactly these 487 files - none missing. Trips created in
+October / November on September files go to those months' bills (bill by create date).
 
-347 of 492 files are identical; 722 of 849 manual rows have the same class and station. The differences, all by rule:
+| | Version 6.0 | Version 7.0 | Manual |
+|---|---|---|---|
+| Rows | 844 | 863 | 849 |
+| Same file + row type (Package / Single / PG) | 789 (92.9 %) | 800 (94.2 %) | - |
+| Same file + row type + In / Out | 721 (84.9 %) | 734 (86.5 %) | - |
+| ... with the manual's 37 In / Out mistakes corrected | - | 771 (90.8 %) | - |
+| Amount before penalty (BDT) | 316,210 | 319,170 (Card 115,140 · Loan 204,030) | 321,710 |
 
-- **In / Out** (38 packages, 35 other rows): the tool uses the map, the manual bill was decided by hand.
-- **Month** (about 40 rows): the manual sheet used its own receive date; the tool uses the dashboard's create date.
-- **Later trips** (24 rows): a trip added 1–3 days after the file is its own row; the manual bill kept it inside the package.
-- **Same-day LOI** (33 rows): the manual bill often billed it apart; the tool does so only for an Out package with an In-station LOI.
-- **Re-created files** (6 packages): found in this comparison and fixed in 6.0.0 (rule 8.4). With the fix the figures are Card 287 / 114,090 and Loan 557 / 202,120 by calculation.
-- **Penalty**: the tool charges 55 late submitted packages (35 of them one day late, at 20 %); the manual bill charged 15 and never charged one day.
+- **In / Out** - the 38 packages where the tool and the manual disagreed were checked visit by visit against the map: the tool was
+  right in 37 (23 inside Chattogram City Corporation, 8 inside Dhaka City Corporation, 2 in Faridpur / Khulna, 4 with a house
+  outside the city), the manual in 1 (an office in Tongi, Gazipur) - fixed in 7.0 (rule 3.4).
+- **Same-day documents** - the manual bills every document created with the package on its own row (50 of 56 files); 7.0 does the
+  same (rule 2.6).
+- **Receive date** - the manual writes the day the bank's request arrived, often the day before the trip was created on the
+  dashboard; the dashboard has no such date, so only 551 of 849 rows (64.9 %) have the same date. At month ends this moves a few
+  trips between months.
+- **Penalty** - the tool charges every late submitted package (20 / 30 / 50 %): about 9,437 BDT in September against 3,510 on the
+  manual bill (policy confirmed by the user, not a defect).
 
 ## 13. Known limits
 
@@ -294,6 +305,14 @@ The live dashboard was billed for September 2026 with Version 6 and compared row
 4. The appointment rule uses the latest-created appointment of the file.
 
 ---
+
+## Version 7-এ নতুন
+
+- **সেপ্টেম্বর ২০২৬ লাইভ ড্যাশবোর্ডে পুরো যাচাই:** ৪১১টি নতুন ফাইল + ৭৬টি পুরনো ফাইলের সেপ্টেম্বরের ট্রিপ = ৪৮৭টি ফাইল — বিলে ঠিক এই ৪৮৭টিই আছে, **কোনো ফাইল বাদ নেই**। Version 6 পাঠানো বিলটি সারি-সারি হুবহু (৮৪৪/৮৪৪) আবার তৈরি করেছে।
+- **প্যাকেজের সাথে তৈরি document আলাদা সারি:** একই দিনে তৈরি LOI / salary certificate / rental / quotation — সবসময় নিজের সারিতে বিল হয়, নিজের ঠিকানা অনুযায়ী In বা Out (ম্যানুয়াল বিল ৫৬টির ৫০টিতে এভাবেই করেছে)। আগে শুধু “Out package + In LOI” হলে হতো। Canceled document প্যাকেজেই থাকে (বিল হয় না)। দৈনিক ট্র্যাকারে আগের মতো এক ফাইল = এক লাইন, LOI প্যাকেজের Done/Due-তেই থাকে।
+- **সিটির সীমানার পিন:** সীমানার কাছের In পিনের ম্যাপ-ঠিকানার শেষ অংশে শহরের বাইরের এলাকা (যেমন “Tongi Paurashava, Gazipur Sadar”, “Keraniganj”) থাকলে Out। রাস্তার নাম (যেমন “Hathazari Road”) ধরা হয় না।
+- **ম্যানুয়াল বিলের সাথে মিল (সেপ্টেম্বর):** ফাইল + সারির ধরন ৯৪.২%; In/Out-সহ ৮৬.৫% (ম্যানুয়ালের ৩৭টি In/Out ভুল ঠিক ধরলে ৯০.৮%); পেনাল্টির আগে টাকা ৩,১৯,১৭০ বনাম ৩,২১,৭১০ (৯৯.২%)। ৩৮টি বিতর্কিত প্যাকেজের ৩৭টিতে সফটওয়্যার ঠিক (City Corporation নিয়ম অনুযায়ী), ১টি (Tongi) ঠিক করা হয়েছে।
+- **মোট ১৭৯টি স্বয়ংক্রিয় টেস্ট।**
 
 ## Version 6-এ নতুন
 
@@ -327,7 +346,7 @@ The live dashboard was billed for September 2026 with Version 6 and compared row
 - **SLA Restart:** Appointment-এর *scheduled date* থেকে এবং **যেকোনো নতুন ট্রিপ** তৈরি হলে সঙ্গে সঙ্গে; In (Dhaka ও Chattogram City Corporation) = ২ কার্যদিবস, Out = ৪ কার্যদিবস। নতুন কলাম **“SLA Start / Restart Date”** (Excel ও PDF)।
 - **Incomplete** = শুধু Hold, Finished কিন্তু Submit হয়নি ও Partially Submitted।
 
-## সব ফিচার — প্রথম সংস্করণ থেকে Version 6 পর্যন্ত (বিস্তারিত)
+## সব ফিচার — প্রথম সংস্করণ থেকে Version 7 পর্যন্ত (বিস্তারিত)
 
 প্রতিটি ধাপে আগের সব ফিচার থেকে যায়; নিচে কোন সংস্করণে কী যোগ হয়েছে ক্রমানুসারে লেখা।
 
@@ -419,6 +438,14 @@ The live dashboard was billed for September 2026 with Version 6 and compared row
 - **Report Summary (Done / Due) সবসময় সর্বশেষ activity ধরে:** একই বাক্যের বিষয় ধরে সমস্যা বসে (Office-এর লেখায় ‘LOI verify করতে রাজি নয়’ = LOI-এর সমস্যা); ভুল বানানের ‘LOI signed’ চেনা যায়; ‘..’ দিয়ে আলাদা বাক্য; একই সাবমিশনের পরের LOI ট্রিপ পুরনো Done/Due খুলে বা বন্ধ করে দেয়; ‘Can be verified from <নাম> branch’ নোট চেনা যায়।
 - **নতুন স্বয়ংক্রিয় পরীক্ষা:** মোট **১২৯টি টেস্ট** (SLA restart-এর ১৩টিসহ) এবং **GUI smoke test** — আসল অ্যাপ-উইন্ডো মক সার্ভারে চালিয়ে ট্র্যাকার (Excel + PDF), ইমেইল উইন্ডো, ছুটির উইন্ডো, তারিখ-সীমার রিপোর্ট ও ‘পাসওয়ার্ড সেভ হয় না’ যাচাই; GitHub Actions-এ Windows, macOS ও Linux তিনটিতেই।
 - **লাইভ ৯০ দিনের ডেটায় ফল:** ১৫২৫ সারির মধ্যে ৫৯৪টিতে Appointment ও ২১৫টিতে নতুন ট্রিপের কারণে SLA restart; SLA Breach ৫১১ থেকে ১০২।
+
+---
+
+### Version 7.0.0 (১১ নভেম্বর) — সেপ্টেম্বরের পূর্ণ যাচাই, প্যাকেজের document আলাদা সারি, সীমানার পিন
+
+- প্যাকেজের সাথে একই দিনে তৈরি প্রতিটি document নিজের সারিতে বিল (In বা Out নিজের ঠিকানায়), ম্যানুয়াল বিলের মতো; ট্র্যাকারে এক ফাইল = এক লাইন থাকে।
+- সীমানার কাছের পিন ম্যাপ-ঠিকানার প্রশাসনিক এলাকা (Tongi / Gazipur, Keraniganj) দেখে Out।
+- সেপ্টেম্বর ২০২৬: ৪৮৭টি ফাইলের সব বিলে; ম্যানুয়ালের সাথে টাকায় ৯৯.২%, সারির ধরনে ৯৪.২% মিল; ৩৮টি In/Out বিরোধের ৩৭টিতে সফটওয়্যার ঠিক।
 
 ---
 
