@@ -282,7 +282,7 @@ def build_month_bill(rows: list, year: int, month: int, bill_date: date | None =
             notes.append(f"area not sure: {r.area_why}")
             mb.review.append((r.file_no, what, f"In / Out is not certain ({r.area_why}) - billed as {area}"))
         if getattr(r, "split", False):
-            notes.append("In-station document of an Out package")
+            notes.append("document created with the package - own row")
         if not r.submitted_at:
             notes.append("not yet submitted")
         it.note = "; ".join(notes)

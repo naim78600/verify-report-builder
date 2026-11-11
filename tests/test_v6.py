@@ -43,20 +43,26 @@ def _rows(file):
 
 
 # ------------------------------------------------------------------------------ bill rows (the manual bill's way)
-def test_an_in_station_document_of_an_out_package_is_billed_on_its_own_row():
+def test_a_document_created_with_the_package_is_always_billed_on_its_own_row():
     d = D(2026, 9, 1, 10, 0)
     f = _file([("APPLICANT", [_t(1, "HOUSE", d, loc=SAVAR), _t(2, "OFFICE", d, loc=SAVAR), _t(3, "BANK", d, loc=SAVAR),
                               _t(4, "DOCUMENT", d, loc=GULSHAN, comment="LOI VERIFICATION")])])
     rows = _rows(f)
     assert [(r.kind, r.slab, r.area, r.split) for r in rows] == [("Package", "Package", "Out", False), ("Single", SLAB_DOC, "In", True)]
     assert rows[1].category == "Created - Extra Document(LOI)" and len(rows[0].trips) == 3
-    # the applicant himself is In station: the LOI stays inside the package
+    # v6.1 (the manual bill of September 2026): an In package's LOI and an Out package's Out document are own rows too
     f2 = _file([("APPLICANT", [_t(1, "HOUSE", d), _t(2, "OFFICE", d), _t(4, "DOCUMENT", d)]),
                 ("GUARANTOR", [_t(5, "GUARANTOR_HOUSE", d, loc=SAVAR)])])
-    assert [(r.kind, r.area, len(r.trips)) for r in _rows(f2)] == [("Package", "Out", 4)]
-    # an Out document of an Out package stays inside the package too
+    assert [(r.kind, r.area, len(r.trips), r.split) for r in _rows(f2)] == [("Package", "Out", 3, False), ("Single", "In", 1, True)]
     f3 = _file([("APPLICANT", [_t(1, "HOUSE", d, loc=SAVAR), _t(4, "DOCUMENT", d, loc=SAVAR)])])
-    assert [(r.kind, len(r.trips)) for r in _rows(f3)] == [("Package", 2)]
+    assert [(r.kind, r.area, len(r.trips)) for r in _rows(f3)] == [("Package", "Out", 1), ("Single", "Out", 1)]
+    # the package's Report Summary still reads its documents; a Canceled document stays with the package (not billed)
+    assert any(v.trip["type_code"] == "DOCUMENT" for v in _rows(f2)[0].views)
+    f4 = _file([("APPLICANT", [_t(1, "HOUSE", d), _t(4, "DOCUMENT", d, status=6, start=True)])])
+    assert [(r.kind, len(r.trips)) for r in _rows(f4)] == [("Package", 2)]
+    # a file of documents only stays one package
+    f5 = _file([("APPLICANT", [_t(4, "DOCUMENT", d), _t(5, "DOCUMENT", d)])])
+    assert [(r.kind, len(r.trips)) for r in _rows(f5)] == [("Package", 2)]
 
 
 def test_guarantor_rows_follow_the_manual_bill():
@@ -80,7 +86,7 @@ def test_canceled_trips_never_take_a_package_place_and_the_cancel_rule():
     dead = [_t(n, "HOUSE", d, status=6, start=False) for n in range(1, 6)]                        # a batch created twice by mistake
     live = [_t(11, "HOUSE", d), _t(12, "OFFICE", d), _t(13, "BANK", d), _t(14, "DOCUMENT", d)]
     rows = _rows(_file([("APPLICANT", dead + live)]))
-    assert [(r.kind, len(r.trips), r.billable, r.canceled) for r in rows] == [("Package", 9, True, False)]
+    assert [(r.kind, len(r.trips), r.billable, r.canceled) for r in rows] == [("Package", 8, True, False), ("Single", 1, True, False)]
     assert trip_billable(_t(1, "HOUSE", d, status=7)) and trip_billable(_t(1, "HOUSE", d, status=6, start=True))   # Inactive; Canceled but started
     assert not trip_billable(_t(1, "HOUSE", d, status=6, start=False)) and not trip_billable(_t(1, "HOUSE", d, status=8))
     stopped = _rows(_file([("APPLICANT", [_t(1, "HOUSE", d, status=6), _t(2, "OFFICE", d, status=6)])]))    # the bank stopped a started file
@@ -124,13 +130,15 @@ def test_everything_created_in_the_month_is_on_a_bill(october):
     # F6 (27 Oct, Out, two In documents), F4 = an OLD file (January) with an extra LOI created on 31 Oct
     assert sorted(map(key, card.items)) == sorted([("0006", "out_pkg", 600, "Package"), ("0006", "in_single", 140, "Single"),
                                                    ("0006", "in_single", 140, "Single"), ("0004", "in_single", 140, "Extra")])
-    # F3 (20 Oct, still pending), F1 (26 Oct, Out because of the guarantor) + its 6th trip + its Re-CPV of 30 Oct, F5 = a 2025 file's Re-CPV
+    # F3 (20 Oct, still pending), F1 (26 Oct, Out because of the guarantor) + its two documents (v6.1: own rows) + its Re-CPV of
+    # 30 Oct, F5 = a 2025 file's Re-CPV
     assert sorted(map(key, loan.items)) == sorted([("0003", "in_pkg", 600, "Package"), ("0001", "out_pkg", 700, "Package"),
-                                                   ("0001", "in_single", 140, "Single"), ("0001", "in_single", 140, "ReCpv"),
+                                                   ("0001", "in_single", 140, "Single"), ("0001", "in_single", 140, "Single"),
+                                                   ("0001", "in_single", 140, "ReCpv"),
                                                    ("0005", "in_single", 140, "ReCpv")])
     assert not any(i.file_no.endswith("0002") for b in mb.bills.values() for i in b.items)             # F2 was created on 1 November
     st = mb.stats
-    assert st["rows_in_month"] == st["billed"] + st["excluded"] == 9 and st["dashboard_trips_created"] == st["trips_in_month"]
+    assert st["rows_in_month"] == st["billed"] + st["excluded"] == 10 and st["dashboard_trips_created"] == st["trips_in_month"]
     pending = next(i for i in loan.items if i.file_no.endswith("0003"))
     assert pending.sub is None and "not yet submitted" in pending.note                              # created = billed, submitted or not
     f1 = next(i for i in loan.items if i.file_no.endswith("0001") and i.kind == "Package")
@@ -142,11 +150,12 @@ def test_everything_created_in_the_month_is_on_a_bill(october):
 def test_bill_totals_and_penalty_choices(october, tmp_path):
     _d, mb = october
     loan = mb.bills["Loan"]
-    assert loan.subtotal == 600 + 700 + 3 * 140
+    assert loan.subtotal == 600 + 700 + 4 * 140
     # the starting choice follows the manual bill: a late row is charged only when it is a SUBMITTED package / bank statement;
     # the pending package (F3) and the late extra-document / Re-CPV rows are listed with Apply = No
     late = [i for i in loan.items if i.pct]
-    assert sorted((i.kind, i.pct, i.apply) for i in late) == [("Package", 50, False), ("ReCpv", 50, False), ("Single", 20, False)]
+    assert sorted((i.kind, i.pct, i.apply) for i in late) == [("Package", 50, False), ("ReCpv", 50, False), ("Single", 20, False),
+                                                              ("Single", 20, False)]
     assert "not yet submitted" in next(i for i in late if i.kind == "Package").pen_note
     assert loan.deduction == 0 and loan.grand_total == round(loan.subtotal * 1.05, 2)
     f1 = next(i for i in loan.items if i.file_no.endswith("0001") and i.kind == "Package")
@@ -281,3 +290,19 @@ def test_a_file_created_twice_is_one_package_on_the_bill():
     assert len(mb.excluded) == 1 and "created again" in mb.excluded[0][2]
     mb = build_month_bill(_rows(dead), 2026, 9, date(2026, 10, 1))             # stopped by the bank, never re-created: billed (v6 rule)
     assert [i.trip_ids for i in mb.bills["Loan"].items] == ["1, 2"]
+
+
+def test_a_pin_on_the_city_edge_is_out_when_the_map_address_names_an_outside_place():
+    from report_builder import geo
+    # September 2026: a Tongi bank branch pinned just inside the rough Dhaka outline, area tag "Motijheel" (both words cancel out)
+    tongi = {"lat": 23.8855, "lon": 90.4000, "end_lat": 23.8856, "end_lon": 90.3999, "area": "Motijheel",
+             "address": "TONGI BRANCH, DHAKA MYMENSINGH ROAD, TONGI, DHAKA",
+             "exact_address": "ATM Booth, Dhaka Mymensingh Highway, Momenshahi Road, Tongi Paurashava, Gazipur Sadar"}
+    assert geo.trip_area(tongi)[0] == "Out"
+    # only the last part of the map address counts: a road named after an outside place never makes a city pin Out
+    road = dict(tongi, exact_address="Shop, Hathazari Road, Chattogram Sadar, Chattogram", lat=22.4297, lon=91.8185,
+                end_lat=22.4297, end_lon=91.8185, area="Oxygen", address="")
+    assert geo.trip_area(road)[0] == "In"
+    # a sure city pin is never moved by the address text tail
+    gulshan = {"lat": 23.7925, "lon": 90.4078, "exact_address": "House 1, Road 2, Gulshan 2, Gazipur"}
+    assert geo.trip_area(gulshan)[0] == "In"

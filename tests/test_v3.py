@@ -194,7 +194,8 @@ def test_strip_checklist_keeps_everything_else(srv_f5_hold, tmp_path):
 def test_facts_from(srv_f5_hold):
     d = _run(srv_f5_hold)
     f = facts_from(d)
-    assert (f.complete_files, f.complete_rows, f.incomplete_files, f.incomplete_rows) == (4, 6, 2, 2)
+    # v6.1: F6's two documents (own bill rows) fold into its package line -> 4 lines, not 6
+    assert (f.complete_files, f.complete_rows, f.incomplete_files, f.incomplete_rows) == (4, 4, 2, 2)
     assert f.sla_breach_rows == 1 and f.partial_files == 1 and f.reason_missing == 1 and f.slot == "7pm"
 
 

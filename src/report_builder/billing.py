@@ -12,7 +12,7 @@ Rules (agreed with the user)
   * SLA (working days): In = 2, Out = 4, counted from the SLA Start Date = the Receive Date.  The clock restarts (the latest wins)
     when a NEW TRIP of the file is created (full 2 / 4 days again) and when there is an APPOINTMENT: from v6 the report is then due
     on the next working day after the scheduled date of the latest-created appointment, by 5:59 PM, In and Out alike.
-    Extra TAT = TAT - SLA (never below 0).  See sla_start_for / compute_tat and docs/V6_TECH_MEMO.md.
+    Extra TAT = TAT - SLA (never below 0).  See sla_start_for / compute_tat and docs/TECH_MEMO.md.
   * The number of trips never changes because of Re-CPV - Re-CPV only labels a trip.
   * Each row has its own Receive Date, Submission, TAT and Extra TAT.
 """
@@ -154,7 +154,7 @@ class BillRow:
     sla_trip: date | None = None                       # the day a new (Re-CPV) trip was created that restarted it (None = no restart)
     appt_late: bool = False                            # appointment SLA: submitted after 5:59 PM (counts one more day)
     applicant: str = ""                                # name of the file's applicant (tracker column "Applicant Name")
-    split: bool = False                                # v6: an In-station document taken out of an Out package (own row, In rate)
+    split: bool = False                                # v6.1: a document created with the package, billed on its own row
     billable: bool = True                              # v6 monthly bill: False = Withdrawn / Canceled-never-started
     folded_rows: list = field(default_factory=list)    # the BillRows shown inside this one (their appointments / new trips count for the SLA too)
     file_rows: list = field(default_factory=list)      # every other bill row of the same file (a new trip of the file restarts the SLA of all)
@@ -446,12 +446,12 @@ def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileL
         alive = [ct for ct in same_day if not _dead_slot(ct[1])]
         dead = [ct for ct in same_day if _dead_slot(ct[1])]
         if alive:
-            # v6 (manual bill rule): the package is OUT station but a document (LOI ...) has to be verified IN Dhaka / Chattogram
-            # city -> that document is billed on its own row at the In rate, the package stays an Out package
-            # (the applicant's own house / office decide: every one of them is Out)
-            core = [ct for ct in alive if ct[1].get("type_code") in ("HOUSE", "OFFICE") and not is_guarantor_trip(ct[1], ct[0]["role"].upper())]
-            if core and all(geo.trip_area(ct[1])[0] == "Out" for ct in core):
-                split = [ct for ct in alive if is_doc_trip(ct[1], ct[0]["role"].upper()) and geo.trip_area(ct[1])[0] == "In"]
+            # v6.1 (the manual bill, checked on all of September 2026): a document trip (LOI, salary certificate, rental,
+            # quotation ...) of the applicant that is created together with the package is ALWAYS billed on its own row -
+            # In or Out by the document's own address - and never takes a package place (v6.0 did this only for an In
+            # document of an Out package).  A Canceled / Withdrawn document stays with the package (it is not billed).
+            if any(not is_doc_trip(ct[1], ct[0]["role"].upper()) for ct in alive):
+                split = [ct for ct in alive if is_doc_trip(ct[1], ct[0]["role"].upper())]
                 alive = [ct for ct in alive if not any(ct is x for x in split)]
             groups.append(("Package", alive[:PACKAGE_MAX] + dead))
             groups += _pg_groups(alive[PACKAGE_MAX:], "Single", recpv_by_trip)   # 6th, 7th, 8th ... = Extra Trip 1, 2, 3 ...
@@ -493,7 +493,7 @@ def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileL
             if is_split:
                 r.category = "Created - " + (extra_category(t0) if extra_category(t0).startswith("Extra Document") else "Extra Document")
                 r.receive_dt = created or t0.get("created_at")
-                r.info.append("Out package, document verified In station: billed on its own row at the In rate (v6 rule)")
+                r.info.append(f"Document created with the package: billed on its own row ({r.area} rate) - v6.1 rule, as on the manual bill")
             elif kind == "Single":
                 single_no += 1
                 r.category = f"Created - Extra Trip {single_no}"
@@ -531,6 +531,10 @@ def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileL
         r.logs_ok = bool(logs is not None and logs.ok)
         r.file_trips = [(t.get("created_at"), t.get("status_code")) for _c, t in flat]
         views = [TripView(t, c["role"].upper(), info[c["id"]]["who"]) for c, t in trips]
+        if kind == "Package" and split:
+            # v6.1: the documents created with the package are billed on their own rows, but the package's Report Summary
+            # still reads them (Done "LOI ..." belongs to the package report, exactly as before the bill split)
+            views += [TripView(t, c["role"].upper(), info[c["id"]]["who"]) for c, t in split]
         r.views = views
         r.summary = analyze(views, r.submitted, "BS")
         if r.summary.uncertain:
@@ -888,8 +892,11 @@ def fold_complete(rows: list[BillRow]) -> list[BillRow]:
         groups.setdefault((r.file_id, r.sub_day or (r.submitted_at.date() if r.submitted_at else None)), []).append(r)
     out: list[BillRow] = []
     for g in groups.values():
-        main = [r for r in g if r.kind in ("Package", "Single")]
-        follow = [r for r in g if r.kind not in ("Package", "Single")]
+        # v6.1: a document billed on its own row only because it was created with the package (r.split) is still part of
+        # that package's report: it folds into the Package row like a Re-CPV, so the tracker keeps ONE line with the LOI in it
+        has_pkg = any(x.kind == "Package" for x in g)
+        main = [r for r in g if r.kind in ("Package", "Single") and not (r.split and has_pkg)]
+        follow = [r for r in g if not any(r is m for m in main)]
         if main:
             _fold_into(main[0], follow)
             out.extend(main)

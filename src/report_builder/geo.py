@@ -172,6 +172,13 @@ def trip_area(trip: dict) -> tuple[str, bool, str]:
     if cands:
         area, sure, label, city = cands[0]
         why = f"লাট-লং ({label})" + (f" - {city}" if city else "")
+        # v6.1: a pin that is In but close to the edge, or whose two points disagree, is Out when the last part of the map
+        # address (the administrative area the map itself gives, e.g. "Tongi Paurashava, Gazipur Sadar" or "Washpur, Keraniganj")
+        # names a place outside the two cities.  Only the tail is read - a road name such as "Hathazari Road" never decides.
+        if area == "In" and (not sure or (len(cands) > 1 and cands[1][0] != area)):
+            tail = ", ".join([p.strip() for p in (trip.get("exact_address") or "").split(",") if p.strip()][-2:])
+            if classify_text(tail) == "Out":
+                return "Out", False, "সীমানার কাছে, ম্যাপের ঠিকানা অনুযায়ী বাইরে (" + tail + ")"
         if len(cands) > 1 and cands[1][0] != area:
             return area, False, "ঠিকানা ও ভিজিটের স্থানাঙ্ক আলাদা"
         if text_hint and text_hint != area:
