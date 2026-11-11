@@ -213,7 +213,7 @@ def test_timeline_submission_history_and_last_update(run):
     f3 = _file(h, "PL-20261020000003")
     assert overview(f3)["appointments"] == 1 and overview(f3)["status"] == "Partially Submitted"
     assert len(f1.recpv_events) == 1 and f1.recpv_events[0]["reason"] == "ReCPV House Verification"
-    assert len(f1.rows) == 3 and f1.rows[0].file_history
+    assert len(f1.rows) == 4 and f1.rows[0].file_history                     # v6.1: Package + 2 documents (own rows) + Re-CPV
 
 
 # ------------------------------------------------------------------------------ Excel

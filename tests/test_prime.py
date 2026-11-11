@@ -35,7 +35,7 @@ def test_rows_and_selection(data):
     key = lambda r: (r.file_no, r.kind)                                # noqa: E731
     assert sorted(map(key, d.complete)) == sorted([
         ("PL-20261026000001", "ReCpv"), ("CC-20261101000002", "Package"), ("CC-20260115000004", "Extra"),
-        ("CC--20261027000006", "Package"), ("CC--20261027000006", "Single"), ("CC--20261027000006", "Single")])
+        ("CC--20261027000006", "Package")])       # v6.1: its two documents (own bill rows) fold into the package line
     assert sorted(map(key, d.incomplete)) == sorted([("PL-20261020000003", "Package"), ("PL-20250901000005", "ReCpv")])      # this fixture asks for scope all_pending (running F5 included)
     assert d.old_files == 1                                            # F5 (by tracker); F4 is already in the dashboard's Submitted list
     ck = d.dash["check"]
@@ -47,7 +47,8 @@ def test_trip_count_never_changes(data):
     d, _ = data
     assert d.recon["row_trips"] == d.recon["file_trips"]
     f1 = [r for r in d.all_rows if r.file_no == "PL-20261026000001"]
-    assert [r.kind for r in f1] == ["Package", "Single", "ReCpv"] and len(f1[0].trips) == 5
+    # v6.1: the two documents created with the package are billed on their own rows (never a package place)
+    assert [r.kind for r in f1] == ["Package", "Single", "Single", "ReCpv"] and len(f1[0].trips) == 4
 
 
 def test_package_area_and_slabs(data):
@@ -196,8 +197,8 @@ def test_remark_engine_samples():
 def test_bs_label_history_and_extra_trip_names(data):
     d, _ = data
     f6 = [r for r in d.all_rows if r.file_no.startswith("CC--")]
-    # v6: house + office are Out (Savar), the two documents are in Gulshan -> each document is its own In bill; the three bank
-    # statements stay inside the Out package
+    # v6.1: every document created with the package is its own bill (here In, Gulshan); the three bank statements stay inside
+    # the Out package (house + office are in Savar)
     assert [(r.category, r.area, r.split) for r in f6 if r.kind == "Single"] == [
         ("Created - Extra Document", "In", True), ("Created - Extra Document(LOI)", "In", True)]
     assert all(r.slab.startswith("Single Document") for r in f6 if r.kind == "Single")
@@ -205,10 +206,11 @@ def test_bs_label_history_and_extra_trip_names(data):
     assert pk6.area == "Out" and len(pk6.trips) == 5 and pk6.file_history[1].startswith("2. Extra Document - Single Document - In")
     assert "Bank" not in " ".join(" ".join(r.concern_lines) for r in d.all_rows)
     f1 = sorted([r for r in d.all_rows if r.file_no == "PL-20261026000001"], key=lambda r: r.history_pos)
-    assert [r.kind for r in f1] == ["Package", "Single", "ReCpv"]
+    assert [r.kind for r in f1] == ["Package", "Single", "Single", "ReCpv"]
     h = f1[0].file_history
-    assert len(h) == 3 and h[0].startswith("1. Package (5 trips)") and h[1].startswith("2. Extra Trip 1") and h[2].startswith("3. Re-CPV")
-    assert f1[2].history_pos == 2
+    assert len(h) == 4 and h[0].startswith("1. Package (4 trips)") and h[1].startswith("2. Extra Document(LOI)") \
+        and h[2].startswith("3. Extra Document - ") and h[3].startswith("4. Re-CPV")
+    assert f1[3].history_pos == 3
     assert all(r.file_history == h for r in f1)
 
 
@@ -312,7 +314,7 @@ def test_range_mode_lists_what_the_dashboard_lists(tmp_path):
         key = lambda r: (r.file_no, r.kind)                            # noqa: E731
         assert sorted(map(key, d.complete)) == sorted([
             ("PL-20261026000001", "ReCpv"), ("CC-20261101000002", "Package"), ("CC-20260115000004", "Extra"),
-            ("CC--20261027000006", "Package"), ("CC--20261027000006", "Single"), ("CC--20261027000006", "Single")])
+            ("CC--20261027000006", "Package")])       # v6.1: its two documents (own bill rows) fold into the package line
         ck = d.dash["check"]
         assert ck["dashboard"] == 5 and ck["matched"] == 4 and ck["extra"] == 0
         # F7 is in the dashboard's list (submitted again on 02-Nov) but its first Submitted event was 01-Nov: it is reported, not hidden

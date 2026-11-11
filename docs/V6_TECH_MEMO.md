@@ -55,7 +55,7 @@ A file is cut into rows once; the tracker, the file history and the monthly bill
 3. A Canceled or Withdrawn trip never takes one of the five places while the file has a living trip (a batch created twice by mistake must not push the real trips out of the package).
 4. **Every trip created on a later day** is its own row: kind `ReCpv` when the trip is in the Re-CPV tracker (or flagged `is_for_recpv`), otherwise kind `Extra`.
 5. **Guarantor visits created together**: a guarantor's house and office trips created on the same day are ONE row.
-6. **LOI of an Out package verified In station** (the manual bill's rule): when every applicant house / office trip of the package is Out station but a document trip (LOI, salary certificate, pay slip …) is In station, that document is taken out of the package and is its own row at the In rate. The package stays an Out package.
+6. **A document created with the package is its own row** (v6.1, the manual bill of September 2026: 50 of 56 such files): every living applicant document trip (LOI, salary certificate, pay slip, rental, car quotation …) created on the package day is taken out of the package and billed on its own row, In or Out by the document's own address (`BillRow.split = True`). v6.0 did this only for an In document of an Out package. A Canceled / Withdrawn document stays with the package (not billed); a file of documents only stays one package. The package row's Report Summary still reads these documents, and the daily tracker folds them into the package line (`fold_complete`), so the tracker keeps one line per file.
 7. **Slab of a non-package row** (`slab_for`):
 
    | Trip | Slab |
@@ -79,8 +79,9 @@ Reference: `geo.trip_area`, `geo.classify_point`, `geo.classify_text`, `billing.
 1. **In** = inside Dhaka City Corporation (North + South) or Chattogram City Corporation. Everything else = **Out**.
 2. One trip: the address coordinates decide; if they are missing, the end-of-visit coordinates; if both are missing, the address text.
 3. The city outlines are approximate, so the answer is marked "not sure" when the point is close to the border, when address and visit coordinates disagree, or when the address text names a place on the other side. An address that names a place outside the two cities (Keraniganj, Gazipur, Savar …) wins over a pin that merely falls inside the outline.
-4. A **package is Out if any of its trips is Out**; a single row is judged on its own trip.
-5. Every "not sure" row is listed for a human to look at (tracker: flagged cell; bill: Check sheet). The dashboard's own Station field is not used for billing; a disagreement with it is shown as a note.
+4. **City-edge pins** (v6.1): a pin that is In but "not sure" (near the outline, or address and visit points disagree) is Out when the last two parts of the map address (`exact_address`, the administrative area the map gives, e.g. "Tongi Paurashava, Gazipur Sadar", "Washpur, Keraniganj") name a place outside the two cities. Only that tail is read, so a road name such as "Hathazari Road" never decides.
+5. A **package is Out if any of its trips is Out**; a single row is judged on its own trip.
+6. Every "not sure" row is listed for a human to look at (tracker: flagged cell; bill: Check sheet). The dashboard's own Station field is not used for billing; a disagreement with it is shown as a note.
 
 ---
 
