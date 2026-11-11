@@ -156,8 +156,8 @@ def main():
         fail(f"monthly bill files: {names}; status: {app.status.get()!r}")
     from report_builder.bill_out import read_bill_excel
     loan = read_bill_excel(next(p for p in app.out_files if p.name.startswith("Prime_Bank_PLC_Loan") and p.suffix == ".xlsx"))
-    if len(loan.items) != 5 or loan.subtotal != 1720:
-        fail(f"monthly Loan bill: {len(loan.items)} rows, subtotal {loan.subtotal} (expected 5 rows, 1720)")
+    if len(loan.items) != 6 or loan.subtotal != 1860:                    # v7: the package's two documents are own rows
+        fail(f"monthly Loan bill: {len(loan.items)} rows, subtotal {loan.subtotal} (expected 6 rows, 1860)")
 
     step("file history through the window (input Excel = File No + Applicant Name, every file found)")
     from openpyxl import load_workbook
