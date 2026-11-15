@@ -72,7 +72,7 @@ jobs:
         shell: pwsh
         run: |
           pyinstaller --noconfirm --clean --onefile --windowed --name VerifyReportBuilder --paths src --collect-data reportlab `
-            --add-data "src\report_builder\assets\barikoi_logo.png;report_builder\assets" run_app.py
+            --add-data "src\report_builder\assets;report_builder\assets" run_app.py
           Compress-Archive -Path dist\VerifyReportBuilder.exe -DestinationPath "VerifyReportBuilder-${{ matrix.label }}.zip"
 
       - name: Windows installer (Setup.exe)
@@ -88,7 +88,7 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           pyinstaller --noconfirm --clean --windowed --name VerifyReportBuilder --paths src --collect-data reportlab \
-            --add-data "src/report_builder/assets/barikoi_logo.png:report_builder/assets" \
+            --add-data "src/report_builder/assets:report_builder/assets" \
             --osx-bundle-identifier com.example.verifyreportbuilder run_app.py
           ditto -c -k --sequesterRsrc --keepParent dist/VerifyReportBuilder.app "VerifyReportBuilder-${{ matrix.label }}.zip"
 

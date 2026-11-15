@@ -1,4 +1,4 @@
-"""V3 tests: phases (3 PM cut-off), Incomplete rule, reasons, single Excel + Check List, volume at 90 days."""
+"""V3 tests: phases (12 PM cut-off since v10), Incomplete rule, reasons, single Excel + Check List, volume at 90 days."""
 import sys
 import threading
 from copy import copy
@@ -56,17 +56,17 @@ def nos(rows):
 
 # ----------------------------------------------------------------------------- phases
 def test_phase_cutoff(srv):
-    """1st phase (3:30 PM mail) = state at 3 PM: F1 (16:30) and F4 (18:00) were still waiting; 2nd phase = whole day;
-    'only after 3 PM' = just what the 1st mail did not already carry."""
+    """1st phase (12:00 PM mail since v10) = state at 12 PM: F1 (16:30) and F4 (18:00) were still waiting; 2nd phase = whole day;
+    'only after 12 PM' = just what the 1st mail did not already carry."""
     p1, p2, p2b = _run(srv, slot="3pm"), _run(srv, slot="7pm"), _run(srv, slot="7pm", after3_only=True)
     assert nos(p1.complete) == ["CC--20261027000006", "CC-20261101000002"]
     assert nos(p2.complete) == ["CC--20261027000006", "CC-20260115000004", "CC-20261101000002", "PL-20261026000001"]
     assert nos(p2b.complete) == ["CC-20260115000004", "PL-20261026000001"]
     assert p2b.after3_only and not p1.after3_only
     # before / after column and the title wording
-    assert {r.file_no: before_after(r) for r in p2.complete}["PL-20261026000001"] == "After 3 PM"
-    assert {r.file_no: before_after(r) for r in p2.complete}["CC-20261101000002"] == "Before 3 PM"
-    # the 3 PM mail must not report the late files as "not matched" with the dashboard (they belong to the 2nd mail)
+    assert {r.file_no: before_after(r) for r in p2.complete}["PL-20261026000001"] == "After 12 PM"
+    assert {r.file_no: before_after(r) for r in p2.complete}["CC-20261101000002"] == "Before 12 PM"
+    # the 12 PM mail must not report the late files as "not matched" with the dashboard (they belong to the 2nd mail)
     assert p1.dash["check"]["missing"] == [] and len(p1.dash["check"]["other_phase"]) == 2
     assert p2b.dash["check"]["missing"] == [] and len(p2b.dash["check"]["other_phase"]) == 2
     assert p2.dash["check"]["missing"] == [] and p2.dash["check"]["matched"] == 4
@@ -226,7 +226,7 @@ def test_bulk_90_days_tracker_matches_independent_rules(big, slot, after3, tmp_p
     got_c, got_i = {r.file_no for r in d.complete}, {r.file_no for r in d.incomplete}
     assert got_c == exp_c, (len(got_c), len(exp_c), sorted(got_c ^ exp_c)[:8])
     assert got_i == exp_i, (len(got_i), len(exp_i), sorted(got_i ^ exp_i)[:8])
-    assert len(exp_c) > 5 and len(exp_i) > 50                                     # the scenario is not trivially empty
+    assert len(exp_c) > (1 if slot == "3pm" else 5) and len(exp_i) > 50          # not trivially empty (few files are in before 12 PM)
     assert not d.failed and d.log_failed == 0 and d.dash["check"]["missing"] == []
     assert all(r.reason or "reason" in r.flags for r in d.incomplete)             # every pending row: a reason or a blue cell
     paths = write_prime_outputs(d, tmp_path, excel=True, pdf=True)

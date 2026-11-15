@@ -12,7 +12,7 @@ TEMPLATES = [
     ("concise", "Concise — short and direct"),
     ("executive", "Executive summary — status first"),
 ]
-PHASE_NAME = {"3pm": ("1st", "3:30 PM"), "7pm": ("2nd", "7:00 PM")}
+PHASE_NAME = {"3pm": ("1st", "12:00 PM"), "7pm": ("2nd", "6:15 PM")}
 
 
 @dataclass
@@ -49,10 +49,10 @@ def _ctx(f: MailFacts) -> dict:
 
 def _scope_line(f: MailFacts, c: dict) -> str:
     if f.slot == "3pm":
-        return (f"This 1st-phase report covers the files submitted before 3:00 PM on {c['weekday']}, {c['date_long']}, "
+        return (f"This 1st-phase report covers the files submitted before 12:00 PM on {c['weekday']}, {c['date_long']}, "
                 "together with the position of the pending files at that time.")
     if f.after3_only:
-        return (f"This 2nd-phase report covers the files submitted after 3:00 PM on {c['weekday']}, {c['date_long']} "
+        return (f"This 2nd-phase report covers the files submitted after 12:00 PM on {c['weekday']}, {c['date_long']} "
                 "(the earlier submissions were sent with the 1st-phase tracker), together with the pending files at the end of the day.")
     return (f"This 2nd-phase report covers all files submitted on {c['weekday']}, {c['date_long']}, "
             "together with the pending files at the end of the day.")

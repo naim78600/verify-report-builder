@@ -204,7 +204,7 @@ class App(tk.Tk):
         b = c3.body
         self.rtype = tk.StringVar(value=self.settings.get("rtype", "tracker"))
         for val, title, help_ in (
-                ("tracker", "দৈনিক সাবমিশন ট্র্যাকার", "Complete + Incomplete রিপোর্ট, ইমেইলের মতো সাজানো (3pm / 7pm)"),
+                ("tracker", "দৈনিক সাবমিশন ট্র্যাকার", "Complete + Incomplete রিপোর্ট, ইমেইলের মতো সাজানো (12:00 PM / 6:15 PM)"),
                 ("range", "সময়সীমার সব ফাইলের রিপোর্ট", "বাছাই করা সময়ের সব সারি: Submitted ও Incomplete"),
                 ("bill", "মাসিক বিল (Card + Loan)", "মাস বাছুন: ওই মাসে তৈরি হওয়া সব ফাইল / Re-CPV / extra ট্রিপের বিল — Excel + PDF"),
                 ("recpv", "Re-CPV সহ বিস্তারিত এক্সেল", "প্রতি ফাইলের নিচে Re-CPV/Extra + Calculation শিট"),
@@ -226,10 +226,10 @@ class App(tk.Tk):
         self.phase_row.pack(fill="x", pady=(8, 0))
         tk.Label(self.phase_row, text="ফেজ", bg=P["card"], fg=P["text"], font=f.small).pack(side="left")
         self.slot = tk.StringVar(value="auto")
-        Segmented(self.phase_row, f, [("auto", f"অটো ({'1st' if slot_for() == '3pm' else '2nd'})"), ("3pm", "1st · 3:30 PM"),
-                                      ("7pm", "2nd · 7:00 PM")], self.slot, self._sync_ui).pack(side="left", padx=(8, 0))
+        Segmented(self.phase_row, f, [("auto", f"অটো ({'1st' if slot_for() == '3pm' else '2nd'})"), ("3pm", "1st · 12:00 PM"),
+                                      ("7pm", "2nd · 6:15 PM")], self.slot, self._sync_ui).pack(side="left", padx=(8, 0))
         self.after3_var = tk.BooleanVar(value=bool(self.settings.get("after3_only", False)))
-        self.after3_cb = tk.Checkbutton(b, text="২য় ফেজে শুধু বিকেল ৩টার পরের সাবমিশন দেখান\n(১ম ফেজে যা গেছে তা বাদ)", variable=self.after3_var,
+        self.after3_cb = tk.Checkbutton(b, text="২য় ফেজে শুধু দুপুর ১২টার পরের সাবমিশন দেখান\n(১ম ফেজে যা গেছে তা বাদ)", variable=self.after3_var,
                                         bg=P["card"], activebackground=P["card"], font=f.tiny, fg=P["text"], anchor="w", justify="left",
                                         highlightthickness=0, selectcolor="white")
         self.day_warn = tk.Label(b, text="", bg=P["card"], fg=P["warn"], font=f.tiny, anchor="w", justify="left", wraplength=380)

@@ -43,6 +43,8 @@ def strip_checklist(src: Path, dst: Path) -> Path:
         del wb["Check List"]
     wb.active = 0
     dst.parent.mkdir(parents=True, exist_ok=True)
+    from .pagesetup import a4
+    a4(wb)
     wb.save(dst)
     return dst
 
