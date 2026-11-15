@@ -1,6 +1,6 @@
 # Verify Report Builder — Version 10 (ভেরিফাই রিপোর্ট বিল্ডার)
 
-**Version 10.0.1** · Prime Bank PLC · LankaBangla Finance · Barikoi Technologies Limited
+**Version 10.0.2** · Prime Bank PLC · LankaBangla Finance · Barikoi Technologies Limited
 
 Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্যার। Verify ড্যাশবোর্ড থেকে Prime Bank PLC-এর ফাইল সংগ্রহ করে **দৈনিক সাবমিশন ট্র্যাকার** (Complete + Incomplete, Excel + PDF) বানায় এবং **সরাসরি ব্যাংককে ইমেইল** পাঠায়।
 **Verify থেকে শুধু তথ্য পড়ে (GET); কোনো তথ্য বদলায় না।** লগইন পাসওয়ার্ড ও ইমেইলের App Password কোথাও সংরক্ষণ হয় না।
@@ -12,7 +12,7 @@ Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্�
 | **নতুন উইন্ডো** | খোলার সময় ভাষা বাছুন (**বাংলা / English**) ও লগইন; সাদা সাইডবার: আজ · দৈনিক ট্র্যাকার · মাসিক বিল · BS ট্র্যাকার · অফিস রিসিভ · রিমাইন্ডার · ভেরিফায়ার · ফাইল হিস্টরি · সেটিংস |
 | **A4 রিপোর্ট** | PDF ও Excel দুটোই **A4 landscape, সব কলাম** (Sample 1 – A4 Classic); ট্র্যাকার Excel-এর প্রতিটি কলামে ফিল্টার |
 | **ফেজের সময়** | ১ম ফেজ **দুপুর ১২:০০**, ২য় ফেজ **সন্ধ্যা ৬:১৫**; কলাম “Before / After 12 PM” |
-| **BS ট্র্যাকার** | প্রতি BS একটি সারি (এক ফাইলে দুটো BS পরপর); অনলাইন / অফলাইন ব্যাংক নিজে চেনে; ভেরিফায়ারের রিমার্ক থেকে BS তোলা হয়েছে কি না নিজে বোঝে; মাসিক Excel; ক্লায়েন্টের সই করা লিস্ট (Excel / PDF / ছবি) আপলোড করলে কোনটা রিসিভ হয়নি দেখায়; কুরিয়ার নম্বর, স্লিপের ছবি, অবস্থা |
+| **BS ট্র্যাকার** | প্রতি BS একটি সারি (এক ফাইলে দুটো BS পরপর); অনলাইন / অফলাইন ব্যাংক নিজে চেনে; ভেরিফায়ারের রিমার্ক থেকে BS তোলা হয়েছে কি না নিজে বোঝে; মাসিক Excel; ক্লায়েন্টের সই করা লিস্ট (Excel / PDF / ছবি) আপলোড করলে কোনটা রিসিভ হয়নি দেখায় (ছবি Windows ও Mac দুটোতেই পড়া যায়); কুরিয়ার নম্বর, স্লিপের ছবি, অবস্থা |
 | **অফিস রিসিভ** | Trip ID বা File No লিখলেই বাকিটা নিজে আসে; সারাদিনের তালিকা; দিনশেষে A4 “আজ রিসিভ হয়েছে” শিট প্রিন্ট করে সই; Excel ফর্ম পূরণ করে আপলোডও করা যায় |
 | **১২:০০ ও ৬:১৫ BS চেক** | সব বাকি BS (কোনো সীমা নেই) নিজে থেকে দেখায় |
 | **WhatsApp রিমাইন্ডার** | ১০টা, ১টা ও ৪টা (প্রতিবার সব চলমান ও হোল্ড ট্রিপ; ১০টায় BS জমার তাগিদ নেই) — দুই ক্লায়েন্ট; SLA পার / আজ শেষ আগে; পরের দিনের অ্যাপয়েন্টমেন্ট বাদ। হেল্পার প্রতিটি চ্যাট মেসেজ লিখে ও ভয়েস যুক্ত করে খোলে, **Send আপনি চাপেন**; উত্তর নিজে পড়ে বোঝে (যাচ্ছি / শেষ / সমস্যা + কারণ); দিনের সারাংশ শুধু সফটওয়্যারে |
@@ -44,7 +44,7 @@ Chrome → `chrome://extensions` → **Developer mode** চালু → **Load 
 | Mac (Apple Silicon M1–M4) | `VerifyReportBuilder-Mac-AppleSilicon.dmg` | খুলে অ্যাপটি **Applications**-এ টেনে আনুন |
 | Mac (Intel) | `VerifyReportBuilder-Mac-Intel.dmg` | একই |
 
-ইনস্টলার না চাইলে `.zip` (portable) ফাইলও আছে। রিপোজিটরি **প্রাইভেট** — ডাউনলোডের জন্য GitHub-এ সাইন-ইন লাগবে (**Releases** পাতা; Release-এর নাম “Verify Report Builder Version 10 (v10.0.1)”)।
+ইনস্টলার না চাইলে `.zip` (portable) ফাইলও আছে। রিপোজিটরি **প্রাইভেট** — ডাউনলোডের জন্য GitHub-এ সাইন-ইন লাগবে (**Releases** পাতা; Release-এর নাম “Verify Report Builder Version 10 (v10.0.2)”)।
 প্রথমবার খুললে ডিজিটাল স্বাক্ষর নেই বলে সতর্কতা আসে: **Windows:** More info → Run anyway। **Mac:** System Settings → Privacy & Security → *Open Anyway* (অথবা `xattr -dr com.apple.quarantine /Applications/VerifyReportBuilder.app`)।
 
 ## প্রতিদিনের ওয়ার্কফ্লো (দিনে দুইবার)
@@ -172,7 +172,7 @@ Chrome → `chrome://extensions` → **Developer mode** চালু → **Load 
 
 ---
 
-### Version 10.0.1 (১৫ নভেম্বর) — A4, BS ট্র্যাকার, অফিস রিসিভ, WhatsApp রিমাইন্ডার, নতুন উইন্ডো (বাংলা / English)
+### Version 10.0.2 (১৫ নভেম্বর) — A4, BS ট্র্যাকার, অফিস রিসিভ, WhatsApp রিমাইন্ডার, নতুন উইন্ডো (বাংলা / English)
 উপরের “Version 10-এ নতুন” টেবিল দেখুন। সব নিয়ম ফাংশন ধরে `docs/TECH_MEMO.md`-এর ১৪ নম্বর অংশে।
 
 ### Version 7.0.0 (১১ নভেম্বর) — সেপ্টেম্বরের পূর্ণ যাচাই, প্যাকেজের document আলাদা সারি, সীমানার পিন
@@ -282,7 +282,7 @@ python run_app.py --cli --email you@barikoi.com --prime --mode tracker --slot 7p
 ## GitHub থেকে বিল্ড ও ডাউনলোড
 
 1. কোড GitHub-এর **Private** রিপোজিটরিতে থাকে। **Actions** চলে শুধু (ক) `v*` ট্যাগ দিলে অথবা (খ) হাতে *Run workflow* চাপলে — তখন আগে ১৬২টি টেস্ট, তারপর চারটি বিল্ড এবং তিন সিস্টেমে GUI smoke test চলে।
-2. **স্থায়ী ডাউনলোড লিংক (Release) বানাতে:** GitHub → **Releases → Draft a new release** → Tag লিখুন `v10.0.1` (Target: `main`) → **Publish**। (অথবা টার্মিনালে `git tag v10.0.1 && git push origin v10.0.1`।) ট্যাগ দেওয়ার পর Actions Windows 64/32-bit ও Mac Apple Silicon / Intel বিল্ড করে প্রায় ১৫–২০ মিনিটে Release-এ ফাইল জুড়ে দেয়। Release-এর নাম ও বিবরণ নিজে থেকে বসে (`RELEASE_NOTES.md` থেকে)।
+2. **স্থায়ী ডাউনলোড লিংক (Release) বানাতে:** GitHub → **Releases → Draft a new release** → Tag লিখুন `v10.0.2` (Target: `main`) → **Publish**। (অথবা টার্মিনালে `git tag v10.0.2 && git push origin v10.0.2`।) ট্যাগ দেওয়ার পর Actions Windows 64/32-bit ও Mac Apple Silicon / Intel বিল্ড করে প্রায় ১৫–২০ মিনিটে Release-এ ফাইল জুড়ে দেয়। Release-এর নাম ও বিবরণ নিজে থেকে বসে (`RELEASE_NOTES.md` থেকে)।
 3. **শুধু বিল্ড চেক করতে:** **Actions → Build desktop app → Run workflow**; শেষে রানের পাতার নিচে **Artifacts** থেকে ডাউনলোড (`Windows-64bit`, `Windows-32bit`, `Mac-AppleSilicon`, `Mac-Intel`) — এটি Release নয়, কিছুদিন পরে মেয়াদ শেষ হয়।
 
 > আপনার MacBook Apple Silicon (M-সিরিজ) হলে `Mac-AppleSilicon`, Intel হলে `Mac-Intel` নিন। (Apple menu → About This Mac এ দেখা যায়।)

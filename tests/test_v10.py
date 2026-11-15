@@ -278,3 +278,17 @@ def test_verifier_phone_keeps_only_id_name_phone():
             return {"data": [{"id": 5, "name": " Rahim ", "phone": "01711-000005", "admin_access_token": "SECRET", "email": "x@y"}]}
     got = verifier_phones(C())
     assert got == {5: {"name": "Rahim", "phone": "8801711000005"}}
+
+
+def test_mac_photo_reader_is_used_on_mac(monkeypatch, tmp_path):
+    import stat, sys
+    from report_builder import assets_path
+    exe = tmp_path / "bin" / "mac_ocr"
+    exe.parent.mkdir()
+    exe.write_text("#!/bin/sh\necho 'PL-20261001094920785  Sonali Bank'\n")
+    exe.chmod(exe.stat().st_mode | stat.S_IXUSR)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(assets_path, "asset", lambda *p: tmp_path.joinpath(*p))
+    img = tmp_path / "x.png"
+    img.write_bytes(b"x")
+    assert "PL-20261001094920785" in BT.ocr_image(img)

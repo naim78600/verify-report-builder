@@ -325,7 +325,7 @@ Reference: `bs_rules.py`, `bs_tracker.py`, `pages.BSPage`, `pages.ReceivePage`.
    received by, note). A filled Excel form can also be uploaded (`write_receive_template` / `read_receive_upload`). At day end
    the "আজ রিসিভ হয়েছে" sheet (A4 portrait, signature lines) is printed (`write_receive_sheet`).
 5. **Courier**: courier name, number, status (Booked / In transit / Delivered / Returned) and the slip picture, per BS.
-6. **Bank received**: the user uploads the client's signed list (Excel, CSV, PDF with text, or a photo – read with Windows' own
+6. **Bank received**: the user uploads the client's signed list (Excel, CSV, PDF with text, or a photo – read with Windows' or macOS' own
    OCR). A BS counts as received when its Trip ID, its File No (or the File No's digits) or the applicant's full name is in the
    list; when a file has two BS and only the name is found, the bank's name must be on the same line (`match_signed_list`).
    The program then lists the BS that were sent but are not in the list.
