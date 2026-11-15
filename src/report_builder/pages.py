@@ -127,7 +127,7 @@ class HomePage(Page):
         st = R.load_state()
         ds = R.day_state(st)
         checks = self.shell.settings.get("bs_checks", {}).get(date.today().isoformat(), [])
-        slots = [("10:00", "10am", L("অ্যাপয়েন্টমেন্ট রিমাইন্ডার", "Appointment reminder")),
+        slots = [("10:00", "10am", L("রিমাইন্ডার রাউন্ড (সব চলমান/হোল্ড)", "Reminder round (all on-going / hold)")),
                  ("12:00", "12pm", L("১ম ফেজ ট্র্যাকার + BS চেক", "1st phase tracker + BS check")),
                  ("01:00", "1pm", L("রিমাইন্ডার রাউন্ড", "Reminder round")),
                  ("04:00", "4pm", L("রিমাইন্ডার রাউন্ড", "Reminder round")),

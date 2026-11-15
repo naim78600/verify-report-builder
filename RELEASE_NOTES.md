@@ -1,4 +1,4 @@
-# Verify Report Builder — Version 10 (v10.0.0)
+# Verify Report Builder — Version 10 (v10.0.1)
 
 Prime Bank PLC ও LankaBangla-র কাজের জন্য: দৈনিক সাবমিশন ট্র্যাকার, মাসিক বিল, ফাইল হিস্টরি — আর নতুন **BS ট্র্যাকার**, **অফিস রিসিভ** ও **WhatsApp রিমাইন্ডার**। Verify থেকে **শুধু তথ্য পড়ে (GET)**, কিছু বদলায় না; পাসওয়ার্ড কোথাও সংরক্ষণ হয় না।
 
@@ -12,7 +12,7 @@ Prime Bank PLC ও LankaBangla-র কাজের জন্য: দৈনিক
 | **BS ট্র্যাকার** | প্রতি BS একটি সারি (এক ফাইলে দুটো BS পরপর); অনলাইন / অফলাইন ব্যাংক নিজে চেনে; ভেরিফায়ারের রিমার্ক থেকে BS তোলা হয়েছে কি না নিজে বোঝে; মাসিক Excel; ক্লায়েন্টের সই করা লিস্ট (Excel / PDF / ছবি) আপলোড করলে কোনটা রিসিভ হয়নি দেখায়; কুরিয়ার নম্বর, স্লিপের ছবি, অবস্থা |
 | **অফিস রিসিভ** | Trip ID বা File No লিখলেই বাকিটা নিজে আসে; সারাদিনের তালিকা; দিনশেষে A4 “আজ রিসিভ হয়েছে” শিট প্রিন্ট করে সই; Excel ফর্ম পূরণ করে আপলোডও করা যায় |
 | **১২:০০ ও ৬:১৫ BS চেক** | সব বাকি BS (কোনো সীমা নেই) নিজে থেকে দেখায় |
-| **WhatsApp রিমাইন্ডার** | ১০টা (আজকের অ্যাপয়েন্টমেন্ট), ১টা ও ৪টা (সবাই) — দুই ক্লায়েন্ট; SLA পার / আজ শেষ আগে; পরের দিনের অ্যাপয়েন্টমেন্ট বাদ। হেল্পার প্রতিটি চ্যাট মেসেজ লিখে ও ভয়েস যুক্ত করে খোলে, **Send আপনি চাপেন**; উত্তর নিজে পড়ে বোঝে (যাচ্ছি / শেষ / সমস্যা + কারণ); দিনের সারাংশ শুধু সফটওয়্যারে |
+| **WhatsApp রিমাইন্ডার** | ১০টা, ১টা ও ৪টা (প্রতিবার সব চলমান ও হোল্ড ট্রিপ; ১০টায় BS জমার তাগিদ নেই) — দুই ক্লায়েন্ট; SLA পার / আজ শেষ আগে; পরের দিনের অ্যাপয়েন্টমেন্ট বাদ। হেল্পার প্রতিটি চ্যাট মেসেজ লিখে ও ভয়েস যুক্ত করে খোলে, **Send আপনি চাপেন**; উত্তর নিজে পড়ে বোঝে (যাচ্ছি / শেষ / সমস্যা + কারণ); দিনের সারাংশ শুধু সফটওয়্যারে |
 | **ভেরিফায়ার** | ড্যাশবোর্ডের নম্বর; WhatsApp নেই / নম্বর ভুল = লাল; নম্বর বদলানো বা যোগ করা যায় |
 | **আগের নিয়ম** | ট্র্যাকার, বিল, ফাইল হিস্টরি, SLA, Incomplete, ইমেইল — সব আগের মতোই |
 
@@ -32,7 +32,7 @@ Chrome → `chrome://extensions` → **Developer mode** চালু → **Load 
 
 ## Technical memo — every rule, by function (for developers)
 
-**For:** the developers of the Verify dashboard · **From:** Barikoi operations (Prime Bank PLC desk) · **Version:** 10.0.0 · **Date:** 15 November 2026
+**For:** the developers of the Verify dashboard · **From:** Barikoi operations (Prime Bank PLC desk) · **Version:** 10.0.1 · **Date:** 15 November 2026
 
 Verify Report Builder is a desktop tool that reads the Verify dashboard (GET only) and produces what is sent to Prime Bank PLC:
 the daily submission tracker, the monthly bill, and the file history. This memo writes down every rule the tool applies, from the
@@ -440,7 +440,7 @@ Reference: `shell.py`, `pages.py`, `gui.ReportsPage`, `i18n.py`.
 - **SLA Restart:** Appointment-এর *scheduled date* থেকে এবং **যেকোনো নতুন ট্রিপ** তৈরি হলে সঙ্গে সঙ্গে; In (Dhaka ও Chattogram City Corporation) = ২ কার্যদিবস, Out = ৪ কার্যদিবস। নতুন কলাম **“SLA Start / Restart Date”** (Excel ও PDF)।
 - **Incomplete** = শুধু Hold, Finished কিন্তু Submit হয়নি ও Partially Submitted।
 
-## সব ফিচার — প্রথম সংস্করণ থেকে Version 7 পর্যন্ত (বিস্তারিত; Version 10.0.0 উপরে)
+## সব ফিচার — প্রথম সংস্করণ থেকে Version 7 পর্যন্ত (বিস্তারিত; Version 10.0.1 উপরে)
 
 প্রতিটি ধাপে আগের সব ফিচার থেকে যায়; নিচে কোন সংস্করণে কী যোগ হয়েছে ক্রমানুসারে লেখা।
 

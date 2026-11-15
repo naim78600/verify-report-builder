@@ -108,8 +108,6 @@ def build_queue(snapshot: dict, phones: dict, bs_pending: list | None = None, ro
                     has_today = today in days
                     if future and not has_today:
                         continue                                    # appointment on a later day: skip until then
-                    if round_key == "10am" and not has_today:
-                        continue                                    # 10 AM: today's appointments only
                     if sla and sla.date() < today:
                         pr, note = P_SLA, "SLA passed"
                     elif sla and sla.date() == today:
@@ -137,20 +135,16 @@ def message(rem: Reminder, round_key: str) -> str:
     by_pr: dict = {}
     for t in rem.tasks:
         by_pr.setdefault(t.priority, []).append(t)
-    if round_key == "10am":
-        files = ", ".join(sorted({t.file_no for t in rem.tasks}))
-        lines.append(f"আজ অ্যাপয়েন্টমেন্ট আছে: {files}। আজই শেষ করুন।")
-    else:
-        if by_pr.get(P_SLA):
-            lines.append(f"SLA পার হয়ে গেছে: {_files(by_pr[P_SLA])}। আজই শেষ করুন।")
-        if by_pr.get(P_TODAY):
-            lines.append(f"আজ SLA শেষ: {_files(by_pr[P_TODAY])}।")
-        if by_pr.get(P_APPT):
-            lines.append(f"আজ অ্যাপয়েন্টমেন্ট: {_files(by_pr[P_APPT])}।")
-        if by_pr.get(P_NORMAL):
-            lines.append(f"চলমান: {_files(by_pr[P_NORMAL])}।")
-        if rem.bs_due:
-            lines.append(f"ব্যাংক স্টেটমেন্ট অফিসে জমা দিন: {', '.join(rem.bs_due)}।")
+    if by_pr.get(P_SLA):
+        lines.append(f"SLA পার হয়ে গেছে: {_files(by_pr[P_SLA])}। আজই শেষ করুন।")
+    if by_pr.get(P_TODAY):
+        lines.append(f"আজ SLA শেষ: {_files(by_pr[P_TODAY])}।")
+    if by_pr.get(P_APPT):
+        lines.append(f"আজ অ্যাপয়েন্টমেন্ট: {_files(by_pr[P_APPT])}।")
+    if by_pr.get(P_NORMAL):
+        lines.append(f"চলমান: {_files(by_pr[P_NORMAL])}।")
+    if rem.bs_due:
+        lines.append(f"ব্যাংক স্টেটমেন্ট অফিসে জমা দিন: {', '.join(rem.bs_due)}।")
     lines.append("উত্তর দিন: ১ = যাচ্ছি, ২ = শেষ, ৩ = সমস্যা আছে (কারণ লিখুন)।")
     return "\n".join(lines)
 

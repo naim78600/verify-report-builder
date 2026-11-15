@@ -337,7 +337,7 @@ Reference: `reminders.py`, `helper_server.py`, `assets/whatsapp_helper/`, `pages
 
 1. **Who**: every verifier with an open trip (Created / Allocated / Started / Hold) in an ON GOING or HOLD file, both clients,
    plus verifiers who still have to hand in a collected BS. No cap.
-2. **When**: 10:00 AM – today's appointments only; 1:00 PM and 4:00 PM – everyone. A trip whose appointment is on a later day is
+2. **When**: 10:00 AM, 1:00 PM and 4:00 PM – every on-going / hold trip, appointments of today first (the BS reminder is not in the 10 AM round); A trip whose appointment is on a later day is
    skipped until that day; with an appointment today it is reminded until finished. Office days only, until 6:15 PM; if the PC
    was off, the latest missed round is prepared when the program opens.
 3. **Order**: SLA passed → SLA ends today → appointment today → the rest (`Reminder.priority`).
