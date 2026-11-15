@@ -9,6 +9,7 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "tests"))
 
 import pytest  # noqa: E402
+from openpyxl.utils import get_column_letter  # noqa: E402
 import mock_server  # noqa: E402
 from openpyxl import load_workbook  # noqa: E402
 
@@ -40,7 +41,7 @@ def test_rows_and_selection(data):
     assert d.old_files == 1                                            # F5 (by tracker); F4 is already in the dashboard's Submitted list
     ck = d.dash["check"]
     assert (ck["dashboard"], ck["matched"], ck["missing"], ck["extra"]) == (4, 4, [], 0) and ck["partial"] == 0
-    assert title_for(d) == "Prime Bank PLC · Submission Tracker · 02 Nov 2026 · 2nd Phase · 7:00 PM"
+    assert title_for(d) == "Prime Bank PLC · Submission Tracker · 02 Nov 2026 · 2nd Phase · 6:15 PM"
 
 
 def test_trip_count_never_changes(data):
@@ -117,14 +118,15 @@ def test_outputs(data, tmp_path):
     assert [c.value for c in ws[4]] == [
         "SL", "File No", "File Type", "Applicant Name", "Concerns Name", "Receive Date-Time", "Submission Date-Time", "Report Status",
         "Report Summary (Done / Due)", "Last Update Date", "Re-CPV / Extra Trip", "Bill Slab", "Area", "SLA Start / Restart Date", "SLA",
-        "TAT", "Extra TAT", "Appointment History", "Last Update Details", "Before / After 3 PM"]
+        "TAT", "Extra TAT", "Appointment History", "Last Update Details", "Before / After 12 PM"]
     assert ws["D5"].value and isinstance(ws["F5"].value, __import__("datetime").datetime)   # applicant name; receive date WITH its time
     assert ws["F5"].number_format == "dd/mm/yyyy hh:mm"
-    # filter buttons only on File No, Receive Date-Time, Submission Date-Time and Last Update Date; every other button is hidden
-    for sh, ncols, shown in ((wb["Complete Report"], 20, {1, 5, 6, 9}), (wb["Incomplete Report"], 21, {1, 5, 6, 10})):
-        hidden = {fc.colId for fc in sh.auto_filter.filterColumn if fc.hiddenButton}
-        assert hidden == set(range(ncols)) - shown, (sh.title, hidden)
-        assert sh.cell(4, max(shown) + 1).value == "Last Update Date"
+    # v10: a filter button on every column; A4 landscape, all columns on the page width, header row on every page
+    for sh, ncols in ((wb["Complete Report"], 20), (wb["Incomplete Report"], 21)):
+        assert not [fc for fc in sh.auto_filter.filterColumn if fc.hiddenButton], sh.title
+        assert sh.auto_filter.ref.startswith("A4:") and sh.auto_filter.ref.split(":")[1].rstrip("0123456789") == get_column_letter(ncols)
+        assert int(sh.page_setup.paperSize) == 9 and sh.page_setup.orientation == "landscape"
+        assert int(sh.page_setup.fitToWidth or 1) == 1 and sh.print_title_rows.replace("$", "").endswith("4:4")
     heads = [c.value for c in wb["Incomplete Report"][4]]
     assert heads[7:10] == ["Report Status", "Pending Reason", "Report Summary (Done / Due)"]   # the internal copy's reason column
     assert "Pending Reason" not in [c.value for c in wb["Complete Report"][4]]

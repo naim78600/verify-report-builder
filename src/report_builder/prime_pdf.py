@@ -1,7 +1,8 @@
 """Prime Bank Report - PDF for bankers (reportlab, no other tools needed).
 
-Design goals: simple, same two parts as the daily e-mail (Complete / Incomplete), A3 landscape (the 16 columns
-stay big and readable; prints scaled on A4), header row repeated on every page, rows never split across pages,
+Design goals: simple, same two parts as the daily e-mail (Complete / Incomplete), A4 landscape with EVERY column
+(v10, "Sample 1 - A4 Classic": the condensed Carlito font, OFL, Calibri-metric, keeps the 16 / 17 columns readable;
+a long cell is cut to a few lines with "+N more lines (full text in the Excel)"), header row repeated on every page, rows never split across pages,
 status and area shown both by colour AND by words (still readable on a black-and-white printer), embedded fonts,
 calm colours (no red, no yellow).  Problems written in Done are amber; the same problems repeated in Due sit on a
 soft peach marker.  Internal copy: light sky-blue cells = "please check".
@@ -9,13 +10,15 @@ soft peach marker.  Internal copy: light sky-blue cells = "please check".
 from __future__ import annotations
 
 import os
+
 from html import escape
 from pathlib import Path
-from types import SimpleNamespace
 
 import reportlab
+from types import SimpleNamespace
+
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A3, landscape
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
@@ -24,13 +27,15 @@ from reportlab.pdfgen import canvas as rl_canvas
 from reportlab.platypus import KeepInFrame, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from . import theme as T
+from .assets_path import asset
 from .billing import SLA_IN, SLA_OUT, before_after
 from .collect_prime import PrimeData, title_for
 from .report_text import _dt, appointment_lines, bill_slab_lines, has_due, last_update_lines, sla_restart_lines, summary_lines
 
 HIST_MAX = 6              # history lines shown per row in the PDF (newest); the Excel has them all
-LINES = {"concerns": 10, "history": 18, "slab": 16, "summary": 14, "last": 14, "appt": 14, "reason": 14}   # printed lines per cell
-MAX_CELL_H = 600          # points; the page frame is ~747 pt high, minus the repeated header row and the cell padding
+LINES = {"concerns": 6, "history": 6, "slab": 6, "summary": 8, "last": 6, "appt": 6, "reason": 6}   # printed lines per cell (A4)
+MAX_CELL_H = 430          # points; the A4 landscape frame is ~512 pt high, minus the repeated header row and the cell padding
+FONT, FONT_B, FONT_I = "Carlito", "Carlito-Bold", "Carlito-Italic"
 
 
 def _c(hexv: str):
@@ -48,12 +53,17 @@ def _fonts():
     global _FONT_READY, _CMAP
     if _FONT_READY:
         return
-    d = os.path.join(os.path.dirname(reportlab.__file__), "fonts")
-    pdfmetrics.registerFont(TTFont("Vera", os.path.join(d, "Vera.ttf")))
-    pdfmetrics.registerFont(TTFont("Vera-Bold", os.path.join(d, "VeraBd.ttf")))
-    pdfmetrics.registerFont(TTFont("Vera-Italic", os.path.join(d, "VeraIt.ttf")))
+    d = asset("fonts")
+    pdfmetrics.registerFont(TTFont(FONT, str(d / "Carlito-Regular.ttf")))
+    pdfmetrics.registerFont(TTFont(FONT_B, str(d / "Carlito-Bold.ttf")))
+    pdfmetrics.registerFont(TTFont(FONT_I, str(d / "Carlito-Italic.ttf")))
+    pdfmetrics.registerFontFamily(FONT, normal=FONT, bold=FONT_B, italic=FONT_I, boldItalic=FONT_B)
+    _CMAP = set(pdfmetrics.getFont(FONT).face.charToGlyph.keys())
+    v = os.path.join(os.path.dirname(reportlab.__file__), "fonts")          # Vera: still used by the bill PDF (bill_out.py)
+    pdfmetrics.registerFont(TTFont("Vera", os.path.join(v, "Vera.ttf")))
+    pdfmetrics.registerFont(TTFont("Vera-Bold", os.path.join(v, "VeraBd.ttf")))
+    pdfmetrics.registerFont(TTFont("Vera-Italic", os.path.join(v, "VeraIt.ttf")))
     pdfmetrics.registerFontFamily("Vera", normal="Vera", bold="Vera-Bold", italic="Vera-Italic", boldItalic="Vera-Bold")
-    _CMAP = set(pdfmetrics.getFont("Vera").face.charToGlyph.keys())
     _FONT_READY = True
 
 
@@ -87,10 +97,10 @@ class _NumberedCanvas(rl_canvas.Canvas):
         n = len(self._saved)
         for st in self._saved:
             self.__dict__.update(st)
-            self.setFont("Vera", 7)
+            self.setFont(FONT, 7)
             self.setFillColor(GREY)
             w, _h = self._pagesize
-            self.drawRightString(w - 9 * mm, 6 * mm, f"Page {self._pageNumber} of {n}")
+            self.drawRightString(w - 8 * mm, 5.2 * mm, f"Page {self._pageNumber} of {n}")
             super().showPage()
         super().save()
 
@@ -154,7 +164,7 @@ def _markup(lines, kind_color: str | None = None) -> str:
                 bold, color = True, kind_color
             t = escape(_safe(text.replace("\u25ba", "\u00bb")))
             if st == "h":
-                t = f'<font size="6">{t}</font>'
+                t = f'<font size="5.6">{t}</font>'
             if bold:
                 t = f"<b>{t}</b>"
             if st == "hl":
@@ -168,23 +178,23 @@ def _markup(lines, kind_color: str | None = None) -> str:
 def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
     _fonts()
     title = title_for(d)
-    page = landscape(A3)
-    left = right = 9 * mm
+    page = landscape(A4)
+    left = right = 8 * mm
     usable = page[0] - left - right
-    base = ParagraphStyle("b", fontName="Vera", fontSize=8.6, leading=10.8, textColor=_c(T.TEXT))
+    base = ParagraphStyle("b", fontName=FONT, fontSize=7.2, leading=8.8, textColor=_c(T.TEXT))
     center = ParagraphStyle("c", parent=base, alignment=1)
-    head = ParagraphStyle("h", parent=base, fontName="Vera-Bold", textColor=colors.white, alignment=1, fontSize=8.8)
-    small = ParagraphStyle("s", parent=base, fontSize=7.8, leading=9.6, textColor=GREY)
+    head = ParagraphStyle("h", parent=base, fontName=FONT_B, textColor=colors.white, alignment=1, fontSize=7.2, leading=8.6)
+    small = ParagraphStyle("s", parent=base, fontSize=6.6, leading=8, textColor=GREY)
 
     # v6 order - the same reading order as the Excel tracker (File Type sits under the File No, Before / After 3 PM under the
     # submission time, SLA under the Extra TAT, the last-update date inside "Last Update")
     heads = ["SL", "File No", "Applicant Name", "Concerns", "Receive Date", "Submission Date-Time", "Report Status", "Report Summary",
              "Last Update", "Re-CPV / Extra Trip (ID)", "Bill Slab", "Area", "SLA Start / Restart Date", "TAT", "Extra TAT / SLA",
              "Appointment"]
-    widths_mm = [7, 38, 24, 28, 21, 22, 21, 40, 34, 25, 38, 11, 22, 9, 17, 33]
+    widths_mm = [6, 35, 19, 24, 16, 17, 18, 33, 28, 20, 22, 8, 18, 7, 14, 26]       # relative (A4 Classic); scaled to the page
     SHOWN = {"Concerns": "Concerns Name", "Receive Date": "Receive Date-Time", "Re-CPV / Extra Trip (ID)": "Re-CPV / Extra Trip",
              "Report Summary": "Report Summary (Done / Due)", "Appointment": "Appointment History"}
-    REASON_MM = 34                       # Incomplete table only: "Pending Reason" right after "Report Status"
+    REASON_MM = 23                       # Incomplete table only: "Pending Reason" right after "Report Status"
     cur = {"w": []}
 
     def set_layout(reason: bool):
@@ -230,7 +240,7 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
             else:
                 when = f"<font color='#{T.MUTED}'>Pending</font>"
             st_color = T.POS if sub else T.NEG
-            status = r.status + (f"<br/><font size='6.5'>({escape(r.status_note)})</font>" if r.status_note and not sub else "")
+            status = r.status + (f"<br/><font size='6'>({escape(r.status_note)})</font>" if r.status_note and not sub else "")
             out = r.area == "Out"
             xt = r.extra_tat if r.extra_tat is not None else ""
             sla_txt = "SLA Breach" if r.sla_breach else "Within SLA"
@@ -242,7 +252,7 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
             kc = T.KIND_TX.get(r.kind)
             start = r.sla_start or (r.receive_dt.date() if r.receive_dt else None)
             if r.sla_restarted:                                      # restarted (appointment / new trip): plum, with the reason in words
-                start_cell = Paragraph(f"<font color='#{T.RESTART}'><b>{start:%d/%m/%Y}</b><br/><font size='6.6'>SLA restarted<br/>"
+                start_cell = Paragraph(f"<font color='#{T.RESTART}'><b>{start:%d/%m/%Y}</b><br/><font size='6'>SLA restarted<br/>"
                                        f"({r.sla_why})</font></font>", center)
             else:
                 start_cell = _p(f"{start:%d/%m/%Y}" if start else "", center)
@@ -258,7 +268,7 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
                 "SLA Start / Restart Date": start_cell,
                 "Submission Date-Time": Paragraph(when, center),
                 "TAT": _p(r.tat if r.tat is not None else "", center),
-                "Extra TAT / SLA": Paragraph(f"<b><font color='#{sla_col}'>{xt}</font></b><br/><font size='6.6' color='#{sla_col}'>{sla_txt}<br/>"
+                "Extra TAT / SLA": Paragraph(f"<b><font color='#{sla_col}'>{xt}</font></b><br/><font size='6' color='#{sla_col}'>{sla_txt}<br/>"
                                              f"(SLA {r.sla_days} days)</font>", center),
                 "Report Status": Paragraph(f'<font color="#{st_color}"><b>{status}</b></font>', center),
                 "Report Summary": cap(Paragraph(_markup(summary_lines(r)), base), ix["Report Summary"], LINES["summary"]),
@@ -311,29 +321,39 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
         return Paragraph("<br/>".join(lines), base)
 
     def band(text, bg, fg):
-        t = Table([[Paragraph(f"<b>{escape(text)}</b>", ParagraphStyle("band", parent=base, fontSize=12, leading=14,
+        t = Table([[Paragraph(f"<b>{escape(text)}</b>", ParagraphStyle("band", parent=base, fontSize=10, leading=12,
                                                                         textColor=_c(fg)))]], colWidths=[usable])
         t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), _c(bg)), ("LINEBEFORE", (0, 0), (0, -1), 4, _c(fg)),
                                ("LEFTPADDING", (0, 0), (-1, -1), 8), ("TOPPADDING", (0, 0), (-1, -1), 5),
                                ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
         return t
 
+    logo = asset("barikoi_logo.png")
+
     def on_page(cv, doc):
         cv.saveState()
         w, h = page
         cv.setFillColor(NAVY)
-        cv.rect(0, h - 13 * mm, w, 13 * mm, stroke=0, fill=1)
+        cv.rect(0, h - 14 * mm, w, 14 * mm, stroke=0, fill=1)
+        x = left
+        if logo.is_file():
+            try:
+                cv.drawImage(str(logo), left, h - 11.6 * mm, width=9 * mm, height=9 * mm, preserveAspectRatio=True, mask="auto")
+                x = left + 11 * mm
+            except Exception:          # a broken logo file never stops the report
+                pass
         cv.setFillColor(colors.white)
-        cv.setFont("Vera-Bold", 13)
-        cv.drawString(left, h - 8.6 * mm, _safe(title))
-        cv.setFont("Vera", 8)
-        cv.drawRightString(w - right, h - 8.2 * mm, _safe(f"Report date {d.report_date:%d/%m/%Y}"))
+        cv.setFont(FONT_B, 12.5)
+        cv.drawString(x, h - 7.6 * mm, _safe(title))
+        cv.setFont(FONT, 8.5)
+        cv.drawRightString(w - right, h - 7.6 * mm, "Barikoi Technologies Limited")
+        cv.drawRightString(w - right, h - 11.6 * mm, _safe(f"Report date {d.report_date:%d/%m/%Y}"))
         cv.setStrokeColor(_c(T.BORDER))
         cv.setLineWidth(0.4)
-        cv.line(left, 9.5 * mm, w - right, 9.5 * mm)
-        cv.setFont("Vera", 7.5)
+        cv.line(left, 8.5 * mm, w - right, 8.5 * mm)
+        cv.setFont(FONT, 6.4)
         cv.setFillColor(GREY)
-        cv.drawString(left, 6 * mm, f"Generated {d.generated_at:%d/%m/%Y %I:%M %p}   |   BS = Bank Statement   |   "
+        cv.drawString(left, 5.2 * mm, f"Generated {d.generated_at:%d/%m/%Y %I:%M %p}   |   BS = Bank Statement   |   "
                                     f"SLA: In area {SLA_IN} working days, Out area {SLA_OUT} working days (Fri, Sat and holidays excluded), from the "
                                     f"SLA Start Date = Receive Date; a new trip restarts it; after an appointment the report is due the next working day by 5:59 PM")
         cv.restoreState()
@@ -350,8 +370,8 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
              ("Extra Trip", n_sg, T.NAVY), ("Re-CPV", n_rc, T.NAVY), ("Extra Doc / Trip", n_ex, T.NAVY),
              ("Area In", sum(1 for r in allr if r.area == "In"), T.IN), ("Area Out", sum(1 for r in allr if r.area == "Out"), T.OUT),
              ("SLA Breach", n_br, T.NEG)]
-    stat_style = ParagraphStyle("st", parent=center, fontSize=7.5, leading=17, textColor=GREY)
-    stats = Table([[Paragraph(f"{k.upper()}<br/><font size='15' color='#{c}'><b>{v}</b></font>", stat_style) for k, v, c in cells]],
+    stat_style = ParagraphStyle("st", parent=center, fontSize=6.5, leading=14, textColor=GREY)
+    stats = Table([[Paragraph(f"{k.upper()}<br/><font size='12.5' color='#{c}'><b>{v}</b></font>", stat_style) for k, v, c in cells]],
                   colWidths=[usable / len(cells)] * len(cells))
     tstyle = [("BACKGROUND", (0, 0), (-1, -1), _c(T.PANEL)), ("LINEAFTER", (0, 0), (-2, -1), 3, colors.white),
               ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]
@@ -382,7 +402,7 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
             f"Light-blue cells need a person to check (see the Check List sheet of the Excel).", small)]
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    doc = SimpleDocTemplate(str(path), pagesize=page, leftMargin=left, rightMargin=right, topMargin=17 * mm,
-                            bottomMargin=12 * mm, title=title, author="Verify Report Builder")
+    doc = SimpleDocTemplate(str(path), pagesize=page, leftMargin=left, rightMargin=right, topMargin=18 * mm,
+                            bottomMargin=11 * mm, title=title, author="Verify Report Builder")
     doc.build(story, onFirstPage=on_page, onLaterPages=on_page, canvasmaker=_NumberedCanvas)
     return path

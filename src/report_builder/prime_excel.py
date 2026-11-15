@@ -32,7 +32,6 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.workbook.defined_name import DefinedName
 from openpyxl.worksheet.datavalidation import DataValidation
-from openpyxl.worksheet.filters import FilterColumn
 
 from . import theme as T
 from .billing import SLA_APPT, SLA_IN, SLA_OUT, before_after
@@ -49,16 +48,16 @@ THIN = Side(style="thin", color=T.BORDER)
 BOX = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 FONT = "Calibri"
 
-COLS = [  # internal title, width - v6 order (20 columns), as the bank reads it
-    ("SL", 4.5), ("File No", 21), ("Type", 6.5), ("Applicant Name", 20), ("Concerns", 26),
-    ("Receive Date", 16), ("Submission Date-Time", 16), ("Report Status", 11), ("Report Summary", 44), ("Last Update Date", 11),
-    ("Re-CPV / Extra Trip (ID)", 24), ("Bill Slab", 26), ("Area", 6.5), ("SLA Start / Restart Date", 12.5), ("SLA", 10.5),
-    ("TAT", 5), ("Extra TAT", 6.5), ("Appointment", 26), ("Last Update Details", 32), ("Before / After 3 PM", 10.5),
+COLS = [  # internal title, width - v6 order (20 columns), as the bank reads it; v10 widths = "A4 Classic" (all on one A4 width)
+    ("SL", 3.8), ("File No", 17.5), ("Type", 5.2), ("Applicant Name", 12), ("Concerns", 16),
+    ("Receive Date", 13.2), ("Submission Date-Time", 13.2), ("Report Status", 9.5), ("Report Summary", 24), ("Last Update Date", 9.8),
+    ("Re-CPV / Extra Trip (ID)", 14), ("Bill Slab", 14), ("Area", 4.8), ("SLA Start / Restart Date", 9.8), ("SLA", 8.5),
+    ("TAT", 4.3), ("Extra TAT", 5), ("Appointment", 16), ("Last Update Details", 18), ("Before / After 12 PM", 7.5),
 ]
 # what the header cell shows (the internal titles stay, so every other writer keeps working)
 SHOWN = {"Type": "File Type", "Concerns": "Concerns Name", "Receive Date": "Receive Date-Time", "Re-CPV / Extra Trip (ID)": "Re-CPV / Extra Trip",
          "Report Summary": "Report Summary (Done / Due)", "Appointment": "Appointment History"}
-REASON_COL = ("Pending Reason", 30)
+REASON_COL = ("Pending Reason", 16)
 
 
 def cols_for(incomplete: bool) -> list:
@@ -75,9 +74,8 @@ def col_index(cols: list) -> dict:
 
 
 COL = col_index(COLS)
-FILTER_ONLY = ("File No", "Receive Date", "Submission Date-Time", "Last Update Date")
 HOLIDAY_RANGE = "Holidays!$A$2:$A$3000"
-CENTER_COLS = ("SL", "Type", "Area", "Receive Date", "SLA Start / Restart Date", "Submission Date-Time", "Before / After 3 PM", "Report Status",
+CENTER_COLS = ("SL", "Type", "Area", "Receive Date", "SLA Start / Restart Date", "Submission Date-Time", "Before / After 12 PM", "Report Status",
                "SLA", "TAT", "Extra TAT", "Last Update Date")
 WRAP_REASON = ("Pending Reason",)
 HEADER_ROW, FIRST_ROW = 4, 5
@@ -238,7 +236,7 @@ def _write_rows(ws, r0: int, rows, checks: list, section: str, cols: list) -> in
             "Receive Date": row.receive_dt if row.receive_dt else None,
             "SLA Start / Restart Date": row.sla_start or (row.receive_dt.date() if row.receive_dt else None),
             "Submission Date-Time": row.reported_at if sub else "Pending",
-            "Before / After 3 PM": before_after(row) if sub else "-",
+            "Before / After 12 PM": before_after(row) if sub else "-",
             "Report Status": row.status + (f"\n({row.status_note})" if row.status_note and not sub else ""),
             "Last Update Date": lu.date() if lu else "N/A",
         }
@@ -338,15 +336,12 @@ def _report_sheet(wb: Workbook, d: PrimeData, name: str, rows, checks: list, is_
         dv = DataValidation(type="list", formula1='"In,Out"', allow_blank=False)
         ws.add_data_validation(dv)
         dv.add(f"{get_column_letter(col['Area'])}{FIRST_ROW}:{get_column_letter(col['Area'])}{last}")
-    # filter buttons ONLY on File No and Last Update Date -------------------------------------
+    # v10: a filter button on EVERY column (Naim, 15 Nov 2026) ---------------------------------
     ws.auto_filter.ref = f"A{HEADER_ROW}:{lastcol}{max(last, FIRST_ROW)}"
-    for i, (t, _w) in enumerate(cols):
-        if t not in FILTER_ONLY:
-            ws.auto_filter.filterColumn.append(FilterColumn(colId=i, hiddenButton=True, showButton=False))
     ws.freeze_panes = f"C{FIRST_ROW}"
     ws.sheet_view.zoomScale = 75
     ws.page_setup.orientation = "landscape"
-    ws.page_setup.paperSize = ws.PAPERSIZE_A3
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
     ws.page_setup.fitToWidth = 1
     ws.page_setup.fitToHeight = 0
     ws.sheet_properties.pageSetUpPr.fitToPage = True
@@ -514,6 +509,8 @@ def build_prime_excel(d: PrimeData, path: Path, with_checklist: bool = True) -> 
         _check_sheet(wb, items)
     wb.active = 0
     path.parent.mkdir(parents=True, exist_ok=True)
+    from .pagesetup import a4
+    a4(wb)
     wb.save(path)
     return path
 

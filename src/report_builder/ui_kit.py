@@ -10,11 +10,12 @@ import tkinter as tk
 import tkinter.font as tkfont
 from datetime import date, datetime
 
-P = {
-    "side": "#14284A", "side_hi": "#1F3A6B", "side_tx": "#E6ECF7", "side_mute": "#9FB0CC",
-    "bg": "#F3F6FB", "card": "#FFFFFF", "line": "#DCE3EF", "text": "#1E293B", "mute": "#64748B",
-    "accent": "#0F766E", "accent_hi": "#0B5F59", "accent_soft": "#D8F3EF", "navy": "#1F3A5F",
-    "ok": "#047857", "ok_bg": "#D1FAE5", "warn": "#B45309", "warn_bg": "#FDE8D3", "off": "#CBD5E1", "off_tx": "#94A3B8",
+P = {   # v10 look: white side bar, soft grey page, indigo accent (as the approved UI design)
+    "side": "#FFFFFF", "side_hi": "#EEF2FF", "side_tx": "#374151", "side_mute": "#6B7280", "side_on": "#2F4AC0",
+    "bg": "#F5F7FB", "card": "#FFFFFF", "line": "#E6E9F2", "text": "#111827", "mute": "#6B7280",
+    "accent": "#2F4AC0", "accent_hi": "#1E3191", "accent_soft": "#EEF2FF", "navy": "#1F3A5F", "ink": "#111827",
+    "ok": "#15803D", "ok_bg": "#DCFCE7", "warn": "#B45309", "warn_bg": "#FEF3C7", "bad": "#B91C1C", "bad_bg": "#FEE2E2",
+    "off": "#E5E7EB", "off_tx": "#9CA3AF", "wa": "#16A34A",
 }
 
 
@@ -41,13 +42,18 @@ class Button(tk.Label):
     """Flat button made from a Label (colours are honoured on every OS)."""
     KINDS = {
         "primary": ("#FFFFFF", P["accent"], P["accent_hi"]),
-        "secondary": (P["navy"], "#E8EEF8", "#D6E0F0"),
+        "dark": ("#FFFFFF", P["ink"], "#374151"),
+        "green": ("#FFFFFF", P["wa"], "#15803D"),
+        "secondary": (P["text"], "#FFFFFF", "#F3F4F6"),
         "ghost": (P["side_tx"], P["side"], P["side_hi"]),
-        "danger": (P["warn"], P["warn_bg"], "#FBDCC0"),
+        "danger": (P["bad"], P["bad_bg"], "#FECACA"),
     }
 
     def __init__(self, parent, text, command, kind="secondary", font=None, padx=16, pady=8, **kw):
         fg, bg, hi = self.KINDS[kind]
+        if kind == "secondary":
+            kw.setdefault("highlightthickness", 1)
+            kw.setdefault("highlightbackground", "#D1D5DB")
         super().__init__(parent, text=text, fg=fg, bg=bg, font=font, padx=padx, pady=pady, cursor="hand2", **kw)
         self._cmd, self._fg, self._bg, self._hi, self._on = command, fg, bg, hi, True
         self.bind("<Button-1>", lambda _e: self._on and self._cmd())
@@ -63,22 +69,22 @@ class Card(tk.Frame):
     def __init__(self, parent, fonts: Fonts, title: str, step: str = ""):
         super().__init__(parent, bg=P["card"], highlightbackground=P["line"], highlightthickness=1)
         head = tk.Frame(self, bg=P["card"])
-        head.pack(fill="x", padx=14, pady=(10, 2))
+        head.pack(fill="x", padx=16, pady=(12, 4))
         if step:
-            tk.Label(head, text=step, bg=P["accent"], fg="white", font=fonts.small, width=2).pack(side="left", padx=(0, 8))
+            tk.Label(head, text=step, bg=P["accent_soft"], fg=P["accent"], font=fonts.small, width=2).pack(side="left", padx=(0, 8))
         tk.Label(head, text=title, bg=P["card"], fg=P["text"], font=fonts.h3).pack(side="left")
         self.body = tk.Frame(self, bg=P["card"])
-        self.body.pack(fill="both", expand=True, padx=14, pady=(2, 12))
+        self.body.pack(fill="both", expand=True, padx=16, pady=(2, 14))
 
 
 class Segmented(tk.Frame):
     """Row of toggle buttons bound to a StringVar."""
 
     def __init__(self, parent, fonts: Fonts, options: list[tuple[str, str]], var: tk.StringVar, command=None):
-        super().__init__(parent, bg="#E8EEF8")
+        super().__init__(parent, bg="#F3F4F6")
         self.var, self.command, self.items = var, command, {}
         for i, (value, text) in enumerate(options):
-            lb = tk.Label(self, text=text, font=fonts.small, padx=12, pady=5, cursor="hand2", bg="#E8EEF8", fg=P["navy"])
+            lb = tk.Label(self, text=text, font=fonts.small, padx=12, pady=5, cursor="hand2", bg="#F3F4F6", fg=P["text"])
             lb.grid(row=0, column=i, padx=2, pady=2)
             lb.bind("<Button-1>", lambda _e, v=value: self.select(v))
             self.items[value] = lb
@@ -93,7 +99,7 @@ class Segmented(tk.Frame):
     def _paint(self):
         for v, lb in self.items.items():
             on = self.var.get() == v
-            lb.config(bg=P["accent"] if on else "#E8EEF8", fg="white" if on else P["navy"])
+            lb.config(bg=P["accent"] if on else "#F3F4F6", fg="white" if on else P["text"])
 
 
 class Entry(tk.Entry):

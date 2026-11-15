@@ -420,5 +420,7 @@ def build_workbook(res: CollectResult, path: Path, extra_sheets=None) -> Path:
              "Trips", "Appointments", "Failed Files", "Billing Rows", "Calculation"]
     wb._sheets = [wb[n] for n in order if n in wb.sheetnames]
     path.parent.mkdir(parents=True, exist_ok=True)
+    from .pagesetup import a4
+    a4(wb)
     wb.save(path)
     return path

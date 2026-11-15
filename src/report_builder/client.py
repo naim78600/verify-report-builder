@@ -31,6 +31,8 @@ _ALLOWED_GET = [
         # v2 (read-only): Re-CPV tracker list and one file's activity log (submission time).
         r"^/api/v2/re-cpv/tracker$",
         r"^/api/v2/applications/activity-logs$",
+        # v10 (read-only): verifier list - only id, name and phone are kept (see verifier_phones)
+        r"^/api/v2/verifiers$",
     )
 ]
 _LOGIN_PATH = "/api/auth/callback/credentials"
@@ -159,3 +161,42 @@ class ReadOnlyClient:
             if attempt < self.retries:
                 self._sleep(1.5 * attempt)
         raise ApiError(f"{self.retries} বার চেষ্টার পরও ব্যর্থ ({last})")
+
+
+PHONE_FIELDS = ("id", "name", "phone")
+
+
+def verifier_phones(client: "ReadOnlyClient") -> dict[int, dict]:
+    """{verifier id: {"name", "phone"}} from /api/v2/verifiers.  The server's reply also carries other fields (among them
+    an access token); everything except id, name and phone is dropped right here and never stored or logged."""
+    raw = client.get("/api/v2/verifiers")
+    items = raw.get("data", raw) if isinstance(raw, dict) else raw
+    if isinstance(items, dict):
+        items = items.get("data") or items.get("verifiers") or []
+    out: dict[int, dict] = {}
+    for v in items or []:
+        if not isinstance(v, dict):
+            continue
+        try:
+            vid = int(v.get("id"))
+        except (TypeError, ValueError):
+            continue
+        out[vid] = {"name": str(v.get("name") or "").strip(), "phone": normalize_phone(v.get("phone"))}
+    del raw, items
+    return out
+
+
+def normalize_phone(p) -> str:
+    """Bangladesh mobile -> 8801XXXXXXXXX (what WhatsApp needs); anything else -> digits as given."""
+    d = re.sub(r"\D", "", str(p or ""))
+    if d.startswith("00"):
+        d = d[2:]
+    if len(d) == 11 and d.startswith("01"):
+        d = "88" + d
+    if len(d) == 10 and d.startswith("1"):
+        d = "880" + d
+    return d
+
+
+def is_bd_mobile(p: str) -> bool:
+    return bool(re.fullmatch(r"8801[3-9]\d{8}", p or ""))

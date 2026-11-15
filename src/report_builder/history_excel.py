@@ -369,6 +369,8 @@ def build_history_excel(h: HistoryData, path) -> Path:
     if h.notes:
         _sheet(wb, "Notes", "File History - Notes", "Things that could not be read completely.",
                [S("Note", 120, "note")], [{"note": n} for n in h.notes], file_key="note")
+    from .pagesetup import a4
+    a4(wb)
     wb.save(path)
     return path
 
@@ -421,5 +423,7 @@ def write_history_template(path) -> Path:
         c.font = Font(name=FONT, size=13 if bold else 11, bold=bold, color=T.NAVY if bold else T.TEXT)
         c.alignment = Alignment(wrap_text=True, vertical="top")
         g.row_dimensions[i].height = 22 if bold else 32
+    from .pagesetup import a4
+    a4(wb)
     wb.save(path)
     return path

@@ -1,0 +1,41 @@
+name: Make voice clips
+
+on:
+  workflow_dispatch:
+  push:
+    paths: ["tools/voices/**", ".github/workflows/voices.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  voices:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Install the free Bangla voice (Coqui TTS)
+        run: |
+          pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+          pip install "coqui-tts[codec]" bangla bnnumerizer bnunicodenormalizer six
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg espeak-ng
+      - name: Make the clips
+        env: { COQUI_TOS_AGREED: "1" }
+        run: python tools/voices/make_voices.py voices_out
+      - name: WhatsApp-friendly audio (.ogg Opus, mono)
+        run: |
+          mkdir -p voices
+          for f in voices_out/*.wav; do
+            n=$(basename "$f" .wav)
+            ffmpeg -loglevel error -y -i "$f" -af "loudnorm,apad=pad_dur=0.3" -ac 1 -ar 48000 -c:a libopus -b:a 32k "voices/$n.ogg"
+          done
+          ls -la voices
+      - name: Put the clips into the program (commit to this branch)
+        run: |
+          mkdir -p src/report_builder/assets/voices
+          cp voices/*.ogg src/report_builder/assets/voices/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/report_builder/assets/voices
+          git diff --cached --quiet || (git commit -m "Voice clips (made by the voices workflow)" && git push)

@@ -61,25 +61,100 @@ def finished(app):
     return app.worker is not None and not app.worker.is_alive() and app.q.empty() and bool(app.out_files)
 
 
+SHOTS = os.environ.get("VRB_SHOTS")                                        # folder: save a picture of every page (CI artifact)
+
+
+def shot(app, name):
+    if not SHOTS:
+        return
+    import subprocess
+    pump(app, 0.6)
+    Path(SHOTS).mkdir(parents=True, exist_ok=True)
+    try:
+        subprocess.run(["import", "-window", "root", str(Path(SHOTS) / f"{name}.png")], timeout=20, check=False)
+    except Exception as exc:                                               # noqa: BLE001
+        print("[gui-smoke] (no screenshot)", exc)
+
+
 def main():
-    from report_builder.gui import App
+    from report_builder.shell import Shell
     srv = mock_server.start_scenario(0)
     base = f"http://127.0.0.1:{srv.server_address[1]}"
     out = Path(tempfile.mkdtemp(prefix="vrb_gui_out_"))
     try:
-        app = App()
+        shell = Shell(start_helper=False)
     except tk.TclError as exc:
         fail(f"no display / Tk: {exc}")
-    pump(app, 0.3)
-    step("window opens")
-    if __version__ not in app.title():
+    shell.geometry("1280x800+0+0")
+    pump(shell, 0.3)
+    step("opening screen: language + sign-in")
+    if __version__ not in shell.title():
         fail("version missing in the window title")
+    shot(shell, "00_open_bn")
+    shell._pick_lang("en")
+    pump(shell, 0.2)
+    shot(shell, "01_open_en")
+    shell._pick_lang("bn")
+    shell.server.set(config.SERVER_CUSTOM)
+    shell._urls()
+    shell.web.set(base)
+    shell.api.set(base)
+    shell.email.set("test@example.com")
+    shell.password.set("wrong")
+    shell.sign_in()
+    if not pump(shell, until=lambda: bool(shell.login_msg.cget("text")) and shell.login_btn._on, limit=30):
+        fail("a wrong password gave no message")
+    shell.password.set("secret")
+    shell.sign_in()
+    if not pump(shell, until=lambda: shell.signed_in and "reports" in shell.pages, limit=60):
+        fail(f"sign-in did not open the main window: {shell.login_msg.cget('text')!r}")
+    step("main window; dashboard read (both clients) + verifier numbers")
+    if not pump(shell, until=lambda: shell.data["at"] is not None, limit=120):
+        fail("the dashboard was not read")
+    if not shell.data["phones"] or "admin_access_token" in repr(shell.data["phones"]):
+        fail(f"verifier numbers wrong: {shell.data['phones']}")
+    for key in ("home", "tracker", "bill", "bs", "receive", "reminders", "verifiers", "history", "settings"):
+        shell.show(key)
+        shot(shell, f"bn_{key}")
+    step("BS tracker lists the bank statements of the scenario")
+    shell.show("bs")
+    bsp = shell.pages["bs"]
+    bsp.month.set("2026-11")
+    bsp.refresh()
+    if not bsp.rows:
+        bsp.month.set("2026-10")
+        bsp.refresh()
+    if not bsp.rows:
+        fail("no BS rows on the BS page")
+    p = out / "bs.xlsx"
+    from report_builder import bs_tracker as BT
+    BT.write_bs_excel(bsp.rows, p, "smoke")
+    shot(shell, "bn_bs_rows")
+    step("office receive: add one by Trip ID, A4 sheet")
+    rcv = shell.pages["receive"]
+    shell.show("receive")
+    rcv.key.set(str(bsp.rows[0].trip_id))
+    rcv.pages_v.set("5")
+    rcv.add()
+    if not rcv.tv.get_children():
+        fail("the receive was not listed")
+    BT.write_receive_sheet(BT.load_store(), out / "today.xlsx")
+    shot(shell, "bn_receive_added")
+    step("reminder round prepared")
+    shell.prepare_round("1pm")
+    shell.show("reminders")
+    shot(shell, "bn_reminders_round")
+    step("English screens")
+    shell.pages["settings"].shell.lang.set("en")
+    shell.pages["settings"].lang_changed()
+    for key in ("home", "tracker", "bs", "receive", "reminders", "verifiers", "settings"):
+        shell.show(key)
+        shot(shell, f"en_{key}")
+    shell.pages["settings"].shell.lang.set("bn")
+    shell.pages["settings"].lang_changed()
+    app = shell.reports
+    shell.show("tracker")
     app.out_dir = out
-    app.server.set(config.SERVER_CUSTOM)
-    app.web.set(base)
-    app.api.set(base)
-    app.email.set("test@example.com")
-    app.password.set("secret")
     app.rtype.set("tracker")
     app.rdate.var.set("02-11-2026")
     app.slot.set("7pm")
@@ -127,9 +202,8 @@ def main():
     app.d_till.var.set("02-11-2026")
     app._sync_ui()
     pump(app, 0.3)
-    if app.password.get():
-        fail("the password stayed in the window after the run (it must be cleared)")
-    app.password.set("secret")                                             # the window clears it after every run (by design)
+    if not app.password.get():
+        fail("v10: the password must stay in memory while the program is open (scheduled jobs need it)")
     app.out_files = []
     app._go()
     if not pump(app, until=lambda: finished(app)):
@@ -197,7 +271,7 @@ def main():
         fail("the password was written to disk")
 
     step("window closes")
-    app.destroy()
+    shell._close()
     srv.shutdown()
     print(f"[gui-smoke] OK - {len(STEPS)} steps passed", flush=True)
 

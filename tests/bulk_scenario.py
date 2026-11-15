@@ -79,7 +79,7 @@ def expected(items, report: date, slot: str, holidays: set, after3_only: bool = 
     while prev.weekday() in (4, 5) or prev in holidays:
         prev -= timedelta(days=1)
     t_lo = prev + timedelta(days=1)
-    cutoff = datetime.combine(report, time(15, 0))
+    cutoff = datetime.combine(report, time(12, 0))
     complete, incomplete = set(), set()
     for it in items:
         sub, start = it["sub"], it["start"]
@@ -93,7 +93,7 @@ def expected(items, report: date, slot: str, holidays: set, after3_only: bool = 
         late_hour = (slot == "3pm" and bool(sub) and sub.date() == report and sub >= cutoff and rd == sub.date())
         if done_by_report and not late_hour:
             if t_lo <= reported.date() <= report:
-                if after3_only and (reported.date() != sub.date() or sub.time() < time(15, 0)):   # a rolled row counts as "before 3 PM"
+                if after3_only and (reported.date() != sub.date() or sub.time() < time(12, 0)):   # a rolled row counts as "before 12 PM"
                     continue
                 complete.add(it["no"])
             continue

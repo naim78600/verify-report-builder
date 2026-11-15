@@ -39,7 +39,7 @@ class PrimeConfig(RunConfig):
     report_date: date | None = None        # tracker: the date in the title (default today)
     date_from: date | None = None          # period start / end (None = use `days`)
     date_till: date | None = None
-    slot: str = "3pm"                      # "3pm" (1st phase, 3:30 PM mail) | "7pm" (2nd phase, full day)
+    slot: str = "3pm"                      # "3pm" (1st phase, 12:00 PM mail) | "7pm" (2nd phase, 6:15 PM, full day); keys kept from v1-v7
     find_old_extras: bool = True
     incomplete_scope: str = "sla_partial"  # tracker Incomplete list: "sla_partial" (V3) | "partial_today" | "partial_open" | "all_pending"
     after3_only: bool = False              # 2nd phase only: Complete = just the rows submitted after 3 PM (not in the 1st mail)
@@ -75,12 +75,12 @@ class PrimeData:
 
 
 def slot_for(now: datetime | None = None) -> str:
-    """Laptop clock decides the headline: before 5 PM -> 3pm report, 5 PM or later -> 7pm."""
+    """Laptop clock decides the headline: before 3 PM -> 1st phase (12:00 PM report), 3 PM or later -> 2nd phase (6:15 PM)."""
     now = now or datetime.now()
-    return "3pm" if now.hour < 17 else "7pm"
+    return "3pm" if now.hour < 15 else "7pm"
 
 
-PHASE_TEXT = {"3pm": "1st Phase · 3:30 PM", "7pm": "2nd Phase · 7:00 PM"}
+PHASE_TEXT = {"3pm": "1st Phase · 12:00 PM", "7pm": "2nd Phase · 6:15 PM"}
 
 
 def dash_line(d: PrimeData) -> str:
@@ -91,7 +91,7 @@ def dash_line(d: PrimeData) -> str:
     other = len(ck.get("other_phase") or [])
     txt = f"ড্যাশবোর্ডের Submitted: {ck['dashboard']} টি ফাইল = এই রিপোর্টে {ck['matched']} টি"
     if other:
-        txt += f" + {'2nd Phase (3PM-এর পরে সাবমিট)' if d.slot == '3pm' else '1st Phase (3PM-এর আগে সাবমিট)'} মেইলে {other} টি"
+        txt += f" + {'2nd Phase (12PM-এর পরে সাবমিট)' if d.slot == '3pm' else '1st Phase (12PM-এর আগে সাবমিট)'} মেইলে {other} টি"
     if ck["missing"]:
         return txt + f"  ⚠ মেলেনি {len(ck['missing'])} টি (Check List শিটে)"
     txt += "  ✓"
@@ -373,7 +373,7 @@ def collect_prime(cfg: PrimeConfig, progress: Progress = _noop, cancel: threadin
         d.notes.append(f"টেস্ট ফাইল বাদ দেওয়া হয়েছে: {', '.join(sorted(tests)[:4])}" + ("…" if len(tests) > 4 else ""))
     report_date = calc_till if bill else d.report_date
     until = datetime.combine(d.report_date, PHASE1_CUTOFF) if (d.mode == "tracker" and d.slot == "3pm") else None
-    later = apply_as_of(rows, calc_till, until)            # submitted after the report moment (last day / 3 PM) = still waiting then
+    later = apply_as_of(rows, calc_till, until)            # submitted after the report moment (last day / 12 PM) = still waiting then
     d.rolled = assign_sub_days(rows, calc_till, hset)      # Fri / Sat / holiday submissions are reported on the next working day
     link_siblings(rows)
     for r in rows:

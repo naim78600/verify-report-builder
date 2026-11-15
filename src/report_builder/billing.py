@@ -26,7 +26,7 @@ from . import geo, holidays as hol
 from .summary import Summary, TripView, analyze, apply_later, clean_text
 
 PACKAGE_MAX = 5
-CUTOFF_HOUR = 15          # "before / after 3 PM"
+CUTOFF_HOUR = 12          # v10: "before / after 12 PM" (1st phase mail at 12:00 PM, 2nd at 6:15 PM)
 SLA_IN = 2                # working days allowed, In area (Dhaka / Chattogram city corporation)
 SLA_OUT = 4               # working days allowed, Out area
 SLA_APPT = 1              # after an appointment: the report is due on the next working day after the scheduled date (In and Out alike)
@@ -197,7 +197,7 @@ class BillRow:
 
     @property
     def clock(self) -> time | None:
-        """Time of day used for the 3 PM cut-off: a row rolled to the next working day counts as 'Before 3 PM'."""
+        """Time of day used for the 12 PM cut-off: a row rolled to the next working day counts as 'Before 12 PM'."""
         if not self.submitted_at:
             return None
         return time(0, 0) if self.rolled else self.submitted_at.time()
@@ -668,16 +668,16 @@ def retime_folded(rows: list[BillRow], report_date: date, holiday_set: set[date]
 def before_after(r: BillRow) -> str:
     if not r.submitted_at:
         return ""
-    return "Before 3 PM" if r.clock.hour < CUTOFF_HOUR else "After 3 PM"
+    return "Before 12 PM" if r.clock.hour < CUTOFF_HOUR else "After 12 PM"
 
 
 # ------------------------------------------------------------------------------ selection
-PHASE1_CUTOFF = time(CUTOFF_HOUR, 0)     # the 3:30 PM mail covers everything submitted BEFORE 3 PM
+PHASE1_CUTOFF = time(CUTOFF_HOUR, 0)     # the 12:00 PM mail covers everything submitted BEFORE 12 PM
 
 
 def apply_as_of(rows: list[BillRow], cutoff: date | None, until: datetime | None = None) -> int:
     """Roll the data back to the moment of the report.  A row submitted AFTER the last day of the report dates (or, for the
-    first-phase mail, at / after `until` = 3 PM of the report day) was still waiting then, so it is shown as Incomplete
+    first-phase mail, at / after `until` = 12 PM of the report day) was still waiting then, so it is shown as Incomplete
     ("Submitted later ...") instead of silently disappearing.  -> number of rows changed."""
     n = 0
     for r in rows:
@@ -688,7 +688,7 @@ def apply_as_of(rows: list[BillRow], cutoff: date | None, until: datetime | None
         if not (late_day or late_hour):
             continue
         r.status_note = (f"Submitted later ({r.submitted_at:%d/%m/%Y})" if late_day
-                         else f"Submitted after 3 PM ({r.submitted_at:%I:%M %p})")
+                         else f"Submitted after 12 PM ({r.submitted_at:%I:%M %p})")
         r.status, r.submitted_at = "Incomplete", None
         if r.views:
             r.summary = analyze(r.views, False, "BS")
@@ -934,7 +934,7 @@ def select_rows(rows: list[BillRow], mode: str, report_date: date, w_from: date 
 
     Complete   = rows SUBMITTED inside the dates (tracker: on the report date and the days off just before it; range:
                  from..till), whenever they were received - exactly what the dashboard's Reports page lists for Submitted.
-                 `after3_only` (second-phase mail): only the rows submitted after 3 PM, i.e. not sent in the first mail.
+                 `after3_only` (second-phase mail): only the rows submitted after 12 PM, i.e. not sent in the first mail.
     Incomplete = decided PER FILE, like the dashboard (see file_state): only files that were NOT Submitted at `as_of`
                  (default: the end of the report day) can have pending rows - a Submitted file never does.  Of such a file
                  every live pending row is folded into ONE row per file, and the file is listed when, by `scope`:
@@ -1027,7 +1027,7 @@ def dashboard_check(d) -> dict:
     lo, hi = dash.get("from"), dash.get("till")
     missing, other, listing = [], [], []
     after3 = bool(getattr(d, "after3_only", False))
-    phase_label = "2nd phase mail (after 3 PM)" if d.slot == "3pm" else "1st phase mail (before 3 PM)"
+    phase_label = "2nd phase mail (after 12 PM)" if d.slot == "3pm" else "1st phase mail (before 12 PM)"
     by_file: dict = {}
     for r in d.all_rows:
         by_file.setdefault(r.file_id, []).append(r)
@@ -1042,7 +1042,7 @@ def dashboard_check(d) -> dict:
         if fid in in_report:
             listing.append((ids[fid], sub_time(fid), "This report (Complete)"))
             continue
-        if mine and d.mode == "tracker" and d.slot == "3pm" and any(r.status_note.startswith("Submitted after 3 PM") for r in mine):
+        if mine and d.mode == "tracker" and d.slot == "3pm" and any(r.status_note.startswith("Submitted after 12 PM") for r in mine):
             other.append(ids[fid])                         # submitted after 3 PM: belongs to the 2nd-phase mail, not "missing"
             listing.append((ids[fid], sub_time(fid), phase_label))
             continue

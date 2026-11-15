@@ -272,6 +272,8 @@ def write_bill_excel(mb: MonthBill, bill: Bill, path: Path) -> Path:
     wb._sheets = [ws0] + [s for s in wb._sheets if s is not ws0]
     wb.active = 0
     path.parent.mkdir(parents=True, exist_ok=True)
+    from .pagesetup import a4
+    a4(wb, portrait=("Invoice",))            # the invoice stays a portrait A4 letter; the lists are landscape
     wb.save(path)
     return path
 

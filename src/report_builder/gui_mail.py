@@ -47,7 +47,7 @@ class _Base(tk.Toplevel):
         self.app, self.f = app, app.fonts
         self.title(title)
         self.configure(bg=P["bg"])
-        self.transient(app)
+        self.transient(app.winfo_toplevel())
         self.resizable(False, False)
 
     def card(self, parent, title: str) -> tk.Frame:
@@ -105,7 +105,7 @@ class MailDialog(_Base):
         head = tk.Frame(self, bg=P["navy"])
         head.pack(fill="x")
         tk.Label(head, text="✉  ব্যাংককে ট্র্যাকার ইমেইল", bg=P["navy"], fg="white", font=f.h2).pack(side="left", padx=16, pady=10)
-        self.from_lbl = tk.Label(head, text="", bg=P["navy"], fg=P["side_tx"], font=f.small)
+        self.from_lbl = tk.Label(head, text="", bg=P["navy"], fg="#E6ECF7", font=f.small)
         self.from_lbl.pack(side="right", padx=16)
 
         # the middle part scrolls when the screen is short (small laptops)
