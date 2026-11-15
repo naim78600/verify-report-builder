@@ -127,6 +127,9 @@ def handle(h, p, q):
     """-> True if the request was answered here."""
     files = h.server_files
     if p == "/api/v2/manager/applications":
+        if q.get("org_id[]") and q["org_id[]"] != [ORG]:            # v10: the other client (LankaBangla) has no files here
+            h._send(200, {"applications": {"current_page": 1, "data": [], "last_page": 1, "per_page": 50, "total": 0}})
+            return True
         a, b = q["dateFrom"][0], q["dateTill"][0]
         st = {int(x) for x in q.get("status[]", [])}
         if st:

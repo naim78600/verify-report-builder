@@ -1,0 +1,28 @@
+name: GUI check (screens)
+
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore: [main]
+
+jobs:
+  screens:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements-dev.txt
+      - name: Tests
+        run: python -m pytest -q tests
+      - name: Window smoke test + a picture of every screen
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb python3-tk imagemagick fonts-noto-core fonts-beng
+          VRB_SHOTS=shots xvfb-run -a -s "-screen 0 1280x800x24" python tests/gui_smoke.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screens
+          path: shots/
+          retention-days: 3
