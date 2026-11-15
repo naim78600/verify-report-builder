@@ -40,6 +40,13 @@ def _appointment(raw: dict) -> dict:
     }
 
 
+def _int(v: Any) -> int | None:
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
 def _coord(v: Any) -> float | None:
     try:
         f = float(v)
@@ -68,6 +75,7 @@ def _trip(raw: dict, agent_names: dict[int, str]) -> dict:
         "status_code": code,
         "status": config.TRIP_STATUS.get(code, f"Status {code}"),
         "verifier": verifier,
+        "agent_id": _int(agent.get("id")) or _int(raw.get("assigned_to")),     # v10: for the verifier's phone number
         "assigned_by": _s(raw.get("assigned_by")),
         "address_exact": None if raw.get("is_address_exact") is None else bool(raw.get("is_address_exact")),
         "address": _s(raw.get("address")),
