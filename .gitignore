@@ -9,3 +9,5 @@ dist/
 .pytest_cache/
 settings.json
 !templates/*.xlsx
+
+src/report_builder/assets/bin/

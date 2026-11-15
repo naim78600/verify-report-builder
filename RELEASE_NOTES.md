@@ -1,4 +1,4 @@
-# Verify Report Builder — Version 10 (v10.0.1)
+# Verify Report Builder — Version 10 (v10.0.2)
 
 Prime Bank PLC ও LankaBangla-র কাজের জন্য: দৈনিক সাবমিশন ট্র্যাকার, মাসিক বিল, ফাইল হিস্টরি — আর নতুন **BS ট্র্যাকার**, **অফিস রিসিভ** ও **WhatsApp রিমাইন্ডার**। Verify থেকে **শুধু তথ্য পড়ে (GET)**, কিছু বদলায় না; পাসওয়ার্ড কোথাও সংরক্ষণ হয় না।
 
@@ -9,7 +9,7 @@ Prime Bank PLC ও LankaBangla-র কাজের জন্য: দৈনিক
 | **নতুন উইন্ডো** | খোলার সময় ভাষা বাছুন (**বাংলা / English**) ও লগইন; সাদা সাইডবার: আজ · দৈনিক ট্র্যাকার · মাসিক বিল · BS ট্র্যাকার · অফিস রিসিভ · রিমাইন্ডার · ভেরিফায়ার · ফাইল হিস্টরি · সেটিংস |
 | **A4 রিপোর্ট** | PDF ও Excel দুটোই **A4 landscape, সব কলাম** (Sample 1 – A4 Classic); ট্র্যাকার Excel-এর প্রতিটি কলামে ফিল্টার |
 | **ফেজের সময়** | ১ম ফেজ **দুপুর ১২:০০**, ২য় ফেজ **সন্ধ্যা ৬:১৫**; কলাম “Before / After 12 PM” |
-| **BS ট্র্যাকার** | প্রতি BS একটি সারি (এক ফাইলে দুটো BS পরপর); অনলাইন / অফলাইন ব্যাংক নিজে চেনে; ভেরিফায়ারের রিমার্ক থেকে BS তোলা হয়েছে কি না নিজে বোঝে; মাসিক Excel; ক্লায়েন্টের সই করা লিস্ট (Excel / PDF / ছবি) আপলোড করলে কোনটা রিসিভ হয়নি দেখায়; কুরিয়ার নম্বর, স্লিপের ছবি, অবস্থা |
+| **BS ট্র্যাকার** | প্রতি BS একটি সারি (এক ফাইলে দুটো BS পরপর); অনলাইন / অফলাইন ব্যাংক নিজে চেনে; ভেরিফায়ারের রিমার্ক থেকে BS তোলা হয়েছে কি না নিজে বোঝে; মাসিক Excel; ক্লায়েন্টের সই করা লিস্ট (Excel / PDF / ছবি) আপলোড করলে কোনটা রিসিভ হয়নি দেখায় (ছবি Windows ও Mac দুটোতেই পড়া যায়); কুরিয়ার নম্বর, স্লিপের ছবি, অবস্থা |
 | **অফিস রিসিভ** | Trip ID বা File No লিখলেই বাকিটা নিজে আসে; সারাদিনের তালিকা; দিনশেষে A4 “আজ রিসিভ হয়েছে” শিট প্রিন্ট করে সই; Excel ফর্ম পূরণ করে আপলোডও করা যায় |
 | **১২:০০ ও ৬:১৫ BS চেক** | সব বাকি BS (কোনো সীমা নেই) নিজে থেকে দেখায় |
 | **WhatsApp রিমাইন্ডার** | ১০টা, ১টা ও ৪টা (প্রতিবার সব চলমান ও হোল্ড ট্রিপ; ১০টায় BS জমার তাগিদ নেই) — দুই ক্লায়েন্ট; SLA পার / আজ শেষ আগে; পরের দিনের অ্যাপয়েন্টমেন্ট বাদ। হেল্পার প্রতিটি চ্যাট মেসেজ লিখে ও ভয়েস যুক্ত করে খোলে, **Send আপনি চাপেন**; উত্তর নিজে পড়ে বোঝে (যাচ্ছি / শেষ / সমস্যা + কারণ); দিনের সারাংশ শুধু সফটওয়্যারে |
@@ -32,7 +32,7 @@ Chrome → `chrome://extensions` → **Developer mode** চালু → **Load 
 
 ## Technical memo — every rule, by function (for developers)
 
-**For:** the developers of the Verify dashboard · **From:** Barikoi operations (Prime Bank PLC desk) · **Version:** 10.0.1 · **Date:** 15 November 2026
+**For:** the developers of the Verify dashboard · **From:** Barikoi operations (Prime Bank PLC desk) · **Version:** 10.0.2 · **Date:** 15 November 2026
 
 Verify Report Builder is a desktop tool that reads the Verify dashboard (GET only) and produces what is sent to Prime Bank PLC:
 the daily submission tracker, the monthly bill, and the file history. This memo writes down every rule the tool applies, from the
@@ -357,7 +357,7 @@ Reference: `bs_rules.py`, `bs_tracker.py`, `pages.BSPage`, `pages.ReceivePage`.
    received by, note). A filled Excel form can also be uploaded (`write_receive_template` / `read_receive_upload`). At day end
    the "আজ রিসিভ হয়েছে" sheet (A4 portrait, signature lines) is printed (`write_receive_sheet`).
 5. **Courier**: courier name, number, status (Booked / In transit / Delivered / Returned) and the slip picture, per BS.
-6. **Bank received**: the user uploads the client's signed list (Excel, CSV, PDF with text, or a photo – read with Windows' own
+6. **Bank received**: the user uploads the client's signed list (Excel, CSV, PDF with text, or a photo – read with Windows' or macOS' own
    OCR). A BS counts as received when its Trip ID, its File No (or the File No's digits) or the applicant's full name is in the
    list; when a file has two BS and only the name is found, the bank's name must be on the same line (`match_signed_list`).
    The program then lists the BS that were sent but are not in the list.
@@ -440,7 +440,7 @@ Reference: `shell.py`, `pages.py`, `gui.ReportsPage`, `i18n.py`.
 - **SLA Restart:** Appointment-এর *scheduled date* থেকে এবং **যেকোনো নতুন ট্রিপ** তৈরি হলে সঙ্গে সঙ্গে; In (Dhaka ও Chattogram City Corporation) = ২ কার্যদিবস, Out = ৪ কার্যদিবস। নতুন কলাম **“SLA Start / Restart Date”** (Excel ও PDF)।
 - **Incomplete** = শুধু Hold, Finished কিন্তু Submit হয়নি ও Partially Submitted।
 
-## সব ফিচার — প্রথম সংস্করণ থেকে Version 7 পর্যন্ত (বিস্তারিত; Version 10.0.1 উপরে)
+## সব ফিচার — প্রথম সংস্করণ থেকে Version 7 পর্যন্ত (বিস্তারিত; Version 10.0.2 উপরে)
 
 প্রতিটি ধাপে আগের সব ফিচার থেকে যায়; নিচে কোন সংস্করণে কী যোগ হয়েছে ক্রমানুসারে লেখা।
 

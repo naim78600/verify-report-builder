@@ -84,6 +84,22 @@ jobs:
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DAppVersion=$v" "/DArch=${{ matrix.arch }}" installer\VerifyReportBuilder.iss
           Move-Item "installer_out\VerifyReportBuilder-Setup-${{ matrix.arch }}.exe" "VerifyReportBuilder-Setup-${{ matrix.label }}.exe"
 
+      - name: Mac photo reader (Vision OCR) - build and self-test
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p src/report_builder/assets/bin
+          swiftc -O tools/mac_ocr/mac_ocr.swift -o src/report_builder/assets/bin/mac_ocr
+          python - <<'PY'
+          from PIL import Image, ImageDraw, ImageFont
+          im = Image.new("RGB", (900, 260), "white"); d = ImageDraw.Draw(im)
+          f = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 52)
+          d.text((30, 30), "PL-20261001094920785", fill="black", font=f)
+          d.text((30, 130), "Rahim Uddin  Sonali Bank", fill="black", font=f)
+          im.save("ocr_test.png")
+          PY
+          out=$(src/report_builder/assets/bin/mac_ocr ocr_test.png); echo "$out"
+          echo "$out" | grep -q "20261001094920785" && echo "$out" | grep -qi "sonali"
+
       - name: Build (Mac .app)
         if: runner.os == 'macOS'
         run: |

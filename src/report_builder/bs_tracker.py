@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -247,13 +248,25 @@ def ocr_image(path: Path) -> str:
                 return r.stdout
         finally:
             Path(script).unlink(missing_ok=True)
+    if sys.platform == "darwin":                       # Mac: the small Vision tool built into the app (assets/bin/mac_ocr)
+        try:
+            from .assets_path import asset
+            exe = Path(asset("bin", "mac_ocr"))
+            if exe.exists():
+                if not os.access(exe, os.X_OK):
+                    exe.chmod(0o755)
+                r = subprocess.run([str(exe), str(Path(path).resolve())], capture_output=True, text=True, timeout=120)
+                if r.returncode == 0 and r.stdout.strip():
+                    return r.stdout
+        except Exception:
+            pass
     try:
         import pytesseract
         from PIL import Image
         return pytesseract.image_to_string(Image.open(path))
     except Exception:
         pass
-    raise ValueError("ছবি থেকে লেখা পড়া যায়নি। PDF বা Excel দিন (Windows-এ ছবি সাধারণত পড়া যায়)।")
+    raise ValueError("ছবি থেকে লেখা পড়া যায়নি। PDF বা Excel দিন (Windows ও Mac-এ ছবি সাধারণত পড়া যায়)।")
 
 
 def _tokens(text: str) -> tuple[set, set, str]:
