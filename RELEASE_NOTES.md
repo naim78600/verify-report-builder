@@ -1,4 +1,4 @@
-# Verify Report Builder — Version 10 (v10.0.0)
+# Verify Report Builder — Version 10 (v10.0.1)
 
 Prime Bank PLC ও LankaBangla-র কাজের জন্য: দৈনিক সাবমিশন ট্র্যাকার, মাসিক বিল, ফাইল হিস্টরি — আর নতুন **BS ট্র্যাকার**, **অফিস রিসিভ** ও **WhatsApp রিমাইন্ডার**। Verify থেকে **শুধু তথ্য পড়ে (GET)**, কিছু বদলায় না; পাসওয়ার্ড কোথাও সংরক্ষণ হয় না।
 
@@ -32,7 +32,7 @@ Chrome → `chrome://extensions` → **Developer mode** চালু → **Load 
 
 ## Technical memo — every rule, by function (for developers)
 
-**For:** the developers of the Verify dashboard · **From:** Barikoi operations (Prime Bank PLC desk) · **Version:** 10.0.0 · **Date:** 15 November 2026
+**For:** the developers of the Verify dashboard · **From:** Barikoi operations (Prime Bank PLC desk) · **Version:** 10.0.1 · **Date:** 15 November 2026
 
 Verify Report Builder is a desktop tool that reads the Verify dashboard (GET only) and produces what is sent to Prime Bank PLC:
 the daily submission tracker, the monthly bill, and the file history. This memo writes down every rule the tool applies, from the
@@ -440,7 +440,7 @@ Reference: `shell.py`, `pages.py`, `gui.ReportsPage`, `i18n.py`.
 - **SLA Restart:** Appointment-এর *scheduled date* থেকে এবং **যেকোনো নতুন ট্রিপ** তৈরি হলে সঙ্গে সঙ্গে; In (Dhaka ও Chattogram City Corporation) = ২ কার্যদিবস, Out = ৪ কার্যদিবস। নতুন কলাম **“SLA Start / Restart Date”** (Excel ও PDF)।
 - **Incomplete** = শুধু Hold, Finished কিন্তু Submit হয়নি ও Partially Submitted।
 
-## সব ফিচার — প্রথম সংস্করণ থেকে Version 7 পর্যন্ত (বিস্তারিত; Version 10.0.0 উপরে)
+## সব ফিচার — প্রথম সংস্করণ থেকে Version 7 পর্যন্ত (বিস্তারিত; Version 10.0.1 উপরে)
 
 প্রতিটি ধাপে আগের সব ফিচার থেকে যায়; নিচে কোন সংস্করণে কী যোগ হয়েছে ক্রমানুসারে লেখা।
 
