@@ -219,11 +219,11 @@ class BSPage(Page):
             s.pack(anchor="w")
             self.fcells.append((v, s))
         tbl = self.card(self.body, fill="both", expand=True, pady=(12, 0))
-        box, self.tv = self.table(tbl, [("created", L("Created", "Created"), 120, "w"), ("trip", "Trip ID", 80, "w"),
-                                        ("file", "File No", 170, "w"), ("bank", L("ব্যাংক", "Bank"), 170, "w"),
-                                        ("type", L("ধরন", "Type"), 70, "w"), ("ver", L("ভেরিফায়ার", "Verifier"), 130, "w"),
-                                        ("out", L("রিমার্ক থেকে ফলাফল", "Outcome (from remarks)"), 220, "w"),
-                                        ("now", L("এখন কোথায়", "Now"), 160, "w")], height=14)
+        box, self.tv = self.table(tbl, [("created", L("Created", "Created"), 110, "w"), ("trip", "Trip ID", 70, "w"),
+                                        ("file", "File No", 160, "w"), ("bank", L("ব্যাংক", "Bank"), 150, "w"),
+                                        ("type", L("ধরন", "Type"), 64, "w"), ("ver", L("ভেরিফায়ার", "Verifier"), 110, "w"),
+                                        ("out", L("রিমার্ক থেকে ফলাফল", "Outcome (from remarks)"), 190, "w"),
+                                        ("now", L("এখন কোথায়", "Now"), 120, "w")], height=14)
         box.pack(fill="both", expand=True, padx=1, pady=1)
         self.rows: list = []
         self.month_rows: dict = {}

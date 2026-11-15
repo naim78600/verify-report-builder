@@ -122,7 +122,7 @@ class ReportsPage(tk.Frame):
         colB.grid(row=2, column=1, sticky="n")
 
         # ---- 2 period ------------------------------------------------------------
-        c2 = Card(colA, f, L("ফাইলের সময়সীমা", "File period"), L("২", "2"))
+        c2 = Card(colA, f, L("ফাইলের সময়সীমা", "File period"), L("১", "1"))
         c2.pack(fill="x")
         self.c2 = c2
         b = c2.body
@@ -153,7 +153,7 @@ class ReportsPage(tk.Frame):
         self.period_hint.pack(fill="x", pady=(8, 0))
 
         # ---- 3 report type -------------------------------------------------------
-        c3 = Card(colB, f, L("রিপোর্টের ধরন", "Report type"), L("৩", "3"))
+        c3 = Card(colB, f, L("রিপোর্টের ধরন", "Report type"), L("২", "2"))
         c3.pack(fill="x", pady=(0, 10))
         b = c3.body
         self.rtype = tk.StringVar(value=self.settings.get("rtype", "tracker"))
@@ -167,7 +167,7 @@ class ReportsPage(tk.Frame):
             Tile(b, f, val, title, help_, self.rtype, self._sync_ui).pack(fill="x", pady=3)
 
         # ---- 2 (tracker only): date + phase --------------------------------------
-        ct = Card(colA, f, L("তারিখ ও ফেজ", "Date and phase"), L("২", "2"))
+        ct = Card(colA, f, L("তারিখ ও ফেজ", "Date and phase"), L("১", "1"))
         self.c_trk = ct
         b = ct.body
         self.track_row = tk.Frame(b, bg=P["card"])
@@ -192,7 +192,7 @@ class ReportsPage(tk.Frame):
         self.rule_hint.pack(fill="x", pady=(8, 0))
 
         # ---- 4 outputs -----------------------------------------------------------
-        c4 = Card(colA, f, L("যা তৈরি হবে", "What is made"), L("৪", "4"))
+        c4 = Card(colA, f, L("যা তৈরি হবে", "What is made"), L("৩", "3"))
         c4.pack(fill="x", pady=(10, 0))
         self.c4 = c4
         b = c4.body
@@ -207,7 +207,7 @@ class ReportsPage(tk.Frame):
             self.opt_boxes.append((key, cbx))
 
         # ---- 2 (monthly bill only): month ---------------------------------------------------
-        cbill = Card(colA, f, L("বিলের মাস", "Bill month"), L("২", "2"))
+        cbill = Card(colA, f, L("বিলের মাস", "Bill month"), L("১", "1"))
         self.c_bill = cbill
         b = cbill.body
         mrow = tk.Frame(b, bg=P["card"])
@@ -226,7 +226,7 @@ class ReportsPage(tk.Frame):
         Button(b, L("📄  সম্পাদিত বিল Excel থেকে PDF বানান", "📄  Make the PDF from an edited bill Excel"), self._bill_pdf_from_excel, kind="secondary", font=f.small, padx=10, pady=6).pack(anchor="w")
 
         # ---- 2/4 (file history only) -------------------------------------------------------
-        ch = Card(colA, f, L("ফাইল নম্বর দিন", "Give file numbers"), L("২", "2"))
+        ch = Card(colA, f, L("ফাইল নম্বর দিন", "Give file numbers"), L("১", "1"))
         self.c_hist = ch
         b = ch.body
         self.hist_ids: list = []
