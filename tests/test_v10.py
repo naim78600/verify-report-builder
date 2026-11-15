@@ -188,7 +188,9 @@ def test_queue_priority_appointments_and_both_clients():
     msg = R.message(q[0], "1pm")
     assert "F-SLA" in msg and "SLA পার" in msg and "১ = যাচ্ছি" in msg
     q10 = R.build_queue(_snap(), PHONES, round_key="10am", now=NOW.replace(hour=10))
-    assert [r.verifier for r in q10] == ["D"] and "আজ অ্যাপয়েন্টমেন্ট আছে" in R.message(q10[0], "10am")
+    assert [r.verifier for r in q10] == ["A", "B", "D", "E"]                      # 10 AM: appointments first, then every on-going / hold trip
+    assert "C" not in [r.verifier for r in q10]                                # later-day appointment still skipped
+    assert "আজ অ্যাপয়েন্টমেন্ট" in R.message(q10[2], "10am") and "চলমান" in R.message(q10[3], "10am")
 
 
 def test_bs_due_in_reminders_and_number_override():
