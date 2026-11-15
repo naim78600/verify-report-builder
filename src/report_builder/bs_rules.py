@@ -52,7 +52,7 @@ OFFLINE = [
     ("Bank Asia PLC", "BALB", "Bank Asia; BANK ASIA PLC; BAL"),
     ("Janata Bank PLC", "JANB", "Janata; JANATA BANK PLC; JBL (ambiguous)"),
     ("Pubali Bank PLC", "PUBA", "Pubali; PUBALI BANK; PUBALI BANK PLC; PBL (ambiguous)"),
-    ("Uttara Bank PLC", "UTBL", "Uttara; UTTARA BANK PLC; UBL (ambiguous)"),
+    ("Uttara Bank PLC", "UTBL", "Uttara; UTTARA BANK PLC; Uttar Bank; UBL (ambiguous)"),
     ("Agrani Bank PLC", "AGBK", "Agrani; AGRANI BANK PLC; ABL"),
     ("Union Bank PLC", "UBLD", "Union Bank; UBL (ambiguous); now part of Sammilito Islami Bank"),
     ("Shahjalal Islami Bank PLC", "SJBL", "SJIBL; Shahjalal; SHAHJALAL ISLAMI BANK PLC"),
@@ -144,6 +144,8 @@ def match_bank(place_name: str, remarks: str = "") -> tuple[str, str, str]:
                     if f" {first} " in ctx:
                         return n, KIND[n], where + " (short form)"
                 return names[0] + " (?)", "Offline", where + f" (short form {short.upper()} unclear - counted offline)"
+    if (place_name or "").strip():
+        return place_name.strip(), "Offline", "not in the bank list - counted offline"
     return "", "Offline", "bank not written - counted offline"
 
 

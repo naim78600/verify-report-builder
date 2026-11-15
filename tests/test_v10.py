@@ -31,6 +31,10 @@ from report_builder import bs_rules as B, bs_tracker as BT, reminders as R  # no
     ("PBL", "Pubali branch", "Pubali Bank PLC", "Offline"),
     ("NRBC Bank", "", "NRBC Bank PLC", "Offline"),
     ("NRB Bank", "", "NRB Bank PLC", "Online"),
+    ("UTTAR BANK PLC", "", "Uttara Bank PLC", "Offline"),               # spellings seen on the dashboard (Oct-Nov 2026)
+    ("SOUTHEAST BANK PLC(TAKE APPLICANT HELP TO WITHDRAW BS)", "", "Southeast Bank PLC", "Online"),
+    ("IBBPLC", "", "Islami Bank Bangladesh PLC", "Offline"),
+    ("SBAC BANK PLC", "", "SBAC BANK PLC", "Offline"),                  # not in the list -> offline, name kept
 ])
 def test_bank_match(written, remarks, bank, kind):
     got = B.match_bank(written, remarks)
