@@ -247,7 +247,7 @@ class BSPage(Page):
             web, api = sh.resolve()
         except ValueError:
             return
-        email, pw = sh.email.get().strip(), sh.password.get()
+        email, pw, label = sh.email.get().strip(), sh.password.get(), sh.server.get()
         self.sub.config(text=L("পুরনো মাস পড়া হচ্ছে…", "Reading the older month…"))
 
         def work():
@@ -255,7 +255,7 @@ class BSPage(Page):
             for org in ("Prime Bank PLC", "LankaBangla Finance Limited"):
                 try:
                     days = (date.today() - date(y, m, 1)).days + 1
-                    res = collect(RunConfig(web=web, api=api, server_label=sh.server.get(), email=email, password=pw, days=days,
+                    res = collect(RunConfig(web=web, api=api, server_label=label, email=email, password=pw, days=days,
                                             org_name=org))
                     out += BT.bs_rows(res.files, org, sh.data["phones"], month=(y, m))
                 except Exception:                                   # noqa: BLE001

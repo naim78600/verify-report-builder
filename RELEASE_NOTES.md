@@ -1,6 +1,23 @@
-# Verify Report Builder — Version 7 (v7.0.0)
+# Verify Report Builder — Version 10 (v10.0.0)
 
-Prime Bank PLC-এর দৈনিক সাবমিশন ট্র্যাকার (Complete + Incomplete, Excel + PDF) ও **মাসিক বিল (Card + Loan, Excel + PDF)** বানায়, ফাইল হিস্টরি তৈরি করে এবং সরাসরি ব্যাংককে ইমেইল পাঠায়। Verify থেকে **শুধু তথ্য পড়ে (GET)**, কিছু বদলায় না; পাসওয়ার্ড কোথাও সংরক্ষণ হয় না।
+Prime Bank PLC ও LankaBangla-র কাজের জন্য: দৈনিক সাবমিশন ট্র্যাকার, মাসিক বিল, ফাইল হিস্টরি — আর নতুন **BS ট্র্যাকার**, **অফিস রিসিভ** ও **WhatsApp রিমাইন্ডার**। Verify থেকে **শুধু তথ্য পড়ে (GET)**, কিছু বদলায় না; পাসওয়ার্ড কোথাও সংরক্ষণ হয় না।
+
+## Version 10-এ নতুন
+
+| | কী বদলেছে |
+|---|---|
+| **নতুন উইন্ডো** | খোলার সময় ভাষা বাছুন (**বাংলা / English**) ও লগইন; সাদা সাইডবার: আজ · দৈনিক ট্র্যাকার · মাসিক বিল · BS ট্র্যাকার · অফিস রিসিভ · রিমাইন্ডার · ভেরিফায়ার · ফাইল হিস্টরি · সেটিংস |
+| **A4 রিপোর্ট** | PDF ও Excel দুটোই **A4 landscape, সব কলাম** (Sample 1 – A4 Classic); ট্র্যাকার Excel-এর প্রতিটি কলামে ফিল্টার |
+| **ফেজের সময়** | ১ম ফেজ **দুপুর ১২:০০**, ২য় ফেজ **সন্ধ্যা ৬:১৫**; কলাম “Before / After 12 PM” |
+| **BS ট্র্যাকার** | প্রতি BS একটি সারি (এক ফাইলে দুটো BS পরপর); অনলাইন / অফলাইন ব্যাংক নিজে চেনে; ভেরিফায়ারের রিমার্ক থেকে BS তোলা হয়েছে কি না নিজে বোঝে; মাসিক Excel; ক্লায়েন্টের সই করা লিস্ট (Excel / PDF / ছবি) আপলোড করলে কোনটা রিসিভ হয়নি দেখায়; কুরিয়ার নম্বর, স্লিপের ছবি, অবস্থা |
+| **অফিস রিসিভ** | Trip ID বা File No লিখলেই বাকিটা নিজে আসে; সারাদিনের তালিকা; দিনশেষে A4 “আজ রিসিভ হয়েছে” শিট প্রিন্ট করে সই; Excel ফর্ম পূরণ করে আপলোডও করা যায় |
+| **১২:০০ ও ৬:১৫ BS চেক** | সব বাকি BS (কোনো সীমা নেই) নিজে থেকে দেখায় |
+| **WhatsApp রিমাইন্ডার** | ১০টা (আজকের অ্যাপয়েন্টমেন্ট), ১টা ও ৪টা (সবাই) — দুই ক্লায়েন্ট; SLA পার / আজ শেষ আগে; পরের দিনের অ্যাপয়েন্টমেন্ট বাদ। হেল্পার প্রতিটি চ্যাট মেসেজ লিখে ও ভয়েস যুক্ত করে খোলে, **Send আপনি চাপেন**; উত্তর নিজে পড়ে বোঝে (যাচ্ছি / শেষ / সমস্যা + কারণ); দিনের সারাংশ শুধু সফটওয়্যারে |
+| **ভেরিফায়ার** | ড্যাশবোর্ডের নম্বর; WhatsApp নেই / নম্বর ভুল = লাল; নম্বর বদলানো বা যোগ করা যায় |
+| **আগের নিয়ম** | ট্র্যাকার, বিল, ফাইল হিস্টরি, SLA, Incomplete, ইমেইল — সব আগের মতোই |
+
+## প্রথমবার: WhatsApp হেল্পার (১ মিনিট)
+Chrome → `chrome://extensions` → **Developer mode** চালু → **Load unpacked** → প্রোগ্রামের **রিমাইন্ডার → হেল্পার সেটআপ** যে ফোল্ডার খোলে সেটি বাছুন। তারপর web.whatsapp.com খুললে ডানদিকে নিচে “Barikoi helper” দেখাবে।
 
 ## ডাউনলোড
 
@@ -15,7 +32,7 @@ Prime Bank PLC-এর দৈনিক সাবমিশন ট্র্যা�
 
 ## Technical memo — every rule, by function (for developers)
 
-**For:** the developers of the Verify dashboard · **From:** Barikoi operations (Prime Bank PLC desk) · **Version:** 7.0.0 · **Date:** 11 November 2026
+**For:** the developers of the Verify dashboard · **From:** Barikoi operations (Prime Bank PLC desk) · **Version:** 10.0.0 · **Date:** 15 November 2026
 
 Verify Report Builder is a desktop tool that reads the Verify dashboard (GET only) and produces what is sent to Prime Bank PLC:
 the daily submission tracker, the monthly bill, and the file history. This memo writes down every rule the tool applies, from the
@@ -136,7 +153,7 @@ Reference: `billing.sla_start_for`, `billing.compute_tat`, `holidays.py`.
 Reference: `billing.select_rows`, `billing.tracker_window`, `billing.fold_complete`, `billing.apply_as_of`, `prime_excel.py`, `prime_pdf.py`.
 
 1. **Days covered**: the report date, plus the days off just before it (Sunday's tracker covers Friday, Saturday and Sunday).
-2. **Two mails a day**: Phase 1 (3:30 PM) = submitted before 3 PM; Phase 2 (7 PM) = the whole day, or only what was submitted after 3 PM.
+2. **Two mails a day** (v10 times): Phase 1 at **12:00 PM** = submitted before 12 PM; Phase 2 at **6:15 PM** = the whole day, or only what was submitted after 12 PM (`billing.CUTOFF_HOUR = 12`; the internal keys stay `3pm` / `7pm`).
 3. **Complete sheet** = rows submitted inside those days, whenever they were received. One row per file and submission day: a Re-CPV / Extra row submitted together with the package is folded into the package row, and the Bill Slab cell carries the whole billing history of the file.
 4. **Incomplete sheet**, decided per file as the dashboard does: files not Submitted at the time of the report whose status is **Hold, Finished-but-not-Submitted, or Partially Submitted**. A running file (Created / On Going) is not listed. One row per file.
 5. A row submitted after the moment of the report is shown as it was then (Incomplete, "submitted later"), so an old report can be reproduced.
@@ -154,9 +171,9 @@ Reference: `billing.select_rows`, `billing.tracker_window`, `billing.fold_comple
    | 7 | Submission Date-Time | 17 | Extra TAT |
    | 8 | Report Status | 18 | Appointment History |
    | 9 | Report Summary (Done / Due) | 19 | Last Update Details |
-   | 10 | Last Update Date | 20 | Before / After 3 PM |
+   | 10 | Last Update Date | 20 | Before / After 12 PM |
 
-   The Incomplete sheet has a 21st column, Pending Reason. Date cells are real dates so Excel filters work. In the PDF, File Type sits under File No and the two Last Update columns are one, to save width.
+   The Incomplete sheet has a 21st column, Pending Reason. Date cells are real dates; v10: every header cell has a filter button. In the PDF, File Type sits under File No and the two Last Update columns are one, to save width.
 
 ---
 
@@ -306,6 +323,83 @@ October / November on September files go to those months' bills (bill by create 
 
 ---
 
+## 14. Version 10 (15 November 2026)
+
+### 14.1 Every report on A4 landscape
+Reference: `prime_pdf.build_prime_pdf`, `pagesetup.a4`, `prime_excel.COLS`.
+
+1. **PDF** ("Sample 1 – A4 Classic", chosen by the user): A4 landscape, **all 16 / 17 columns**, Carlito font (OFL, Calibri-metric,
+   bundled in `assets/fonts`), 7.2 pt; header band with the logo; header row repeated on every page; a row never splits.
+   A long cell is cut to a few lines (6, Report Summary 8) and ends with "+N more lines (full text in the Excel)".
+2. **Excel**: every workbook the program writes is A4 landscape, all columns on the page width, narrow margins, "Page x of y"
+   (`pagesetup.a4`, called right before each save). The invoice sheet of the bill stays an A4 portrait letter. The tracker's
+   column widths are the A4 Classic widths and **every column has a filter button** (v7 showed only four).
+
+### 14.2 BS Tracker (bank statements)
+Reference: `bs_rules.py`, `bs_tracker.py`, `pages.BSPage`, `pages.ReceivePage`.
+
+1. **Rows**: one row per BANK trip; a file with two BS has two rows, next to each other (sorted by the file's first BS, then file,
+   then Trip ID). The monthly Excel takes the trips **created** in that month. Columns: Created Date-Time, Trip ID, File No,
+   Applicant, Bank (as written), Bank, BS Type, Verifier, Verifier Phone, Trip Status, Exact Remarks, BS Outcome, Office Received,
+   Courier, Courier Slip (picture, about 100 px), Bank Received, Now. Filter on every column, A4 landscape.
+2. **Bank and Online / Offline** (`bs_rules.match_bank`): the user's list (28 online, 25 offline incl. Sammilito Islami Bank)
+   with SWIFT codes and spellings. The bank written on the trip decides; if empty, the remarks. Standard Bank = Standard Islami
+   Bank PLC (renamed 10 Feb 2026) = offline; Standard Chartered = online. A short form that can mean several banks (PBL, JBL,
+   MBL, SBL, UBL, BCBL) is decided by another word in the text (e.g. "Pubali branch"); still unclear = **offline** (never missed).
+   No manual checking.
+3. **Collected or not, from the exact remarks** (`bs_rules.bs_outcome`, first match wins): disagree / refused → not collected
+   (applicant disagreed); not possible / closed / transferred / returned / abroad → not collected (not possible); statement not
+   verified / mismatch → not collected (with "Insufficient balance" when written); hard copy provided / statement provided →
+   collected (hard copy); scan / soft copy / e-mail → collected (soft copy); only "verified" → verified, copy not mentioned;
+   no remark on an open trip → pending; anything else → "Check remark". Learnt from the 283 BS trips of 1 Oct – 15 Nov 2026:
+   240 of the 242 finished trips are recognised.
+4. **Office receive**: a short form in the program (Trip ID or File No → bank, verifier and time fill in by themselves; pages,
+   received by, note). A filled Excel form can also be uploaded (`write_receive_template` / `read_receive_upload`). At day end
+   the "আজ রিসিভ হয়েছে" sheet (A4 portrait, signature lines) is printed (`write_receive_sheet`).
+5. **Courier**: courier name, number, status (Booked / In transit / Delivered / Returned) and the slip picture, per BS.
+6. **Bank received**: the user uploads the client's signed list (Excel, CSV, PDF with text, or a photo – read with Windows' own
+   OCR). A BS counts as received when its Trip ID, its File No (or the File No's digits) or the applicant's full name is in the
+   list; when a file has two BS and only the name is found, the bank's name must be on the same line (`match_signed_list`).
+   The program then lists the BS that were sent but are not in the list.
+7. **Pending BS** (`pending_bs`), no cap: not yet collected on an open trip, or collected but not yet in the office / courier.
+   Checked at **12:00 PM and 6:15 PM** (the latest missed check runs when the program opens).
+
+### 14.3 Verifier reminders on WhatsApp
+Reference: `reminders.py`, `helper_server.py`, `assets/whatsapp_helper/`, `pages.RemindersPage`.
+
+1. **Who**: every verifier with an open trip (Created / Allocated / Started / Hold) in an ON GOING or HOLD file, both clients,
+   plus verifiers who still have to hand in a collected BS. No cap.
+2. **When**: 10:00 AM – today's appointments only; 1:00 PM and 4:00 PM – everyone. A trip whose appointment is on a later day is
+   skipped until that day; with an appointment today it is reminded until finished. Office days only, until 6:15 PM; if the PC
+   was off, the latest missed round is prepared when the program opens.
+3. **Order**: SLA passed → SLA ends today → appointment today → the rest (`Reminder.priority`).
+4. **Message**: short Bangla text with the file numbers, and one of four voice clips (SLA passed / appointment today / hand in
+   BS / general). Clips are made once with a free offline voice (Coqui TTS `bn/custom/vits-male`, MIT; Kolkata-style accent,
+   accepted by the user) by `.github/workflows/voices.yml` and shipped in `assets/voices`.
+5. **Sending (risk-free, free)**: nothing is sent by the program. The helper (a Chrome extension added once with "Load unpacked")
+   opens each chat with WhatsApp's own click-to-chat link (`web.whatsapp.com/send?phone=…&text=…`), attaches the clip, and waits
+   until the user presses Send; then 8 seconds' break and the next verifier. WhatsApp keeps text drafts but not attachments, so the
+   voice is attached when the chat opens. The helper never presses Send (a test checks there is no `.click()` in it).
+6. **Replies**: the helper reads new messages of the verifiers' chats (chat list preview and the open chat) and gives them to the
+   program through `helper_server` (127.0.0.1 only; a request carrying a web page's Origin is refused). `parse_reply`: codes
+   1 / 2 / 3 (Bangla or English digits), then common words (Banglish / Bangla / English) → going / done / problem (reason kept) /
+   other. A number WhatsApp rejects is marked red ("not on WhatsApp").
+7. **Day-end summary** inside the program only: per verifier – rounds, sent, last reply, problem reason, files.
+8. **Phone numbers**: `/api/v2/verifiers` (GET, added to the allow-list). Only id, name and phone are kept
+   (`client.verifier_phones`); the reply also carries other fields, among them an access token, which are dropped at once
+   (a test checks it). **The dashboard team should remove `admin_access_token` from this response.** Numbers can be changed
+   or added on the Verifiers page (saved locally).
+
+### 14.4 The window
+Reference: `shell.py`, `pages.py`, `gui.ReportsPage`, `i18n.py`.
+
+1. Opening screen every time: **language (বাংলা / English, the last choice pre-selected)** and the sign-in. The password stays
+   in memory while the program is open (the 10 AM … 6:15 PM jobs need it); it is never written to disk.
+2. White side bar: Today, Daily Tracker, Monthly Bill, BS Tracker, Office receive, Reminders, Verifiers, File History, Settings.
+   The report page is the v7 page with the same rules. Excel / PDF stay in English in both languages.
+
+---
+
 ## Version 7-এ নতুন
 
 - **সেপ্টেম্বর ২০২৬ লাইভ ড্যাশবোর্ডে পুরো যাচাই:** ৪১১টি নতুন ফাইল + ৭৬টি পুরনো ফাইলের সেপ্টেম্বরের ট্রিপ = ৪৮৭টি ফাইল — বিলে ঠিক এই ৪৮৭টিই আছে, **কোনো ফাইল বাদ নেই**। Version 6 পাঠানো বিলটি সারি-সারি হুবহু (৮৪৪/৮৪৪) আবার তৈরি করেছে।
@@ -346,7 +440,7 @@ October / November on September files go to those months' bills (bill by create 
 - **SLA Restart:** Appointment-এর *scheduled date* থেকে এবং **যেকোনো নতুন ট্রিপ** তৈরি হলে সঙ্গে সঙ্গে; In (Dhaka ও Chattogram City Corporation) = ২ কার্যদিবস, Out = ৪ কার্যদিবস। নতুন কলাম **“SLA Start / Restart Date”** (Excel ও PDF)।
 - **Incomplete** = শুধু Hold, Finished কিন্তু Submit হয়নি ও Partially Submitted।
 
-## সব ফিচার — প্রথম সংস্করণ থেকে Version 7 পর্যন্ত (বিস্তারিত)
+## সব ফিচার — প্রথম সংস্করণ থেকে Version 7 পর্যন্ত (বিস্তারিত; Version 10.0.0 উপরে)
 
 প্রতিটি ধাপে আগের সব ফিচার থেকে যায়; নিচে কোন সংস্করণে কী যোগ হয়েছে ক্রমানুসারে লেখা।
 

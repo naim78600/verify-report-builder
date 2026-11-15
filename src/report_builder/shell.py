@@ -204,9 +204,11 @@ class Shell(tk.Tk):
         self.login_btn.enable(False)
         self.login_msg.config(text=L("লগইন হচ্ছে…", "Signing in…"), fg=P["mute"])
 
+        email, pw = self.email.get().strip(), self.password.get()        # Tk variables are read on this (the window's) thread only
+
         def work():
             try:
-                ReadOnlyClient(web, api).login(self.email.get().strip(), self.password.get())
+                ReadOnlyClient(web, api).login(email, pw)
                 self.q.put(("signed_in",))
             except Exception as exc:                                       # noqa: BLE001
                 self.q.put(("login_failed", error_text(str(exc))))
@@ -327,14 +329,14 @@ class Shell(tk.Tk):
         except ValueError:
             self.jobs.discard("refresh")
             return
-        email, pw = self.email.get().strip(), self.password.get()
+        email, pw, label = self.email.get().strip(), self.password.get(), self.server.get()
         workers = int(self.settings.get("workers", config.DEFAULT_WORKERS))
 
         def work():
             try:
                 files, failed = {}, []
                 for org in CLIENTS:
-                    cfg = RunConfig(web=web, api=api, server_label=self.server.get(), email=email, password=pw,
+                    cfg = RunConfig(web=web, api=api, server_label=label, email=email, password=pw,
                                     days=LOOKBACK_DAYS, org_name=org, workers=workers)
                     try:
                         res = collect(cfg, lambda *a: self.q.put(("progress", org, *a)))

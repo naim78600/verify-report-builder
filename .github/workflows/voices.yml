@@ -5,6 +5,9 @@ on:
   push:
     paths: ["tools/voices/**", ".github/workflows/voices.yml"]
 
+permissions:
+  contents: write
+
 jobs:
   voices:
     runs-on: ubuntu-latest
@@ -28,8 +31,11 @@ jobs:
             ffmpeg -loglevel error -y -i "$f" -af "loudnorm,apad=pad_dur=0.3" -ac 1 -ar 48000 -c:a libopus -b:a 32k "voices/$n.ogg"
           done
           ls -la voices
-      - uses: actions/upload-artifact@v4
-        with:
-          name: voices
-          path: voices/
-          retention-days: 3
+      - name: Put the clips into the program (commit to this branch)
+        run: |
+          mkdir -p src/report_builder/assets/voices
+          cp voices/*.ogg src/report_builder/assets/voices/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/report_builder/assets/voices
+          git diff --cached --quiet || (git commit -m "Voice clips (made by the voices workflow)" && git push)
