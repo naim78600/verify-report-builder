@@ -737,7 +737,9 @@ class RemindersPage(Page):
         self.s2_text.config(text=L("বাটন চাপুন। WhatsApp প্রথম চ্যাট খুলবে: মেসেজ লেখা ও ভয়েস যুক্ত থাকবে। আপনি শুধু Send চাপবেন। পরের চ্যাট নিজে খুলবে।",
                                    "Press the button. WhatsApp opens the first chat with the message typed and the voice attached. "
                                    "You only press Send. The next chat opens by itself."))
-        self.s2_prog.config(text=(L(f"{num(len(items))} জনের মধ্যে {num(sent)} জনকে পাঠানো হয়েছে", f"{sent} of {len(items)} sent") if items else ""))
+        self.s2_prog.config(text=(L(f"{num(len(items))} জনের মধ্যে {num(sent)} জনকে পাঠানো হয়েছে", f"{sent} of {len(items)} sent") if items else
+                                  (L("পাঠানোর মতো কেউ নেই (নম্বর নেই, বা কোনো চলমান ট্রিপ নেই)।", "No one to send to (no numbers, or no open trips).") if rk else "")),
+                            fg=P["accent"] if items else P["bad"])
         self.s2_btn.config(text=L("সব পাঠানো শেষ ✓", "All sent ✓") if all_sent else
                            (L("বাকিদের পাঠান", "Send the rest") if sent else L("পাঠানো শুরু করুন", "Start sending")))
         self.s2_btn.enable(not all_sent)

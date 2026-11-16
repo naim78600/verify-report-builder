@@ -137,7 +137,7 @@ class H(BaseHTTPRequestHandler):
                 {"id": 40, "name": "Prime Bank PLC", "uuid": ORG_UUID},
                 {"id": 22, "name": "LankaBangla Finance Limited", "uuid": OTHER_ORG}]}})
         if p == "/api/v2/verifiers":                                # v10: phone numbers (+ fields the program must drop)
-            return self._send(200, {"data": [{"id": 5422, "name": "Tuhin Dewan", "phone": "01711-000001", "admin_access_token": "MUST-NOT-BE-KEPT"},
+            return self._send(200, {"taskers": [{"id": 5422, "name": "Tuhin Dewan", "phone": "01711-000001", "admin_access_token": "MUST-NOT-BE-KEPT"},
                                              {"id": 900, "name": "No Phone", "phone": ""}]})
         if STATE["scenario"]:
             import prime_scenario

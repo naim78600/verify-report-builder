@@ -335,3 +335,15 @@ def test_helper_folder_is_fixed_and_fresh(tmp_path, monkeypatch):
     assert "lastIsMine" in (HS.helper_folder() / "content.js").read_text(encoding="utf-8")   # an old copy is replaced
     js = (d / "content.js").read_text(encoding="utf-8")
     assert "wds-ic-read" in js and ".click()" not in js and HS.helper_version() == "10.0.3"
+
+
+def test_verifier_list_shapes_live_server_answers_taskers():
+    from report_builder.client import _verifier_list, verifier_phones
+
+    class C:
+        def __init__(self, raw): self.raw = raw
+        def get(self, _p): return self.raw
+    row = {"id": "7", "name": "A", "phone": "01711000001", "admin_access_token": "x"}
+    for raw in ({"taskers": [row]}, {"data": [row]}, {"data": {"data": [row]}}, {"verifiers": [row]}, [row], {"anything": [row]}):
+        assert verifier_phones(C(raw)) == {7: {"name": "A", "phone": "8801711000001"}}, raw
+    assert _verifier_list({"message": "x"}) == [] and _verifier_list(None) == []

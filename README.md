@@ -1,6 +1,6 @@
 # Verify Report Builder — Version 10 (ভেরিফাই রিপোর্ট বিল্ডার)
 
-**Version 10.0.3** · Prime Bank PLC · LankaBangla Finance · Barikoi Technologies Limited
+**Version 10.0.4** · Prime Bank PLC · LankaBangla Finance · Barikoi Technologies Limited
 
 Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্যার। Verify ড্যাশবোর্ড থেকে Prime Bank PLC-এর ফাইল সংগ্রহ করে **দৈনিক সাবমিশন ট্র্যাকার** (Complete + Incomplete, Excel + PDF) বানায় এবং **সরাসরি ব্যাংককে ইমেইল** পাঠায়।
 **Verify থেকে শুধু তথ্য পড়ে (GET); কোনো তথ্য বদলায় না।** লগইন পাসওয়ার্ড ও ইমেইলের App Password কোথাও সংরক্ষণ হয় না।
@@ -44,7 +44,7 @@ Chrome → `chrome://extensions` → **Developer mode** চালু → **Load 
 | Mac (Apple Silicon M1–M4) | `VerifyReportBuilder-Mac-AppleSilicon.dmg` | খুলে অ্যাপটি **Applications**-এ টেনে আনুন |
 | Mac (Intel) | `VerifyReportBuilder-Mac-Intel.dmg` | একই |
 
-ইনস্টলার না চাইলে `.zip` (portable) ফাইলও আছে। রিপোজিটরি **প্রাইভেট** — ডাউনলোডের জন্য GitHub-এ সাইন-ইন লাগবে (**Releases** পাতা; Release-এর নাম “Verify Report Builder Version 10 (v10.0.3)”)।
+ইনস্টলার না চাইলে `.zip` (portable) ফাইলও আছে। রিপোজিটরি **প্রাইভেট** — ডাউনলোডের জন্য GitHub-এ সাইন-ইন লাগবে (**Releases** পাতা; Release-এর নাম “Verify Report Builder Version 10 (v10.0.4)”)।
 প্রথমবার খুললে ডিজিটাল স্বাক্ষর নেই বলে সতর্কতা আসে: **Windows:** More info → Run anyway। **Mac:** System Settings → Privacy & Security → *Open Anyway* (অথবা `xattr -dr com.apple.quarantine /Applications/VerifyReportBuilder.app`)।
 
 ## প্রতিদিনের ওয়ার্কফ্লো (দিনে দুইবার)
@@ -172,7 +172,7 @@ Chrome → `chrome://extensions` → **Developer mode** চালু → **Load 
 
 ---
 
-### Version 10.0.3 (১৫ নভেম্বর) — A4, BS ট্র্যাকার, অফিস রিসিভ, WhatsApp রিমাইন্ডার, নতুন উইন্ডো (বাংলা / English)
+### Version 10.0.4 (১৫ নভেম্বর) — A4, BS ট্র্যাকার, অফিস রিসিভ, WhatsApp রিমাইন্ডার, নতুন উইন্ডো (বাংলা / English)
 উপরের “Version 10-এ নতুন” টেবিল দেখুন। সব নিয়ম ফাংশন ধরে `docs/TECH_MEMO.md`-এর ১৪ নম্বর অংশে।
 
 ### Version 7.0.0 (১১ নভেম্বর) — সেপ্টেম্বরের পূর্ণ যাচাই, প্যাকেজের document আলাদা সারি, সীমানার পিন
@@ -282,7 +282,7 @@ python run_app.py --cli --email you@barikoi.com --prime --mode tracker --slot 7p
 ## GitHub থেকে বিল্ড ও ডাউনলোড
 
 1. কোড GitHub-এর **Private** রিপোজিটরিতে থাকে। **Actions** চলে শুধু (ক) `v*` ট্যাগ দিলে অথবা (খ) হাতে *Run workflow* চাপলে — তখন আগে ১৬২টি টেস্ট, তারপর চারটি বিল্ড এবং তিন সিস্টেমে GUI smoke test চলে।
-2. **স্থায়ী ডাউনলোড লিংক (Release) বানাতে:** GitHub → **Releases → Draft a new release** → Tag লিখুন `v10.0.3` (Target: `main`) → **Publish**। (অথবা টার্মিনালে `git tag v10.0.3 && git push origin v10.0.3`।) ট্যাগ দেওয়ার পর Actions Windows 64/32-bit ও Mac Apple Silicon / Intel বিল্ড করে প্রায় ১৫–২০ মিনিটে Release-এ ফাইল জুড়ে দেয়। Release-এর নাম ও বিবরণ নিজে থেকে বসে (`RELEASE_NOTES.md` থেকে)।
+2. **স্থায়ী ডাউনলোড লিংক (Release) বানাতে:** GitHub → **Releases → Draft a new release** → Tag লিখুন `v10.0.4` (Target: `main`) → **Publish**। (অথবা টার্মিনালে `git tag v10.0.4 && git push origin v10.0.4`।) ট্যাগ দেওয়ার পর Actions Windows 64/32-bit ও Mac Apple Silicon / Intel বিল্ড করে প্রায় ১৫–২০ মিনিটে Release-এ ফাইল জুড়ে দেয়। Release-এর নাম ও বিবরণ নিজে থেকে বসে (`RELEASE_NOTES.md` থেকে)।
 3. **শুধু বিল্ড চেক করতে:** **Actions → Build desktop app → Run workflow**; শেষে রানের পাতার নিচে **Artifacts** থেকে ডাউনলোড (`Windows-64bit`, `Windows-32bit`, `Mac-AppleSilicon`, `Mac-Intel`) — এটি Release নয়, কিছুদিন পরে মেয়াদ শেষ হয়।
 
 > আপনার MacBook Apple Silicon (M-সিরিজ) হলে `Mac-AppleSilicon`, Intel হলে `Mac-Intel` নিন। (Apple menu → About This Mac এ দেখা যায়।)
