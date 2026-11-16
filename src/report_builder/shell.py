@@ -24,7 +24,7 @@ from . import reminders as R
 from .bs_tracker import bs_rows, load_store, pending_bs
 from .client import ApiError, AuthError, Cancelled, ReadOnlyClient, verifier_phones
 from .collect import RunConfig, collect
-from .helper_server import HelperServer
+from .helper_server import HelperServer, helper_folder, helper_version
 from .i18n import L, error_text
 from .ui_kit import Button, Entry, Fonts, P, pick_font_family
 
@@ -71,6 +71,7 @@ class Shell(tk.Tk):
         self.signed_in = False
         self.helper = HelperServer(lambda k, e: self.q.put(("helper", k, e)))
         self.helper_running = self.helper.start() if start_helper else False
+        self.helper_dir = helper_folder()            # fixed folder for Chrome's "Load unpacked", always the newest files
         st = R.load_state()
         R.NO_WA_CACHE.update(st.get("no_whatsapp", {}).keys())
         self.geometry(self.settings.get("geometry") or "1280x800")
@@ -312,10 +313,18 @@ class Shell(tk.Tk):
         txt = (L("● ড্যাশবোর্ড পড়া হচ্ছে…", "● Reading the dashboard…") if busy else
                (L(f"● ড্যাশবোর্ড (শুধু পড়া) · {at:%I:%M %p}", f"● Dashboard (read-only) · {at:%I:%M %p}") if at else
                 L("● ড্যাশবোর্ড (শুধু পড়া)", "● Dashboard (read-only)")))
-        txt += "\n" + (L("● WhatsApp হেল্পার চালু", "● WhatsApp helper on") if self.helper_running else
-                       L("● হেল্পার চালু হয়নি (প্রোগ্রাম আরেকটা খোলা?)", "● Helper off (program open twice?)"))
-        self.status_box.config(text=txt, bg=P["ok_bg"] if self.helper_running else P["warn_bg"],
-                               fg=P["ok"] if self.helper_running else P["warn"])
+        ext = self.helper.extension_connected
+        old_ext = ext and self.helper.ext_version and self.helper.ext_version != helper_version()
+        if not self.helper_running:
+            line = L("● হেল্পার চালু হয়নি (প্রোগ্রাম আরেকটা খোলা?)", "● Helper off (program open twice?)")
+        elif old_ext:
+            line = L("● Chrome হেল্পার পুরনো: Chrome বন্ধ করে আবার খুলুন", "● Chrome helper is old: close and reopen Chrome")
+        elif ext:
+            line = L("● WhatsApp-এর সাথে যুক্ত", "● Connected to WhatsApp")
+        else:
+            line = L("● WhatsApp যুক্ত নয় (রিমাইন্ডার পেজ দেখুন)", "● WhatsApp not connected (see Reminders)")
+        good = self.helper_running and ext and not old_ext
+        self.status_box.config(text=txt + "\n" + line, bg=P["ok_bg"] if good else P["warn_bg"], fg=P["ok"] if good else P["warn"])
 
     # ================================================================== data (read-only)
     def refresh_data(self, reason: str = "manual", then=None):
@@ -378,8 +387,8 @@ class Shell(tk.Tk):
         self.helper.round_key = round_key
         n = sum(1 for r in q if r.has_whatsapp_number)
         if notify:
-            self.toast(L(f"💬 {R.ROUND_LABEL[round_key]} রাউন্ড তৈরি: {n} জন ভেরিফায়ার। WhatsApp Web খুলে হেল্পারে ‘শুরু করুন’ চাপুন।",
-                         f"💬 {R.ROUND_LABEL[round_key]} round ready: {n} verifiers. Open WhatsApp Web and press ‘Start’ in the helper."))
+            self.toast(L(f"💬 {R.ROUND_LABEL[round_key]} রিমাইন্ডার তৈরি: {n} জন। ‘রিমাইন্ডার’ পেজে ‘পাঠানো শুরু করুন’ চাপুন।",
+                         f"💬 {R.ROUND_LABEL[round_key]} reminder ready: {n} verifiers. Go to ‘Reminders’ and press ‘Start sending’."))
         if "reminders" in self.pages:
             self.pages["reminders"].refresh()
         return n
@@ -457,6 +466,7 @@ class Shell(tk.Tk):
                     msg[1]()
                 elif kind == "helper":
                     _, k, e = msg
+                    self._status()
                     if k == "reply" and e.get("kind") == "no_whatsapp":
                         R.NO_WA_CACHE.add(e.get("phone", ""))
                     if "reminders" in self.pages:
@@ -469,6 +479,15 @@ class Shell(tk.Tk):
 
     def open_whatsapp(self):
         webbrowser.open("https://web.whatsapp.com/")
+
+    def start_sending(self) -> str:
+        """The one button: -> "started" (a WhatsApp tab with the helper is open and takes over) or "opened"
+        (WhatsApp Web was opened; the helper starts by itself when the page is ready, if it has been added to Chrome)."""
+        self.helper.request_start()
+        if self.helper.extension_connected:
+            return "started"
+        self.open_whatsapp()
+        return "opened"
 
     def _close(self):
         try:

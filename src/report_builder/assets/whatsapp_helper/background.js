@@ -5,7 +5,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   (async () => {
     try {
       if (msg.type === "get") {
-        const r = await fetch(BASE + msg.path, { cache: "no-store" });
+        const r = await fetch(BASE + msg.path + "?v=" + chrome.runtime.getManifest().version, { cache: "no-store" });
         reply({ ok: r.ok, data: await r.json() });
       } else if (msg.type === "post") {
         const r = await fetch(BASE + msg.path, {

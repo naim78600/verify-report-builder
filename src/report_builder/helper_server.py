@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable
 
@@ -30,7 +31,33 @@ class HelperServer:
         self.port = port
         self.lock = threading.Lock()
         self.round_key: str | None = None
+        self.ext_seen = 0.0                 # when the Chrome helper last asked for something (time.time())
+        self.ext_version = ""
+        self.start_token: str | None = None  # "Start sending" pressed in the program: the first WhatsApp tab takes it
+        self.start_until = 0.0
         self.httpd: ThreadingHTTPServer | None = None
+
+    # ------------------------------------------------------------------ the Chrome helper
+    @property
+    def extension_connected(self) -> bool:
+        """True while a WhatsApp Web tab with the helper is open (it asks every few seconds)."""
+        return time.time() - self.ext_seen < 45
+
+    def request_start(self) -> str:
+        """The program's 'Start sending' button: valid for 3 minutes, taken by one tab only."""
+        self.start_token = f"{time.time():.3f}"
+        self.start_until = time.time() + 180
+        return self.start_token
+
+    def pending_start(self) -> str | None:
+        return self.start_token if self.start_token and time.time() < self.start_until else None
+
+    def claim_start(self, token: str) -> bool:
+        with self.lock:
+            if token and token == self.pending_start():
+                self.start_token = None
+                return True
+            return False
 
     # ------------------------------------------------------------------ data
     def current_items(self) -> list[dict]:
@@ -96,6 +123,14 @@ class HelperServer:
                 if self.client_address[0] not in ("127.0.0.1", "::1"):
                     return False
                 origin = self.headers.get("Origin") or ""
+                if origin.startswith("chrome-extension://") or origin.startswith("moz-extension://") or (origin == "" and "v=" in self.path):
+                    was = srv.extension_connected
+                    srv.ext_seen = time.time()
+                    if "v=" in self.path:
+                        srv.ext_version = self.path.split("v=", 1)[1].split("&")[0][:20]
+                    if not was:
+                        srv.on_event("connected", {})
+                self.path = self.path.split("?")[0]
                 return origin == "" or origin.startswith("chrome-extension://") or origin.startswith("moz-extension://")
 
             def _send(self, code: int, body, ctype="application/json"):
@@ -121,7 +156,7 @@ class HelperServer:
                     from . import __version__
                     return self._send(200, {"ok": True, "app": "Verify Report Builder", "version": __version__})
                 if self.path == "/round":
-                    return self._send(200, {"items": srv.current_items(), "contacts": srv.contacts()})
+                    return self._send(200, {"items": srv.current_items(), "contacts": srv.contacts(), "start": srv.pending_start()})
                 if self.path.startswith("/voice/"):
                     name = self.path.split("/voice/", 1)[1].split("?")[0]
                     if not name.replace("_", "").isalnum():
@@ -137,6 +172,8 @@ class HelperServer:
                 if not self._allowed():
                     return self._send(403, {"error": "forbidden"})
                 body = self._json()
+                if self.path == "/claim":
+                    return self._send(200, {"ok": srv.claim_start(str(body.get("token", "")))})
                 if self.path == "/sent":
                     return self._send(200, {"ok": srv.mark_sent(str(body.get("phone", "")))})
                 if self.path == "/reply":
@@ -157,3 +194,45 @@ class HelperServer:
         if self.httpd:
             self.httpd.shutdown()
             self.httpd = None
+
+
+# ====================================================================================== the Chrome helper's folder
+def helper_folder() -> Path:
+    """A folder that stays in one place (~/.verify_report_builder/whatsapp_helper) with the newest helper files.
+    Chrome's "Load unpacked" must point at a folder that does not move: the program's own copy sits in a temporary
+    folder (Windows) or inside the .app (Mac) and changes with every update."""
+    import shutil
+    from . import config
+    src, dst = asset("whatsapp_helper"), config.SETTINGS_DIR / "whatsapp_helper"
+    try:
+        dst.mkdir(parents=True, exist_ok=True)
+        for f in src.iterdir():
+            if f.is_file() and (not (dst / f.name).exists() or (dst / f.name).read_bytes() != f.read_bytes()):
+                shutil.copyfile(f, dst / f.name)
+    except OSError:
+        return src
+    return dst
+
+
+def helper_version() -> str:
+    try:
+        return json.loads((asset("whatsapp_helper") / "manifest.json").read_text(encoding="utf-8"))["version"]
+    except Exception:
+        return ""
+
+
+def open_chrome_extensions() -> bool:
+    """Opens Chrome's extensions page (the one place where the helper is added).  False = could not; open it by hand."""
+    import subprocess
+    import sys
+    url = "chrome://extensions"
+    try:
+        if sys.platform == "darwin":
+            return subprocess.call(["open", "-a", "Google Chrome", url]) == 0
+        if sys.platform.startswith("win"):
+            subprocess.Popen(["cmd", "/c", "start", "", "chrome", url], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            return True
+        subprocess.Popen(["google-chrome", url])
+        return True
+    except Exception:
+        return False

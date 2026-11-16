@@ -340,6 +340,14 @@ Reference: `reminders.py`, `helper_server.py`, `assets/whatsapp_helper/`, `pages
 2. **When**: 10:00 AM, 1:00 PM and 4:00 PM – every on-going / hold trip, appointments of today first (the BS reminder is not in the 10 AM round); A trip whose appointment is on a later day is
    skipped until that day; with an appointment today it is reminded until finished. Office days only, until 6:15 PM; if the PC
    was off, the latest missed round is prepared when the program opens.
+   **v10.0.3**: the Reminders page is three steps (messages ready -> "Start sending" -> replies). "Start sending"
+   (`Shell.start_sending`) raises a 3-minute token on the local helper server; the first WhatsApp Web tab with the helper
+   claims it (`POST /claim`, one tab only) and opens the first chat. Send is still pressed by the user. The page shows
+   "connected" only while the helper really asks the server (`HelperServer.extension_connected`, last contact < 45 s).
+   The helper's files are copied to `~/.verify_report_builder/whatsapp_helper` (`helper_folder()`), the fixed folder for
+   Chrome's "Load unpacked". Own-message detection in the chat list follows WhatsApp Web of Nov 2026
+   (`svg title` = `wds-ic-read` ... inside `last-msg-status`). Voice clips: Edge "bn-BD-PradeepNeural", made once in CI.
+   BS: the month list has every month; the bank is also read from the trip's address when the name field is empty.
 3. **Order**: SLA passed → SLA ends today → appointment today → the rest (`Reminder.priority`).
 4. **Message**: short Bangla text with the file numbers, and one of four voice clips (SLA passed / appointment today / hand in
    BS / general). Clips are made once with a free offline voice (Coqui TTS `bn/custom/vits-male`, MIT; Kolkata-style accent,

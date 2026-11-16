@@ -14,6 +14,7 @@ from . import reminders as R
 from .assets_path import asset
 from .client import is_bd_mobile, normalize_phone
 from .gui import open_path
+from .helper_server import open_chrome_extensions
 from .i18n import L
 from .ui_kit import Button, Entry, P, Segmented
 
@@ -561,59 +562,195 @@ class ReceivePage(Page):
 
 # ============================================================================================ Reminders
 class RemindersPage(Page):
+    """Three steps, top to bottom (Naim's choice, 'Demo A'): 1 messages ready -> 2 send on WhatsApp -> 3 replies."""
     title_bn, title_en = "রিমাইন্ডার (WhatsApp)", "Reminders (WhatsApp)"
 
     def __init__(self, master, shell):
         super().__init__(master, shell)
-        self.action(L("হেল্পার সেটআপ", "Helper setup"), self.setup)
         self.action(L("দিনের সারাংশ", "Day summary"), self.summary)
-        self.action(L("WhatsApp Web খুলুন", "Open WhatsApp Web"), shell.open_whatsapp, kind="green")
-        bar = tk.Frame(self.body, bg=P["bg"])
-        bar.pack(fill="x", pady=(0, 12))
         self.round = tk.StringVar(value=R.due_round({}) or "1pm")
-        tk.Label(bar, text=L("রাউন্ড", "Round"), bg=P["bg"], fg=P["mute"], font=self.f.small).pack(side="left")
-        Segmented(bar, self.f, [(k, R.ROUND_LABEL[k]) for k, _t in R.ROUNDS], self.round).pack(side="left", padx=8)
-        Button(bar, L("এই রাউন্ড এখনই তৈরি করুন", "Prepare this round now"), self.prepare, kind="primary", font=self.f.small, padx=12, pady=6).pack(side="left", padx=8)
         self.tab = tk.StringVar(value="all")
+        self.show_list = False
+
+        # ---- step 1: messages ready
+        c1, self.n1, t1 = self._step(1, L("মেসেজ তৈরি", "Messages are ready"))
+        self.s1_text = t1
+        right = tk.Frame(c1, bg=P["card"])
+        right.pack(side="right", padx=(0, 18))
+        self.s1_btn = Button(right, L("এখনই তৈরি করুন", "Prepare now"), self.prepare, kind="secondary", font=self.f.small, padx=12, pady=7)
+        self.s1_btn.pack(side="right")
+        Segmented(right, self.f, [(k, R.ROUND_LABEL[k]) for k, _t in R.ROUNDS], self.round).pack(side="right", padx=(0, 10))
+
+        # ---- step 2: send on WhatsApp
+        c2, self.n2, t2 = self._step(2, L("WhatsApp-এ পাঠান", "Send on WhatsApp"), strong=True)
+        self.c2, self.s2_text = c2, t2
+        self.s2_prog = tk.Label(t2.master, text="", bg=P["card"], fg=P["accent"], font=self.f.btn)
+        self.s2_prog.pack(anchor="w", pady=(4, 0))
+        self.s2_btn = Button(c2, L("পাঠানো শুরু করুন", "Start sending"), self.start, kind="primary", font=self.f.btn, padx=22, pady=13)
+        self.s2_btn.pack(side="right", padx=(0, 18))
+
+        # ---- helper not in Chrome yet (shown only when needed)
+        self.setup_box = tk.Frame(self.body, bg=P["warn_bg"])
+        tk.Label(self.setup_box, bg=P["warn_bg"], fg=P["warn"], font=self.f.small, justify="left", anchor="w", wraplength=700,
+                 text=L("Chrome-এ হেল্পার এখনো যুক্ত হয়নি (একবারই করতে হবে, ১ মিনিট):\n"
+                        "১. ‘হেল্পার যোগ করুন’ চাপুন: Chrome-এর Extensions পাতা ও একটি ফোল্ডার খুলবে\n"
+                        "২. Chrome-এ ডানে উপরে ‘Developer mode’ চালু করুন, তারপর ‘Load unpacked’ চাপুন\n"
+                        "৩. খোলা ফোল্ডারটি বাছুন (ফোল্ডারের ঠিকানা কপি করা আছে: Paste করলেও হবে)\n"
+                        "এরপর আর কিছু করতে হবে না: প্রতিবার নিজে থেকেই যুক্ত হবে।",
+                        "The helper is not in Chrome yet (once only, 1 minute):\n"
+                        "1. Press ‘Add the helper’: Chrome's Extensions page and a folder open\n"
+                        "2. In Chrome turn on ‘Developer mode’ (top right), then press ‘Load unpacked’\n"
+                        "3. Choose the folder that opened (its address is copied: Paste works too)\n"
+                        "After that nothing more: it connects by itself every time.")).pack(side="left", padx=14, pady=10)
+        Button(self.setup_box, L("হেল্পার যোগ করুন", "Add the helper"), self.setup, kind="dark", font=self.f.small, padx=14, pady=9).pack(side="right", padx=14)
+
+        # ---- step 3: replies
+        c3, self.n3, t3 = self._step(3, L("উত্তর নিজে থেকেই এখানে আসে", "Replies come here by themselves"))
+        self.c3 = c3
+        t3.config(text=L("WhatsApp Web খোলা রাখুন। কিছু চাপতে হবে না।", "Keep WhatsApp Web open. Nothing to press."))
+        self.s3_btn = Button(c3, L("তালিকা দেখুন", "See the list"), self.toggle_list, kind="secondary", font=self.f.small, padx=12, pady=7)
+        self.s3_btn.pack(side="right", padx=(0, 18))
+        nums = tk.Frame(c3, bg=P["card"])
+        nums.pack(side="right", padx=(0, 18))
+        self.k = []
+        for label, color in ((L("যাচ্ছি / শেষ", "Going / done"), P["ok"]), (L("সমস্যা", "Problem"), P["bad"]),
+                             (L("উত্তর আসেনি", "No reply yet"), P["text"])):
+            col = tk.Frame(nums, bg=P["card"])
+            col.pack(side="left", padx=10)
+            v = tk.Label(col, text="–", bg=P["card"], fg=color, font=(self.f.family, 18, "bold"))
+            v.pack()
+            tk.Label(col, text=label, bg=P["card"], fg=P["mute"], font=self.f.tiny).pack()
+            self.k.append(v)
+
+        self.nowa = tk.Frame(self.body, bg=P["bad_bg"])
+        self.nowa_lbl = tk.Label(self.nowa, text="", bg=P["bad_bg"], fg=P["bad"], font=self.f.small, anchor="w", justify="left", wraplength=760)
+        self.nowa_lbl.pack(side="left", padx=14, pady=8)
+        Button(self.nowa, L("নম্বর যোগ করুন", "Add numbers"), lambda: shell.show("verifiers"), kind="secondary", font=self.f.small,
+               padx=12, pady=7).pack(side="right", padx=14)
+
+        # ---- the list (hidden until asked for)
+        self.list_box = tk.Frame(self.body, bg=P["bg"])
+        bar = tk.Frame(self.list_box, bg=P["bg"])
+        bar.pack(fill="x", pady=(0, 8))
         Segmented(bar, self.f, [("all", L("সব", "All")), ("replied", L("উত্তর এসেছে", "Replied")), ("problem", L("সমস্যা", "Problem")),
-                                ("none", L("উত্তর আসেনি", "No reply"))], self.tab, self.refresh).pack(side="right")
-        grid = tk.Frame(self.body, bg=P["bg"])
-        grid.pack(fill="x", pady=(0, 12))
-        self.k = [self.kpi(grid, L("এই রাউন্ডে", "In this round")), self.kpi(grid, L("আপনি পাঠিয়েছেন", "You sent"), color=P["accent"]),
-                  self.kpi(grid, L("উত্তর এসেছে", "Replied"), color=P["ok"]), self.kpi(grid, L("সমস্যা জানিয়েছে", "Problems"), color=P["bad"])]
-        for i, k in enumerate(self.k):
-            k.grid(row=0, column=i, sticky="nsew", padx=(0 if i == 0 else 12, 0))
-            grid.grid_columnconfigure(i, weight=1, uniform="k")
-        tbl = self.card(self.body, fill="both", expand=True)
+                                ("none", L("উত্তর আসেনি", "No reply"))], self.tab, self.refresh).pack(side="left")
+        tbl = self.card(self.list_box, fill="both", expand=True)
         box, self.tv = self.table(tbl, [("p", L("অগ্রাধিকার", "Priority"), 120, "w"), ("ver", L("ভেরিফায়ার", "Verifier"), 150, "w"),
                                         ("files", L("ফাইল", "Files"), 260, "w"), ("voice", L("ভয়েস", "Voice"), 130, "w"),
                                         ("state", L("অবস্থা", "State"), 120, "w"), ("rep", L("উত্তর (সফটওয়্যার যা বুঝল)", "Reply (as understood)"), 260, "w")],
-                                  height=12)
+                                  height=8)
         box.pack(fill="both", expand=True, padx=1, pady=1)
-        self.nowa = tk.Label(self.body, text="", bg=P["bad_bg"], fg=P["bad"], font=self.f.small, anchor="w", justify="left", padx=14, pady=8,
-                             wraplength=900)
+        self.next_lbl = tk.Label(self.body, text="", bg=P["bg"], fg=P["mute"], font=self.f.small, anchor="w")
+        self.next_lbl.pack(side="bottom", fill="x", pady=(8, 0))
+        self._waiting_since = None
+        self.after(4000, self._watch)
 
+    # ------------------------------------------------------------------ pieces
+    def _step(self, n, title, strong=False):
+        c = tk.Frame(self.body, bg=P["card"], highlightbackground=P["accent"] if strong else P["line"], highlightthickness=2 if strong else 1)
+        c.pack(fill="x", pady=(0, 12))
+        dot = tk.Label(c, text=num(n), bg=P["line"], fg=P["mute"], font=(self.f.family, 14, "bold"), width=3, pady=6)
+        dot.pack(side="left", padx=18, pady=16)
+        mid = tk.Frame(c, bg=P["card"])
+        mid.pack(side="left", fill="x", expand=True, pady=12)
+        tk.Label(mid, text=title, bg=P["card"], fg=P["text"], font=self.f.h3).pack(anchor="w")
+        text = tk.Label(mid, text="", bg=P["card"], fg=P["mute"], font=self.f.small, justify="left", anchor="w", wraplength=520)
+        text.pack(anchor="w")
+        return c, dot, text
+
+    def _dot(self, dot, state):
+        bg, fg = {"done": (P["ok"], "#FFFFFF"), "now": (P["accent"], "#FFFFFF")}.get(state, (P["line"], P["mute"]))
+        dot.config(bg=bg, fg=fg)
+
+    def _watch(self):
+        """Every few seconds: is WhatsApp (with the helper) connected?  Keeps the page honest without a click."""
+        try:
+            if self.winfo_ismapped():
+                self._connection()
+                self.shell._status()
+            self.after(4000, self._watch)
+        except tk.TclError:
+            pass
+
+    def _connection(self):
+        h = self.shell.helper
+        if h.extension_connected:
+            self._waiting_since = None
+            self.setup_box.pack_forget()
+        elif self._waiting_since and (datetime.now() - self._waiting_since).total_seconds() > 30:
+            self.setup_box.pack(fill="x", pady=(0, 12), after=self.c2)       # WhatsApp was opened but no helper answered
+
+    # ------------------------------------------------------------------ actions
     def prepare(self):
         if not self.need_data():
             return
         self.shell.prepare_round(self.round.get())
+
+    def start(self):
+        st = R.load_state()
+        ds = R.day_state(st)
+        if not ds["rounds"]:
+            if not self.need_data():
+                return
+            self.shell.prepare_round(self.round.get(), notify=False)
+        how = self.shell.start_sending()
+        if how == "started":
+            self.shell.toast(L("WhatsApp ট্যাবে যান: প্রথম চ্যাট খুলছে। আপনি শুধু Send চাপবেন।",
+                               "Go to the WhatsApp tab: the first chat is opening. You only press Send."))
+        else:
+            self._waiting_since = datetime.now()
+            self.shell.toast(L("WhatsApp Web খোলা হলো। পেজ চালু হলে প্রথম চ্যাট নিজে খুলবে।",
+                               "WhatsApp Web is opening. When the page is ready the first chat opens by itself."))
+
+    def toggle_list(self):
+        self.show_list = not self.show_list
+        self.s3_btn.config(text=L("তালিকা লুকান", "Hide the list") if self.show_list else L("তালিকা দেখুন", "See the list"))
+        if self.show_list:
+            self.list_box.pack(fill="both", expand=True, pady=(4, 0))
+        else:
+            self.list_box.pack_forget()
 
     def refresh(self):
         st = R.load_state()
         ds = R.day_state(st)
         rk = self.shell.helper.round_key or (sorted(ds["rounds"], key=lambda k: ds["rounds"][k]["prepared"])[-1] if ds["rounds"] else None)
         due = R.due_round(st)
-        self.sub.config(text=(L(f"এখনকার রাউন্ড: {R.ROUND_LABEL[rk]}", f"Current round: {R.ROUND_LABEL[rk]}") if rk else
-                              L("আজ এখনো কোনো রাউন্ড তৈরি হয়নি", "No round prepared yet today"))
-                        + (L(f" · বাকি: {R.ROUND_LABEL[due]}", f" · due: {R.ROUND_LABEL[due]}") if due else ""))
         items = ds["rounds"][rk]["items"] if rk else []
         last = {}
         for rp in ds["replies"]:
             last[rp["phone"]] = rp
-        self.k[0].value.config(text=num(len(items)))
-        self.k[1].value.config(text=num(sum(1 for i in items if i.get("sent"))))
-        self.k[2].value.config(text=num(sum(1 for i in items if i["phone"] in last)))
-        self.k[3].value.config(text=num(sum(1 for i in items if last.get(i["phone"], {}).get("kind") == R.PROBLEM)))
+        sent = sum(1 for i in items if i.get("sent"))
+        self.sub.config(text=L(f"{R.ROUND_LABEL[rk]}-এর রিমাইন্ডার · উপর থেকে নিচে ৩টি ধাপ", f"{R.ROUND_LABEL[rk]} reminder · 3 steps, top to bottom") if rk
+                        else L("আজ এখনো কোনো রিমাইন্ডার তৈরি হয়নি", "No reminder prepared yet today"))
+        # step 1
+        if rk:
+            self.s1_text.config(text=L(f"{num(len(items))} জনের মেসেজ লেখা ও ভয়েস বাছা হয়েছে ({ds['rounds'][rk]['prepared'][11:16]})।",
+                                       f"{len(items)} messages written, a voice picked for each (at {ds['rounds'][rk]['prepared'][11:16]})."))
+            self.s1_btn.config(text=L("আবার তৈরি করুন", "Prepare again"))
+        else:
+            self.s1_text.config(text=L("সফটওয়্যার ১০টা, ১টা ও ৪টায় নিজে তৈরি করে। এখনই চাইলে ডানের বাটন চাপুন।",
+                                       "The software prepares it at 10, 1 and 4 by itself. Press the button to do it now."))
+            self.s1_btn.config(text=L("এখনই তৈরি করুন", "Prepare now"))
+        self._dot(self.n1, "done" if rk else "now")
+        # step 2
+        all_sent = bool(items) and sent == len(items)
+        self.s2_text.config(text=L("বাটন চাপুন। WhatsApp প্রথম চ্যাট খুলবে: মেসেজ লেখা ও ভয়েস যুক্ত থাকবে। আপনি শুধু Send চাপবেন। পরের চ্যাট নিজে খুলবে।",
+                                   "Press the button. WhatsApp opens the first chat with the message typed and the voice attached. "
+                                   "You only press Send. The next chat opens by itself."))
+        self.s2_prog.config(text=(L(f"{num(len(items))} জনের মধ্যে {num(sent)} জনকে পাঠানো হয়েছে", f"{sent} of {len(items)} sent") if items else ""))
+        self.s2_btn.config(text=L("সব পাঠানো শেষ ✓", "All sent ✓") if all_sent else
+                           (L("বাকিদের পাঠান", "Send the rest") if sent else L("পাঠানো শুরু করুন", "Start sending")))
+        self.s2_btn.enable(not all_sent)
+        self._dot(self.n2, "done" if all_sent else ("now" if rk else ""))
+        # step 3
+        good = sum(1 for i in items if last.get(i["phone"], {}).get("kind") in (R.GOING, R.DONE))
+        bad = sum(1 for i in items if last.get(i["phone"], {}).get("kind") == R.PROBLEM)
+        none = sum(1 for i in items if i.get("sent") and i["phone"] not in last)
+        for lbl, v in zip(self.k, (good, bad, none)):
+            lbl.config(text=num(v))
+        self._dot(self.n3, "now" if sent else "")
+        self._connection()
+        # the list
         self.tv.delete(*self.tv.get_children())
         tab = self.tab.get()
         voice_name = {"sla_passed": L("SLA পার", "SLA passed"), "appointment_today": L("আজ অ্যাপয়েন্টমেন্ট", "Appointment today"),
@@ -633,12 +770,13 @@ class RemindersPage(Page):
         no = (ds["rounds"][rk].get("no_whatsapp", []) if rk else []) + [
             {"verifier": i["verifier"], "phone": i["phone"]} for i in items if i["phone"] in R.NO_WA_CACHE]
         if no:
-            self.nowa.config(text=L("🔴 WhatsApp নেই / নম্বর নেই: ", "🔴 No WhatsApp / no number: ")
-                             + ", ".join(f"{n['verifier']} ({n['phone'] or '—'})" for n in no[:30])
-                             + L("  ·  ‘ভেরিফায়ার’ পেজে নম্বর ঠিক করুন।", "  ·  fix the number on the ‘Verifiers’ page."))
-            self.nowa.pack(fill="x", pady=(10, 0))
+            self.nowa_lbl.config(text=L(f"{num(len(no))} জনের WhatsApp নম্বর নেই: ", f"{len(no)} verifiers have no WhatsApp number: ")
+                                 + ", ".join(n["verifier"] for n in no[:12]) + ("…" if len(no) > 12 else ""))
+            self.nowa.pack(fill="x", pady=(0, 12), after=self.c3)
         else:
             self.nowa.pack_forget()
+        self.next_lbl.config(text=L(f"পরের রিমাইন্ডার: {R.ROUND_LABEL[due]} (সফটওয়্যার নিজে তৈরি করবে)", f"Next reminder: {R.ROUND_LABEL[due]} (prepared by the software)")
+                             if due else "")
 
     def summary(self):
         s = R.day_summary(R.load_state())
@@ -658,21 +796,18 @@ class RemindersPage(Page):
                                          r["reason"], ", ".join(r["files"])[:120]), tags=("bad",) if r["last"] == R.PROBLEM else ())
 
     def setup(self):
-        folder = asset("whatsapp_helper")
-        msg = L("WhatsApp হেল্পার একবার Chrome-এ যোগ করতে হবে (১ মিনিট):\n\n"
-                "১. Chrome-এ ঠিকানা লিখুন:  chrome://extensions\n"
-                "২. ডান দিকের উপরে ‘Developer mode’ চালু করুন\n"
-                "৩. ‘Load unpacked’ চাপুন, তারপর যে ফোল্ডারটি এখন খুলবে সেটি বাছুন\n"
-                "৪. web.whatsapp.com খুলুন: ডান দিকের নিচে ‘Barikoi helper’ দেখাবে\n\n"
-                "হেল্পার নিজে কখনো Send চাপে না। প্রতিটি চ্যাট খুলে মেসেজ লিখে ও ভয়েস যুক্ত করে রাখে, Send আপনি চাপবেন।",
-                "Add the WhatsApp helper to Chrome once (1 minute):\n\n"
-                "1. In Chrome go to:  chrome://extensions\n"
-                "2. Turn on ‘Developer mode’ (top right)\n"
-                "3. Press ‘Load unpacked’ and choose the folder that opens now\n"
-                "4. Open web.whatsapp.com: ‘Barikoi helper’ shows at the bottom right\n\n"
-                "The helper never presses Send. It opens each chat with the message typed in and the voice attached; you press Send.")
-        messagebox.showinfo(L("হেল্পার সেটআপ", "Helper setup"), msg)
+        """Opens Chrome's Extensions page and the helper's folder; the folder's address goes to the clipboard."""
+        folder = self.shell.helper_dir
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(str(folder))
+        except tk.TclError:
+            pass
+        ok = open_chrome_extensions()
         open_path(folder)
+        if not ok:
+            messagebox.showinfo(L("হেল্পার যোগ করুন", "Add the helper"),
+                                L("Chrome-এর ঠিকানার ঘরে লিখুন:  chrome://extensions", "In Chrome's address bar type:  chrome://extensions"))
 
 
 # ============================================================================================ Verifiers

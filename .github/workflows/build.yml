@@ -99,6 +99,16 @@ jobs:
           PY
           out=$(src/report_builder/assets/bin/mac_ocr ocr_test.png); echo "$out"
           echo "$out" | grep -q "20261001094920785" && echo "$out" | grep -qi "sonali"
+          PYTHONPATH=src python -c "from report_builder import bs_tracker as B; t=B.ocr_image('ocr_test.png'); assert '20261001094920785' in t, t; print('program reads the photo: OK')"
+
+      - name: Windows photo reader self-test (Windows' own OCR)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = "src"
+          python -c "from PIL import Image, ImageDraw, ImageFont; im=Image.new('RGB',(900,260),'white'); d=ImageDraw.Draw(im); f=ImageFont.truetype('arial.ttf',52); d.text((30,30),'PL-20261001094920785',fill='black',font=f); d.text((30,130),'Rahim Uddin  Sonali Bank',fill='black',font=f); im.save('ocr_test.png')"
+          python -c "from report_builder import bs_tracker as B; t=B.ocr_image('ocr_test.png'); print(t); assert '20261001094920785' in t.replace(' ','')"
 
       - name: Build (Mac .app)
         if: runner.os == 'macOS'
