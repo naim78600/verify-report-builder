@@ -193,7 +193,8 @@ class BSPage(Page):
         bar.pack(fill="x", pady=(0, 12))
         today = date.today()
         self.month = tk.StringVar(value=f"{today:%Y-%m}")
-        months = [f"{(today.replace(day=1) - timedelta(days=31 * i)).replace(day=1):%Y-%m}" for i in range(0, 12)]
+        months = [f"{(today.year * 12 + today.month - 1 - i) // 12}-{(today.year * 12 + today.month - 1 - i) % 12 + 1:02d}"
+                  for i in range(0, 12)]                          # every month, none skipped
         tk.Label(bar, text=L("মাস (trip create)", "Month (trip created)"), bg=P["bg"], fg=P["mute"], font=self.f.small).pack(side="left")
         cb = ttk.Combobox(bar, textvariable=self.month, values=months, width=9, state="readonly")
         cb.pack(side="left", padx=(6, 16))

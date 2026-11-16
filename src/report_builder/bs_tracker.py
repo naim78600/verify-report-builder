@@ -109,14 +109,15 @@ def bs_rows(files: list[dict], org: str, phones: dict | None = None, month: tupl
                 cr = t.get("created_at")
                 if month and not (cr and (cr.year, cr.month) == month):
                     continue
-                bank, kind, how = match_bank(t.get("place_name", ""), t.get("remarks", ""))
+                bank, kind, how = match_bank(t.get("place_name", ""), t.get("remarks", ""),
+                                             " , ".join(x for x in (t.get("address", ""), t.get("exact_address", "")) if x))
                 outcome, note = bs_outcome(t.get("remarks", ""), t.get("status_code"))
                 vid = t.get("agent_id")
                 key = str(t.get("id"))
                 s = store.get(key, {})
                 out.append(BSRow(
                     org=org, trip_id=t.get("id"), file_id=f.get("id"), file_no=f.get("file_no", ""), applicant=_applicant(f),
-                    created=cr, bank_written=t.get("place_name", ""), bank=bank, bs_type=kind, bank_how=how,
+                    created=cr, bank_written=t.get("place_name", "") or t.get("address", ""), bank=bank, bs_type=kind, bank_how=how,
                     verifier=t.get("verifier", ""), verifier_id=vid, phone=(phones.get(vid) or {}).get("phone", "") if vid else "",
                     trip_status=t.get("status", ""), trip_status_code=t.get("status_code"), remarks=t.get("remarks", ""),
                     outcome=outcome, outcome_note=note, file_status=f.get("status", ""), sla=f.get("sla"),

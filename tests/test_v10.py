@@ -292,3 +292,16 @@ def test_mac_photo_reader_is_used_on_mac(monkeypatch, tmp_path):
     img = tmp_path / "x.png"
     img.write_bytes(b"x")
     assert "PL-20261001094920785" in BT.ocr_image(img)
+
+
+def test_bank_from_address_when_name_is_empty_and_all_months_listed():
+    from report_builder.bs_rules import match_bank
+    assert match_bank("", "Bank statement verified.", "Sonali Bank PLC , Sonali Bank PLC. Kurigram Sadar")[:2] == ("Sonali Bank PLC", "Online")
+    assert match_bank("", "", "House 5, Bank Road, Dhaka")[0] == ""
+    assert match_bank("BRAC BANK PLC", "", "Sonali Bank PLC")[0] == "BRAC Bank PLC"          # the written name still wins
+    src = (Path(__file__).resolve().parents[1] / "src" / "report_builder" / "pages.py").read_text(encoding="utf-8")
+    assert "days=31 * i" not in src                                                         # that skipped September
+    from datetime import date
+    today = date(2026, 11, 16)
+    months = [f"{(today.year * 12 + today.month - 1 - i) // 12}-{(today.year * 12 + today.month - 1 - i) % 12 + 1:02d}" for i in range(12)]
+    assert months[:4] == ["2026-11", "2026-10", "2026-09", "2026-08"] and months[-1] == "2025-12"

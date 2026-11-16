@@ -1,0 +1,24 @@
+name: Voice samples (to choose from)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  samples:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install edge-tts gTTS
+      - run: python tools/voice_samples/make_samples.py voice_samples
+      - name: Commit the samples to this branch
+        run: |
+          ls -la voice_samples
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add voice_samples
+          git diff --cached --quiet || (git commit -m "Voice samples (to choose from)" && git push)

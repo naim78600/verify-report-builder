@@ -117,10 +117,11 @@ KIND = {name: kind for kind, rows in (("Online", ONLINE), ("Offline", OFFLINE)) 
 SHORT_NAME = {name: (code if code and code != "-" else "SIBL") for rows in (ONLINE, OFFLINE) for name, code, _a in rows}
 
 
-def match_bank(place_name: str, remarks: str = "") -> tuple[str, str, str]:
+def match_bank(place_name: str, remarks: str = "", address: str = "") -> tuple[str, str, str]:
     """-> (standard bank name or "", "Online" | "Offline", how).  `how` says why (for the Excel's note column).
-    Order: the bank written on the trip, then the remarks.  Unclear -> Offline (never missed)."""
-    for text, where in ((place_name, "bank name"), (remarks, "remarks")):
+    Order: the bank written on the trip, then the trip's address (LankaBangla trips keep the bank there), then the remarks.
+    Unclear -> Offline (never missed)."""
+    for text, where in ((place_name, "bank name"), (address, "address"), (remarks, "remarks")):
         t = " " + _norm(text) + " "
         if not t.strip():
             continue
@@ -146,6 +147,9 @@ def match_bank(place_name: str, remarks: str = "") -> tuple[str, str, str]:
                 return names[0] + " (?)", "Offline", where + f" (short form {short.upper()} unclear - counted offline)"
     if (place_name or "").strip():
         return place_name.strip(), "Offline", "not in the bank list - counted offline"
+    first = (address or "").split(",")[0].strip()
+    if re.search(r"\bbank\b", first, re.I) and len(first) <= 60:
+        return first, "Offline", "not in the bank list - counted offline"
     return "", "Offline", "bank not written - counted offline"
 
 
