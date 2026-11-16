@@ -170,9 +170,7 @@ def verifier_phones(client: "ReadOnlyClient") -> dict[int, dict]:
     """{verifier id: {"name", "phone"}} from /api/v2/verifiers.  The server's reply also carries other fields (among them
     an access token); everything except id, name and phone is dropped right here and never stored or logged."""
     raw = client.get("/api/v2/verifiers")
-    items = raw.get("data", raw) if isinstance(raw, dict) else raw
-    if isinstance(items, dict):
-        items = items.get("data") or items.get("verifiers") or []
+    items = _verifier_list(raw)
     out: dict[int, dict] = {}
     for v in items or []:
         if not isinstance(v, dict):
@@ -184,6 +182,24 @@ def verifier_phones(client: "ReadOnlyClient") -> dict[int, dict]:
         out[vid] = {"name": str(v.get("name") or "").strip(), "phone": normalize_phone(v.get("phone"))}
     del raw, items
     return out
+
+
+def _verifier_list(raw) -> list:
+    """The list inside the reply.  The live server answers {"taskers": [...]} (checked 16 Nov 2026); older / other shapes
+    ({"data": [...]}, {"data": {"data": [...]}}, {"verifiers": [...]}, a bare list) are read too."""
+    for _ in range(3):
+        if isinstance(raw, list):
+            return raw
+        if not isinstance(raw, dict):
+            return []
+        for key in ("taskers", "verifiers", "data"):
+            if isinstance(raw.get(key), (list, dict)):
+                raw = raw[key]
+                break
+        else:
+            lists = [v for v in raw.values() if isinstance(v, list) and v and isinstance(v[0], dict)]
+            return lists[0] if lists else []
+    return raw if isinstance(raw, list) else []
 
 
 def normalize_phone(p) -> str:
