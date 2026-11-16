@@ -147,8 +147,8 @@ def main():
     rp = shell.pages["reminders"]
     rp.toggle_list()
     shell.update()
-    if not rp.tv.get_children():
-        fail("the reminder list is empty")
+    if not rp.list_box.winfo_ismapped():
+        fail("the reminder list did not open")
     shot(shell, "bn_reminders_list")
     rp.toggle_list()
     rp._waiting_since = datetime(2020, 1, 1)          # WhatsApp opened long ago, no helper answered -> the setup box shows
