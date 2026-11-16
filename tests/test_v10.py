@@ -334,7 +334,7 @@ def test_helper_folder_is_fixed_and_fresh(tmp_path, monkeypatch):
     (d / "content.js").write_text("old", encoding="utf-8")
     assert "lastIsMine" in (HS.helper_folder() / "content.js").read_text(encoding="utf-8")   # an old copy is replaced
     js = (d / "content.js").read_text(encoding="utf-8")
-    assert "wds-ic-read" in js and ".click()" not in js and HS.helper_version() == "10.0.3"
+    assert "wds-ic-read" in js and ".click()" not in js and HS.helper_version() == "10.0.5"
 
 
 def test_verifier_list_shapes_live_server_answers_taskers():
@@ -347,3 +347,24 @@ def test_verifier_list_shapes_live_server_answers_taskers():
     for raw in ({"taskers": [row]}, {"data": [row]}, {"data": {"data": [row]}}, {"verifiers": [row]}, [row], {"anything": [row]}):
         assert verifier_phones(C(raw)) == {7: {"name": "A", "phone": "8801711000001"}}, raw
     assert _verifier_list({"message": "x"}) == [] and _verifier_list(None) == []
+
+
+def test_message_names_every_trip_and_own_text_is_never_a_reply():
+    q = R.build_queue(_snap(), PHONES, round_key="1pm", now=NOW)
+    msg = R.message(q[0], "1pm")
+    t = q[0].tasks[0]
+    assert msg.startswith(f"আসসালামু আলাইকুম, {q[0].verifier}।")
+    assert f"File: {t.file_no} | Trip: {t.trip_id} | {t.trip_type}" in msg            # exactly which trip
+    assert R.is_own_text(msg) and R.is_own_text(msg[:60]) and not R.is_own_text("আসসালামু আলাইকুম ভাই, যাচ্ছি")
+    st = {}
+    R.record_round(st, "1pm", q, NOW)
+    assert R.record_reply(st, q[0].phone, msg) == {"ignored": True}                   # WhatsApp shows our own text back: not a reply
+    assert R.record_reply(st, q[0].phone, "1")["kind"] == R.GOING
+    R.day_state(st)["replies"].append({"phone": q[0].phone, "text": msg, "kind": R.GOING, "reason": "", "at": "x"})
+    assert [r["text"] for r in R.day_state(st)["replies"]] == ["1"]                   # an old wrong entry is dropped
+    big = R.Reminder(1, "A", "8801711000001", tasks=[R.Task("o", f"F{i}", i, "House", R.P_NORMAL) for i in range(45)])
+    assert "আরও 15টি ট্রিপ" in R.message(big, "1pm")
+    js = (Path(__file__).resolve().parents[1] / "src/report_builder/assets/whatsapp_helper/content.js").read_text(encoding="utf-8")
+    css = (Path(__file__).resolve().parents[1] / "src/report_builder/assets/whatsapp_helper/panel.css").read_text(encoding="utf-8")
+    assert 'conv-msg-' in js and "lastMsgId" in js and "attachmentOpen" in js and ".click()" not in js
+    assert "left:84px" in css and "right:16px" not in css                             # never over WhatsApp's Send button
