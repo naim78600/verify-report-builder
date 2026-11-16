@@ -9,7 +9,7 @@ import sys
 import tempfile
 import threading
 import time
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 HOME = tempfile.mkdtemp(prefix="vrb_gui_home_")
@@ -144,6 +144,26 @@ def main():
     shell.prepare_round("1pm")
     shell.show("reminders")
     shot(shell, "bn_reminders_round")
+    rp = shell.pages["reminders"]
+    rp.toggle_list()
+    shell.update()
+    if not rp.list_box.winfo_ismapped():
+        fail("the reminder list did not open")
+    shot(shell, "bn_reminders_list")
+    rp.toggle_list()
+    rp._waiting_since = datetime(2020, 1, 1)          # WhatsApp opened long ago, no helper answered -> the setup box shows
+    rp._connection()
+    shell.update()
+    if not rp.setup_box.winfo_ismapped():
+        fail("the 'add the helper' box did not show")
+    shot(shell, "bn_reminders_no_helper")
+    import time as _t
+    shell.helper.ext_seen = _t.time()                 # the helper answered -> the box goes, the status turns green
+    rp._connection()
+    shell._status()
+    shell.update()
+    if rp.setup_box.winfo_ismapped():
+        fail("the 'add the helper' box stayed after the helper connected")
     step("English screens")
     shell.pages["settings"].shell.lang.set("en")
     shell.pages["settings"].lang_changed()

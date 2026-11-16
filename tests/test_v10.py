@@ -256,7 +256,7 @@ def test_helper_server_local_only_and_flow(tmp_store):
         assert req("/reply", {"phone": "8801000000000", "text": "spam"}, "chrome-extension://abc")[1] == {"ignored": True}
         items = req("/round", origin="chrome-extension://abc")[1]["items"]
         assert items[-1]["sent"] and not items[0]["sent"]                          # unsent first
-        assert events == ["sent", "reply"]
+        assert events == ["connected", "sent", "reply"]                             # v10.0.3: the helper's first contact is told too
     finally:
         srv.stop()
 
@@ -292,3 +292,46 @@ def test_mac_photo_reader_is_used_on_mac(monkeypatch, tmp_path):
     img = tmp_path / "x.png"
     img.write_bytes(b"x")
     assert "PL-20261001094920785" in BT.ocr_image(img)
+
+
+def test_bank_from_address_when_name_is_empty_and_all_months_listed():
+    from report_builder.bs_rules import match_bank
+    assert match_bank("", "Bank statement verified.", "Sonali Bank PLC , Sonali Bank PLC. Kurigram Sadar")[:2] == ("Sonali Bank PLC", "Online")
+    assert match_bank("", "", "House 5, Bank Road, Dhaka")[0] == ""
+    assert match_bank("BRAC BANK PLC", "", "Sonali Bank PLC")[0] == "BRAC Bank PLC"          # the written name still wins
+    src = (Path(__file__).resolve().parents[1] / "src" / "report_builder" / "pages.py").read_text(encoding="utf-8")
+    assert "days=31 * i" not in src                                                         # that skipped September
+    from datetime import date
+    today = date(2026, 11, 16)
+    months = [f"{(today.year * 12 + today.month - 1 - i) // 12}-{(today.year * 12 + today.month - 1 - i) % 12 + 1:02d}" for i in range(12)]
+    assert months[:4] == ["2026-11", "2026-10", "2026-09", "2026-08"] and months[-1] == "2025-12"
+
+
+def test_start_button_token_one_tab_only_and_helper_seen(tmp_path, monkeypatch):
+    from report_builder import helper_server as HS
+    h = HS.HelperServer(lambda *_a: None, port=47399)
+    assert h.pending_start() is None and not h.extension_connected
+    tok = h.request_start()
+    assert h.pending_start() == tok
+    assert h.claim_start("wrong") is False
+    assert h.claim_start(tok) is True and h.claim_start(tok) is False          # the first WhatsApp tab takes it, a second cannot
+    h.request_start(); h.start_until = 0
+    assert h.pending_start() is None                                           # too old: nothing starts by surprise
+    assert h.start()
+    try:
+        req = urllib.request.Request("http://127.0.0.1:47399/round?v=10.0.3", headers={"Origin": "chrome-extension://abc"})
+        data = json.loads(urllib.request.urlopen(req, timeout=5).read())
+        assert "start" in data and h.extension_connected and h.ext_version == "10.0.3"
+    finally:
+        h.stop()
+
+
+def test_helper_folder_is_fixed_and_fresh(tmp_path, monkeypatch):
+    from report_builder import config, helper_server as HS
+    monkeypatch.setattr(config, "SETTINGS_DIR", tmp_path)
+    d = HS.helper_folder()
+    assert d == tmp_path / "whatsapp_helper" and (d / "manifest.json").exists() and (d / "content.js").exists()
+    (d / "content.js").write_text("old", encoding="utf-8")
+    assert "lastIsMine" in (HS.helper_folder() / "content.js").read_text(encoding="utf-8")   # an old copy is replaced
+    js = (d / "content.js").read_text(encoding="utf-8")
+    assert "wds-ic-read" in js and ".click()" not in js and HS.helper_version() == "10.0.3"

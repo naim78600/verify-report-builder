@@ -162,6 +162,16 @@
     if (d.length >= 11) return d.startsWith("01") ? "88" + d : d;
     return "";
   }
+  // The last message of a chat-list row is OURS when WhatsApp draws its ticks / clock there.
+  // (checked on the real WhatsApp Web, Nov 2026: an <svg><title>wds-ic-read</title> inside [data-testid="last-msg-status"];
+  //  older builds: span[data-icon="msg-check"] etc.)
+  function lastIsMine(row) {
+    if (row.querySelector('span[data-icon^="msg-"], span[data-icon*="check"], [data-icon="status-time"]')) return true;
+    for (const t of row.querySelectorAll("svg title")) {
+      if (/(^|-)ic-(read|delivered|sent|check|dblcheck|done|done-all|pending|clock|schedule|msg-)|msg-(check|dblcheck|time)/i.test(t.textContent || "")) return true;
+    }
+    return false;
+  }
   async function readReplies() {
     if (!S.connected || !S.items.length) return;
     const known = new Set(S.items.map((i) => i.phone));
@@ -172,8 +182,7 @@
       const title = spans[0].getAttribute("title") || "";
       const phone = phoneForTitle(title);
       if (!phone || !known.has(phone)) continue;
-      const mine = row.querySelector('span[data-icon^="msg-"], span[data-icon*="check"]');   // our own message shows ticks
-      if (mine) continue;
+      if (lastIsMine(row)) continue;                       // our own message shows ticks
       const preview = (spans[spans.length - 1].getAttribute("title") || "").trim();
       if (!preview || preview === title || seen.get(phone) === preview) continue;
       seen.set(phone, preview);
@@ -209,6 +218,17 @@
   (async () => {
     await refresh();
     setInterval(refresh, 30000);
+    // "Start sending" pressed in the program: the first WhatsApp tab that sees it starts (the chats open, Send stays yours)
+    setInterval(async () => {
+      const r = await get("/round");
+      S.connected = !!r.ok;
+      $("bk-conn").textContent = r.ok ? "● যুক্ত" : "● প্রোগ্রাম বন্ধ";
+      $("bk-conn").style.color = r.ok ? "#15803D" : "#B91C1C";
+      const run = await store.get("bk_run");
+      if (!r.ok || !r.data.start || (run && Date.now() - run.at < 10 * 60 * 1000)) return;
+      const c = await post("/claim", { token: r.data.start });
+      if (c.ok && c.data && c.data.ok) { await store.set("bk_skip", []); openNext(); }
+    }, 4000);
     setInterval(readReplies, READ_EVERY_MS);
     continueRun();
   })();
