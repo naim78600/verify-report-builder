@@ -34,7 +34,22 @@
     const t = q(['span[dir="auto"][title]', 'span[title]', 'span[dir="auto"]'], h);
     return (t && (t.getAttribute("title") || t.textContent) || "").trim();
   };
-  const outgoingCount = () => document.querySelectorAll("#main .message-out, #main [data-id^='true_']").length;
+  // WhatsApp Web, Nov 2026 (checked on the live page): each message is [data-testid="conv-msg-<id>"]; our own ones carry
+  // a status icon (<svg><title>wds-ic-read | wds-ic-delivered | ...</title>).  Older builds: .message-out / .message-in.
+  const STATUS = /(^|-)ic-(read|delivered|sent|check|dblcheck|done|done-all|pending|clock|schedule|time|sending|error)|msg-(check|dblcheck|time)/i;
+  const messages = () => [...document.querySelectorAll('#main [data-testid^="conv-msg-"], #main .message-in, #main .message-out')];
+  const isMine = (m) => {
+    if (m.classList.contains("message-out")) return true;
+    if (m.classList.contains("message-in")) return false;
+    for (const t of m.querySelectorAll("svg title")) if (STATUS.test(t.textContent || "")) return true;
+    return false;
+  };
+  const lastMsgId = () => {
+    const all = messages();
+    const m = all[all.length - 1];
+    return m ? (m.getAttribute("data-testid") || m.getAttribute("data-id") || String(all.length)) : "";
+  };
+  const attachmentOpen = () => !!document.querySelector('[aria-label="Remove attachment"], [aria-label^="Send "][aria-label$="selected"]');
   const invalidNumberPopup = () => {
     const d = q(['div[data-animate-modal-popup="true"]', 'div[role="dialog"]']);
     return d && /invalid|isn.t on whatsapp|not on whatsapp/i.test(d.textContent || "") ? d : null;
@@ -113,7 +128,7 @@
     const it = S.items.find((i) => i.phone === run.phone);
     if (!it) return;
     $("bk-now").style.display = "block";
-    $("bk-now").innerHTML = `<div class="bk-muted">এখন</div><b>${escapeHtml(it.verifier)}</b> · ${escapeHtml(it.priority || "")}
+    $("bk-now").innerHTML = `<div class="bk-muted">এখন</div><b>${escapeHtml(it.verifier)}</b> · +${escapeHtml(it.phone)} · ${escapeHtml(it.priority || "")}
       <div class="bk-muted">মেসেজ লেখা আছে, ভয়েস যুক্ত হচ্ছে… তারপর Send চাপুন।</div>`;
     // wait for the chat to open (or WhatsApp to say the number is not on WhatsApp)
     for (let i = 0; i < 60 && !composer(); i++) {
@@ -131,19 +146,23 @@
     if (name) post("/contact", { name, phone: it.phone });
     if (it.voice) {
       const ok = await attachVoice(it.voice);
-      say(ok ? "ভয়েস যুক্ত হয়েছে: আগে ভয়েসের Send, তারপর মেসেজের Send চাপুন।" : "ভয়েস যুক্ত করা যায়নি; শুধু মেসেজ পাঠান (Send চাপুন)।");
+      say(ok && attachmentOpen() ? "২ বার Send: ১) ডানে নিচের সবুজ Send (ভয়েস যাবে)  ২) তারপর মেসেজের Send।"
+                                    : "ভয়েস যুক্ত করা যায়নি; শুধু মেসেজ পাঠান (Send চাপুন)।");
     } else {
       say("মেসেজ লেখা আছে। Send চাপুন।");
     }
-    // wait until YOU press Send: the message box becomes empty and a new outgoing message appears
-    const before = outgoingCount();
+    // wait until YOU press Send: a new message of yours is the last one, the message box is empty and no attachment waits
+    const before = lastMsgId();
+    let done = false;
     for (let i = 0; i < 1200; i++) {                       // up to 10 minutes
       await sleep(500);
       const c = composer();
       const text = c ? (c.textContent || "").trim() : "";
-      if (outgoingCount() > before && text === "") break;
+      const now = lastMsgId();
+      if (now && now !== before && !attachmentOpen() && text === "") { done = true; break; }
       if (!(await store.get("bk_run"))) return;            // stopped
     }
+    if (!done) { say("১০ মিনিটে পাঠানো হয়নি। ‘শুরু করুন’ চাপলে আবার এখান থেকে চলবে।"); await store.set("bk_run", null); return; }
     await post("/sent", { phone: it.phone });
     for (let s = BREAK_SECONDS; s > 0; s--) {
       say(`পাঠানো হয়েছে ✓  বিরতি… পরের জন ${s} সেকেন্ড পরে`);
@@ -168,7 +187,7 @@
   function lastIsMine(row) {
     if (row.querySelector('span[data-icon^="msg-"], span[data-icon*="check"], [data-icon="status-time"]')) return true;
     for (const t of row.querySelectorAll("svg title")) {
-      if (/(^|-)ic-(read|delivered|sent|check|dblcheck|done|done-all|pending|clock|schedule|msg-)|msg-(check|dblcheck|time)/i.test(t.textContent || "")) return true;
+      if (STATUS.test(t.textContent || "")) return true;
     }
     return false;
   }
@@ -192,11 +211,11 @@
     const t = chatTitle();
     const phone = phoneForTitle(t);
     if (phone && known.has(phone)) {
-      const all = [...document.querySelectorAll("#main .message-in, #main .message-out")];
+      const all = messages();
       let lastOut = -1;
-      all.forEach((m, i) => { if (m.classList.contains("message-out")) lastOut = i; });
+      all.forEach((m, i) => { if (isMine(m)) lastOut = i; });
       for (const m of all.slice(lastOut + 1)) {
-        const txt = (q(["span.selectable-text", "span[dir='ltr']"], m) || {}).textContent || "";
+        const txt = ((q(['[data-testid="selectable-text"]', "span.selectable-text", "span[dir='ltr']"], m) || {}).textContent || "").trim();
         if (txt && seen.get(phone + "#" + txt) !== true) {
           seen.set(phone + "#" + txt, true);
           await post("/reply", { phone, text: txt });

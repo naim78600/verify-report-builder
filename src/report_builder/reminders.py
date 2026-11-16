@@ -43,6 +43,7 @@ class Task:
     trip_type: str
     priority: int
     note: str = ""
+    applicant: str = ""
 
 
 @dataclass
@@ -117,7 +118,7 @@ def build_queue(snapshot: dict, phones: dict, bs_pending: list | None = None, ro
                     else:
                         pr, note = P_NORMAL, ""
                     rem_for(t.get("agent_id"), t.get("verifier", "")).tasks.append(
-                        Task(org, f.get("file_no", ""), t.get("id"), t.get("type", ""), pr, note))
+                        Task(org, f.get("file_no", ""), t.get("id"), t.get("type", ""), pr, note, _applicant(f)))
     if round_key != "10am":
         for r in bs_pending or []:
             if r.collected and not r.office and not r.courier.get("no"):
@@ -129,33 +130,59 @@ def build_queue(snapshot: dict, phones: dict, bs_pending: list | None = None, ro
     return out
 
 
+GREETING = "আসসালামু আলাইকুম"
+MAX_LINES = 30                            # a very long list is cut (the rest is counted) so the message stays sendable
+
+
+def _applicant(f: dict) -> str:
+    cs = f.get("concerns") or []
+    for c in cs:
+        if (c.get("role") or "").lower() in ("applicant", "") and c.get("name"):
+            return c["name"]
+    return cs[0].get("name", "") if cs else ""
+
+
 def message(rem: Reminder, round_key: str) -> str:
-    """Short Bangla message (the voice clip says the same thing in general words)."""
-    lines = ["আসসালামু আলাইকুম।"]
+    """The WhatsApp text: the verifier's name, then one line per trip with File No, Trip ID, trip type and applicant
+    (v10.0.5, Naim: every line must say exactly which trip), grouped by urgency."""
+    lines = [f"{GREETING}, {rem.verifier}।" if rem.verifier and rem.verifier != "?" else f"{GREETING}।"]
     by_pr: dict = {}
     for t in rem.tasks:
         by_pr.setdefault(t.priority, []).append(t)
-    if by_pr.get(P_SLA):
-        lines.append(f"SLA পার হয়ে গেছে: {_files(by_pr[P_SLA])}। আজই শেষ করুন।")
-    if by_pr.get(P_TODAY):
-        lines.append(f"আজ SLA শেষ: {_files(by_pr[P_TODAY])}।")
-    if by_pr.get(P_APPT):
-        lines.append(f"আজ অ্যাপয়েন্টমেন্ট: {_files(by_pr[P_APPT])}।")
-    if by_pr.get(P_NORMAL):
-        lines.append(f"চলমান: {_files(by_pr[P_NORMAL])}।")
+    left = MAX_LINES
+    for pr, head in ((P_SLA, "SLA পার হয়ে গেছে (আজই শেষ করুন):"), (P_TODAY, "আজ SLA শেষ:"),
+                     (P_APPT, "আজ অ্যাপয়েন্টমেন্ট:"), (P_NORMAL, "চলমান:")):
+        ts = by_pr.get(pr) or []
+        if not ts:
+            continue
+        lines.append("")
+        lines.append(head)
+        for t in ts[:max(left, 0)]:
+            lines.append(_line(t))
+        if len(ts) > left:
+            lines.append(f"(আরও {len(ts) - max(left, 0)}টি ট্রিপ: ড্যাশবোর্ড দেখুন)")
+        left -= len(ts)
     if rem.bs_due:
-        lines.append(f"ব্যাংক স্টেটমেন্ট অফিসে জমা দিন: {', '.join(rem.bs_due)}।")
+        lines.append("")
+        lines.append("ব্যাংক স্টেটমেন্ট অফিসে জমা দিন:")
+        lines += [f"- File: {f}" for f in rem.bs_due]
+    lines.append("")
     lines.append("উত্তর দিন: ১ = যাচ্ছি, ২ = শেষ, ৩ = সমস্যা আছে (কারণ লিখুন)।")
     return "\n".join(lines)
 
 
-def _files(tasks) -> str:
-    seen = []
-    for t in tasks:
-        label = f"{t.file_no} ({t.trip_type})"
-        if label not in seen:
-            seen.append(label)
-    return ", ".join(seen)
+def _line(t: Task) -> str:
+    parts = [f"File: {t.file_no}", f"Trip: {t.trip_id}", t.trip_type]
+    if t.applicant:
+        parts.append(f"Applicant: {t.applicant}")
+    return "- " + " | ".join(p for p in parts if p)
+
+
+def is_own_text(text: str) -> bool:
+    """True when a 'reply' is really our own reminder shown back by WhatsApp (its last-message preview)."""
+    t = (text or "").strip()
+    return t.startswith(GREETING) and any(k in t for k in ("SLA পার", "আজ SLA", "আজ অ্যাপয়েন্টমেন্ট", "চলমান", "ব্যাংক স্টেটমেন্ট অফিসে",
+                                                           "File:", "উত্তর দিন"))
 
 
 # ============================================================================================ replies
@@ -210,7 +237,10 @@ def day_state(st: dict, day: date | None = None) -> dict:
     days = st.setdefault("days", {})
     for old in [k for k in days if k < (date.fromisoformat(d) - timedelta(days=30)).isoformat()]:
         days.pop(old, None)                                 # keep one month
-    return days.setdefault(d, {"rounds": {}, "replies": []})
+    ds = days.setdefault(d, {"rounds": {}, "replies": []})
+    if any(is_own_text(r.get("text", "")) for r in ds["replies"]):        # our own reminder read back as a "reply" (before v10.0.5)
+        ds["replies"] = [r for r in ds["replies"] if not is_own_text(r.get("text", ""))]
+    return ds
 
 
 def due_round(st: dict, now: datetime | None = None) -> str | None:
@@ -246,6 +276,8 @@ def record_reply(st: dict, phone: str, text: str, when: str | None = None) -> di
     if text == NO_WHATSAPP:
         st.setdefault("no_whatsapp", {})[phone] = date.today().isoformat()
         return {"phone": phone, "kind": "no_whatsapp"}
+    if is_own_text(text):
+        return {"ignored": True}
     kind, reason = parse_reply(text)
     ds = day_state(st)
     e = {"phone": phone, "text": text[:500], "kind": kind, "reason": reason[:300], "at": when or datetime.now().isoformat(timespec="minutes")}

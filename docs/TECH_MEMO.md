@@ -348,6 +348,12 @@ Reference: `reminders.py`, `helper_server.py`, `assets/whatsapp_helper/`, `pages
    Chrome's "Load unpacked". Own-message detection in the chat list follows WhatsApp Web of Nov 2026
    (`svg title` = `wds-ic-read` ... inside `last-msg-status`). Voice clips: Edge "bn-BD-PradeepNeural", made once in CI.
    BS: the month list has every month; the bank is also read from the trip's address when the name field is empty.
+   **v10.0.5** (after the first real round on WhatsApp Web): the message starts with the verifier's name and has one
+   line per trip - `File | Trip ID | trip type | Applicant` (`reminders.message`); a "reply" that is our own reminder
+   (WhatsApp's last-message preview) is never stored (`is_own_text`); "sent" is seen from the last message of the chat
+   (`[data-testid="conv-msg-..."]`, `lastMsgId` in content.js) - before, it was never seen, so a chat could open twice;
+   the helper box sits bottom-left because WhatsApp's Send buttons are bottom-right. v10.0.4: the verifier list is read
+   from the live reply `{"taskers": [...]}`.
 3. **Order**: SLA passed → SLA ends today → appointment today → the rest (`Reminder.priority`).
 4. **Message**: short Bangla text with the file numbers, and one of four voice clips (SLA passed / appointment today / hand in
    BS / general). Clips are made once with a free offline voice (Coqui TTS `bn/custom/vits-male`, MIT; Kolkata-style accent,
