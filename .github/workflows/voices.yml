@@ -1,9 +1,9 @@
 name: Make voice clips
 
+# Run by hand only (Actions -> Make voice clips -> Run workflow, on a branch).  The clips already live in the program,
+# so a merge or a release tag never needs this - and a busy voice service can no longer send a "failed" e-mail.
 on:
   workflow_dispatch:
-  push:
-    paths: ["tools/voices/**", ".github/workflows/voices.yml"]
 
 permissions:
   contents: write
@@ -20,7 +20,7 @@ jobs:
           pip install edge-tts
           sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       - name: Make the clips
-        run: python tools/voices/make_voices.py voices_out
+        run: python tools/voices/make_voices.py voices_out || (sleep 20 && python tools/voices/make_voices.py voices_out)
       - name: WhatsApp-friendly audio (.ogg Opus, mono)
         run: |
           mkdir -p voices
