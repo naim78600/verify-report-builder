@@ -2,6 +2,8 @@ name: Voice samples (to choose from)
 
 on:
   workflow_dispatch:
+  push:
+    paths: ["tools/voice_samples/**", ".github/workflows/voice-samples.yml"]
 
 permissions:
   contents: write
