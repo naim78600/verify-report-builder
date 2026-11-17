@@ -221,7 +221,7 @@ def test_a_problem_written_under_the_pec_heading_belongs_to_the_pec_not_the_loi(
 def test_loi_not_signed_in_front_of_me_with_a_named_signatory_is_a_signed_loi():
     s = _sum([_rt(1, "DOCUMENT", "Information ok. LOI not signed in front of me. LOI signatory name: A B. Designation: Manager, HR.",
                   comment="LOI VERIFICATION")])
-    assert (s.done, s.due) == ("LOI", "0")
+    assert (s.done, s.due) == ("LOI (Not signed in front of me)", "0")            # v10.0.6: still a signed LOI (nothing Due), the fact is shown
     s = _sum([_rt(1, "DOCUMENT", "LOI not signed in front of me. Signatory not available today.", comment="LOI VERIFICATION")])
     assert "LOI" in s.due
 

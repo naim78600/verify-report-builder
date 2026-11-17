@@ -44,6 +44,22 @@ Rules:
 
 ---
 
+## v10.0.6 changes (Naim, 17-11-2026, after comparing with the dashboard's own tracker file)
+
+1. **Re-CPV / Extra column**: a trip the dashboard flags as Re-CPV (`is_for_recpv`) is written "Re-CPV" even when the Re-CPV tracker
+   has no entry for it (`billing.history_for`). Before, the bill row said Re-CPV while this column said Extra.
+2. **Report Summary of a line that stands for several bill rows** (`billing.refresh_summary`): the trips of ALL the folded rows are read
+   together (two Re-CPVs submitted together -> "Done-App Office, Sign, LOI"; a pending file -> every open trip is Due). A later trip that
+   finishes the same item still wins (`summary._merge`). Before, the other rows were summarised apart and matched by label, so "BS1" of
+   one row could close "BS1" of another.
+3. **Appointment History** and **Last Update Details** show every trip of the file (`BillRow.file_appointments`, `last_update_for(..., flat)`),
+   as the dashboard's file does. The SLA rule itself is unchanged (it already used the whole file). Appointment type reads "Visit Place".
+4. **Remark keywords**: "LOI Signed Dhaka Head Office" -> Signed from head office; "LOI not signed in front of me ... signed by <name>"
+   -> LOI done, note "Not signed in front of me" (Done only); "LOI not signed because LOI sign will be head office" -> one reason.
+5. Not changed (Naim's answer): the tracker still reads files of the last 90 days only (an older Partially Submitted file is not listed).
+
+---
+
 ## 2. Bill rows — how the trips of a file become rows
 
 Reference: `billing.build_rows`, `billing._pg_groups`, `billing.slab_for`, `billing.trip_billable`.

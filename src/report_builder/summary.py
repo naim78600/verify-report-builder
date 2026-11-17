@@ -88,8 +88,13 @@ NOTE_RULES = [
        r"address\s+(?:is\s+)?(?:mis\s?match|different|changed)[^.\n]{0,40}new", "New address found & verified"),
     _r(r"(?<!can\s)(?<!be\s)signed\s+(?:from|by|at)\s+(?:the\s+)?(?:applicant'?s?\s+)?branch|sign\s+by\s+branch\s+manager|"
        r"loi\s+(?:is\s+)?signed\s+from\s+branch", "Signed from branch", "loi"),
-    _r(r"(?:loi\s+(?:has\s+been\s+)?|has\s+been\s+)?(?<!be\s)signed\s+(?:from|by|at)\s+(?:the\s+)?(?:dhaka\s+)?(?:head\s*office|hq|corporate)",
+    # v10.0.6: "LOI Signed Dhaka Head Office" (no from / by / at) too - PL-20261115074128799, 17-11-2026
+    _r(r"(?:loi\s+(?:has\s+been\s+)?|has\s+been\s+)?(?<!be\s)(?<!not\s)signed\s+(?:(?:from|by|at|in)\s+)?(?:the\s+)?(?:dhaka\s+)?(?:head\s*office|hq|corporate)",
        "Signed from head office", "loi"),
+    # v10.0.6: "LOI not signed in front of me as entry restricted. LOI signed by Signatory Name: ..." - signed, but not before the
+    # verifier: shown with the LOI (Done only, not a Due), so the bank sees it (PL-20261115074128799)
+    _r(r"\bloi\s+(?:was\s+|is\s+|did\s+)?not\s+sign\w*\s+(?:in\s*front|infront)(?=[^\n]{0,200}(?:signed\s+by|signator\w*\s*(?:name|:)))",
+       "Not signed in front of me", "loi"),
     # ---- LOI ----
     _r(r"(?:need|want|requir|ask|must|without|bring|provide|send)\w*[^.\n]{0,40}forwarding\s+l[ae]t+er|forwarding\s+l[ae]t+er[^.\n]{0,20}(?:required|needed|not\s+(?:provided|submitted|given|have))",
        "Need forwarding letter", "loi"),
@@ -174,7 +179,8 @@ NOTE_RULES = [
        r"verification\s+(?:could\s+not|cannot|can'?t)", "Could not verify"),
 ]
 # good-news notes: written in Done only, never repeated in Due
-INFO_NOTES = {"System generated - no sign required", "New address found & verified", "Signed from branch", "Signed from head office"}
+INFO_NOTES = {"System generated - no sign required", "New address found & verified", "Signed from branch", "Signed from head office",
+              "Not signed in front of me"}
 
 _NEG_FALLBACK = re.compile(
     r"\b(?:not\s+(?:verif\w*|found|available|possible|allowed|signed|provided|match\w*|willing|interested|cooperat\w*|present|"
@@ -444,6 +450,8 @@ def _notes_for(text_all: str, outcome: str, rules, loi_trip: bool = False) -> tu
         if bare != text_all and re.search(r"signator\w*\s*(?:name|:)|sign\w*\s+by\b", text_all, _I) \
                 and not any(rx.search(bare) for rx, note, _t in rules if note == "LOI not verified"):
             found["loi"].remove("LOI not verified")
+    if "Will be signed from head office" in found["loi"] and "LOI not verified" in found["loi"]:
+        found["loi"].remove("LOI not verified")                  # v10.0.6: "Loi not signed because loi sign will be head office" = one reason, not two
     if "Submitted for verification" in found["loi"] and "Need to verify by email" in found["loi"]:
         found["loi"].remove("Need to verify by email")           # "they send the verified LOI by e-mail" answers a submitted LOI, it is not a request
     if "New address found & verified" in found["trip"] and "Given address wrong" in found["trip"]:

@@ -63,7 +63,7 @@ TRIP_TYPE = {
     "DOC_TUITION": "Tuition",
 }
 
-APPOINTMENT_TYPE = {"PHONE_CALL": "Phone Call", "VISIT_PLACE": "Visit"}
+APPOINTMENT_TYPE = {"PHONE_CALL": "Phone Call", "VISIT_PLACE": "Visit Place"}       # v10.0.6: worded as the dashboard shows it
 
 SETTINGS_DIR = Path.home() / ".verify_report_builder"
 SETTINGS_FILE = SETTINGS_DIR / "settings.json"

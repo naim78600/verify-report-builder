@@ -162,7 +162,8 @@ class BillRow:
     file_history: list = field(default_factory=list)   # every billing event of this file, first to last
     history_pos: int = 0                               # index of this row inside file_history (0-based)
     last_file: tuple | None = None                     # (when, text, user) newest log entry of the file
-    last_trips: list = field(default_factory=list)     # [(trip_id, type label, when, text, user)]
+    last_trips: list = field(default_factory=list)     # [(trip_id, type label, when, text, user)]  - every trip of the file (v10.0.6)
+    file_appointments: list = field(default_factory=list)   # appointments of every trip of the file, for display (v10.0.6)
     appointments: list = field(default_factory=list)   # [dict] appointments of this row's trips
     views: list = field(default_factory=list)          # TripView of this row's trips (to rebuild the Done/Due text)
     info: list = field(default_factory=list)           # notes for the Check List only (no yellow)
@@ -285,7 +286,10 @@ def history_for(file_no: str, file: dict, recpv_by_file: dict, row_trip_ids: set
             if t["id"] in tracker_trip_ids:
                 continue
             if t.get("created_at") and start and t["created_at"].date() > start.date():
-                events.append(Event("Extra", t["id"], t["created_at"], (t.get("comment") or "").strip(),
+                # v10.0.6: a trip the dashboard flags as Re-CPV (is_for_recpv) is a Re-CPV here too, even when the Re-CPV tracker
+                # has no entry for it - the bill row already said "Re-CPV" while this column said "Extra" (PL-20261108082625754)
+                kind = "Re-CPV" if t.get("re_cpv") else "Extra"
+                events.append(Event(kind, t["id"], t["created_at"], (t.get("comment") or "").strip(),
                                     BASE_TYPE.get(t.get("type_code", ""), "")))
     events = [e for e in events if e.at is None or e.at >= since]
     if not events:
@@ -295,7 +299,7 @@ def history_for(file_no: str, file: dict, recpv_by_file: dict, row_trip_ids: set
     for e in events:
         when = f"{e.at:%d-%m-%Y %H:%M}" if e.at else "-"
         head = f"{e.kind} | {when} | Trip ID {e.trip_id}"
-        if e.trip_type and e.kind == "Extra":
+        if e.trip_type and e.kind == "Extra" or e.trip_type and e.kind == "Re-CPV" and e.trip_id not in tracker_trip_ids:
             head += f" ({e.trip_type})"
         if e.reason:
             head += f"\nReason: {e.reason}"
@@ -518,7 +522,10 @@ def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileL
             if st.startswith("out") and r.area == "In" or st.startswith("in ") and r.area == "Out":
                 r.info.append(f"ড্যাশবোর্ডের Station = {file.get('station')}, কিন্তু ম্যাপ অনুযায়ী {r.area}")
         r.appointments = appointments_for(trips)
-        r.last_file, r.last_trips = last_update_for(logs, trips, labels)
+        # v10.0.6 (Naim, 17-11-2026, as the dashboard's file does): the Appointment History and the Last Update Details show EVERY
+        # trip of the file - the appointment that restarted the SLA may belong to another row's trip (a LOI made on another day)
+        r.file_appointments = appointments_for(flat)
+        r.last_file, r.last_trips = last_update_for(logs, flat, labels)
         r.billable = any(trip_billable(t) for _c, t in trips)
         if all(_dead_slot(t) for _c, t in trips):
             r.canceled = True
@@ -861,21 +868,26 @@ def _fold_into(keep: BillRow, dropped: list[BillRow]) -> None:
 
 
 def refresh_summary(keep: BillRow, others: list[BillRow]) -> None:
-    """Report Summary = the file's LAST update.  A row that stands for several bill rows of one file (the others are only listed in its
-    Bill Slab history) must not keep showing something as Due that a LATER trip of the same file completed and submitted with it:
-    the LOI document trip created after "signatory not available" means LOI is done and nothing is due any more (it used to stay
-    "Due-LOI (Signatory not available)" because only the package's own trips were read).  Only the items that are Due are re-checked,
-    only against trips created after this row's own trips; everything else in Done / Due stays as it was."""
+    """Report Summary = the whole report this ONE line stands for (v10.0.6, Naim 17-11-2026).  A line that stands for several bill rows of
+    one file (the others are only listed in its Bill Slab history) reads the trips of ALL of them together:
+      - two Re-CPVs submitted together (Office + LOI) -> "Done-App Office, Sign, LOI", not only the LOI of the row that was kept;
+      - a pending file -> the Due of every pending trip (the guarantor on Hold, the bank statement not visited yet), not only the kept row's;
+      - the same item done again by a later trip (the LOI trip created after "signatory not available") -> the later outcome wins, as
+        before (summary._merge: a finished trip beats an open one, a later one an earlier one).
+    Before v10.0.6 the other rows were summarised separately and matched by label, so "BS1" of one row could wrongly close "BS1" of
+    another (PL-20261115105306418: a bank statement not visited yet was shown as Done)."""
     if not keep.views:
         return
+    seen = {id(v.trip) for v in keep.views}
+    extra = []
+    for r in others:
+        for v in r.views or []:
+            if id(v.trip) not in seen and all(v.trip.get("id") != w.trip.get("id") for w in keep.views + extra):
+                extra.append(v)
+    if not extra:
+        return
     order = lambda v: (v.trip.get("created_at") or datetime(2100, 1, 1), v.trip.get("id") or 0)      # noqa: E731
-    newest = max(order(v) for v in keep.views)
-    later = sorted((v for r in others for v in r.views if order(v) > newest), key=order)
-    if not later:
-        return
-    new = apply_later(keep.summary, analyze(later, keep.submitted, "BS"), keep.submitted)
-    if new is keep.summary:
-        return
+    new = analyze(sorted(keep.views + extra, key=order), keep.submitted, "BS")
     keep.summary = new
     keep.flags.pop("summary", None)
     if new.uncertain:
