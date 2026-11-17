@@ -50,13 +50,13 @@ def test_a_problem_written_after_the_signed_statement_still_counts():
 
 def test_will_be_verified_from_head_office_is_not_done():
     s = _sum([_trip(1, "OFFICE", "Information ok. Address ok. LOI will be verified from head office.")])
-    assert "LOI" in s.due and "Will be signed from head office" in s.due
+    assert "LOI" in s.due and "Will be verified from head office" in s.due and "LOI" not in s.done      # v10.0.6
 
 
 def test_will_be_signed_from_head_office_is_not_reported_as_signed_from_head_office():
     s = _sum([_trip(1, "OFFICE", "Information ok. Address ok. LOI will be signed From head office")])
     assert "Signed from head office" not in s.done + s.due
-    assert "Will be signed from head office" in s.due
+    assert "Will be verified from head office" in s.due                          # v10.0.6 wording
 
 
 def test_loi_not_verified_stays_due_when_nothing_later_settles_it():

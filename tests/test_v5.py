@@ -165,9 +165,9 @@ def test_an_instruction_in_the_comment_alone_is_not_a_due_item():
 
 def test_hr_refusal_in_the_remarks_is_still_a_head_office_problem():
     done, due = _dd("HR does not agree to verify the LOI. Head office disagree.", COMMENT)
-    assert "Head office disagree" in due and "Will be signed from head office" not in due
+    assert "Head office disagree" in due and "from head office)" not in due
     done, due = _dd("Will be signed from head office, as told by the guard.", "")
-    assert "Will be signed from head office" in due                         # the same words in the REMARKS still count
+    assert "Will be verified from head office" in due                       # the same words in the REMARKS still count (v10.0.6 wording)
 
 
 def test_payslip_sentence_is_the_salary_certificate_note_not_a_refusal():
@@ -291,7 +291,7 @@ def test_live_file_package_plus_later_document_trip_settles_the_loi_from_the_rem
         (_trip(498281, "OFFICE", "Information ok. Address is Ok. Applicant was present at office And signed in front of me. "
                                  "LOI will be signed From head office.", "- Office Name: <office>", created=_D(2026, 11, 1, 20, 35)), "App"),
         (_trip(498282, "BANK", "Bank statement Hard copy provided. verified.", "<account number>", created=_D(2026, 11, 1, 20, 35)), "App")], sub)
-    assert pk.summary.due == "LOI (Will be signed from head office)"      # what the OFFICE remarks said
+    assert pk.summary.due == "LOI (Will be verified from head office)"    # what the OFFICE remarks said (v10.0.6 wording)
     ex = _row("Extra", [(_trip(500204, "DOCUMENT", REM_500204, COMMENT, created=_D(2026, 11, 4, 16, 7)), "App")], sub)
     out = fold_complete([pk, ex])
     assert len(out) == 1

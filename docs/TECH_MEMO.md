@@ -56,7 +56,10 @@ Rules:
    as the dashboard's file does. The SLA rule itself is unchanged (it already used the whole file). Appointment type reads "Visit Place".
 4. **Remark keywords**: "LOI Signed Dhaka Head Office" -> Signed from head office; "LOI not signed in front of me ... signed by <name>"
    -> LOI done, note "Not signed in front of me" (Done only); "LOI not signed because LOI sign will be head office" -> one reason.
-5. Not changed (Naim's answer): the tracker still reads files of the last 90 days only (an older Partially Submitted file is not listed).
+5. **LOI for the head office** (`summary._head_office_loi`): never in Done, only in Due - "LOI (New trip created for head office
+   verification)" when a document trip names the head office (comment / address) or a LOI trip was made 30+ minutes after that remark;
+   else "LOI (Will be verified from head office)". Guarantor "Information ok." stays Done with nothing due (Naim: it includes the sign).
+6. Not changed (Naim's answer): the tracker still reads files of the last 90 days only (an older Partially Submitted file is not listed).
 
 ---
 

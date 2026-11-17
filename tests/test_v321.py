@@ -196,4 +196,15 @@ def test_remark_keywords_v1006():
                         "Signatory Name :Kazi Md. Saidee Designation :Asst. Manager (HR)", "LOI VERIFICATION")
     assert s.done == "LOI (Not signed in front of me)" and s.due == "0"
     s = one("OFFICE", "Address ok. Information ok. Loi not signed because loi sign will be head office. Applicant was present and Signed in front of me.")
-    assert s.due == "LOI (Will be signed from head office)"                  # one reason, not "...; LOI not verified"
+    assert s.due == "LOI (Will be verified from head office)"                # one reason; v10.0.6 wording, Due only
+
+
+def test_loi_head_office_is_due_only_and_says_when_a_new_trip_was_made_v1006():
+    """Naim 17-11-2026: LOI for the head office is not Done; Due says whether a new document trip was made for it."""
+    office = _trip(1, "OFFICE", "Address ok. Information ok. Loi not signed because loi sign will be head office. Applicant was present and "
+                                "Signed in front of me.", created=D(2026, 11, 4, 21, 26))
+    hq = _trip(2, "DOCUMENT", "", "Loi sign will be head office. Address: Bank Asia Tower", created=D(2026, 11, 16, 11, 31), status=4)
+    s = analyze([TripView(office, "APPLICANT", "App"), TripView(hq, "APPLICANT", "App")], False, "BS")
+    assert "LOI" not in s.done and s.due == "LOI (New trip created for head office verification)"
+    s = analyze([TripView(office, "APPLICANT", "App")], False, "BS")
+    assert "LOI" not in s.done and s.due == "LOI (Will be verified from head office)"
