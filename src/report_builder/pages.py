@@ -269,25 +269,25 @@ class BSPage(Page):
         # ---- who holds how many BS
         head = tk.Frame(self.body, bg=P["bg"])
         head.pack(fill="x", pady=(16, 6))
-        tk.Label(head, text=L("কার কাছে BS আছে (অফিসে আসেনি)", "Who still holds a BS (not in the office)"), bg=P["bg"], fg=P["text"],
-                 font=self.f.h3).pack(side="left")
+        self.list_title = tk.Label(head, text=L("কার কাছে BS আছে (অফিসে আসেনি)", "Who still holds a BS (not in the office)"),
+                                   bg=P["bg"], fg=P["text"], font=self.f.h3)
+        self.list_title.pack(side="left")
         self.all_btn = Button(head, L("সব BS দেখুন", "See every BS"), self.toggle_all, font=self.f.small, padx=10, pady=5)
         self.all_btn.pack(side="right")
-        tbl = self.card(self.body, fill="both", expand=True)
+        tbl = self.who_card = self.card(self.body, fill="both", expand=True)
         box, self.who = self.table(tbl, [("ver", L("ভেরিফায়ার", "Verifier"), 170, "w"), ("trip", "Trip ID", 80, "center"),
                                          ("file", "File No", 170, "w"), ("bank", L("ব্যাংক", "Bank"), 200, "w"),
                                          ("type", L("ধরন", "Type"), 70, "center"),
                                          ("wd", L("কবে তোলা (withdraw)", "Withdrawn on"), 120, "center"),
                                          ("days", L("কত দিন", "Days"), 60, "center")], height=10)
         box.pack(fill="both", expand=True, padx=1, pady=1)
-        self.full = self.card(self.body, fill="both", expand=True, pady=(12, 0))
+        self.full = self.card(self.body)                  # shown in place of the table above ("see every BS")
         fbox, self.tv = self.table(self.full, [("created", L("Created", "Created"), 110, "w"), ("trip", "Trip ID", 70, "w"),
                                                ("file", "File No", 160, "w"), ("bank", L("ব্যাংক", "Bank"), 150, "w"),
                                                ("type", L("ধরন", "Type"), 64, "w"), ("ver", L("ভেরিফায়ার", "Verifier"), 110, "w"),
                                                ("out", L("রিমার্ক থেকে ফলাফল", "Outcome (from remarks)"), 190, "w"),
                                                ("now", L("এখন কোথায়", "Now"), 120, "w")], height=10)
         fbox.pack(fill="both", expand=True, padx=1, pady=1)
-        self.full.pack_forget()
         self.show_all = False
         self.rows: list = []
         self.month_rows: dict = {}
@@ -295,10 +295,10 @@ class BSPage(Page):
     def toggle_all(self):
         self.show_all = not self.show_all
         self.all_btn.config(text=L("লুকান", "Hide") if self.show_all else L("সব BS দেখুন", "See every BS"))
-        if self.show_all:
-            self.full.pack(fill="both", expand=True, pady=(12, 0))
-        else:
-            self.full.pack_forget()
+        self.list_title.config(text=L("এই মাসের সব BS", "Every BS of this month") if self.show_all else
+                               L("কার কাছে BS আছে (অফিসে আসেনি)", "Who still holds a BS (not in the office)"))
+        (self.who_card if self.show_all else self.full).pack_forget()
+        (self.full if self.show_all else self.who_card).pack(fill="both", expand=True)
 
     def open_slips(self):
         p = self.shell.helper.slips_dir or config.default_output_dir() / "BS Slips"

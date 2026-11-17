@@ -126,8 +126,9 @@ def main():
         bsp.refresh()
     if not bsp.rows:
         fail("no BS rows on the BS page")
-    if not bsp.who.get_children():
-        fail("the 'who still holds a BS' table is empty")
+    shell.update()
+    if not bsp.who.get_children() or not bsp.who.winfo_ismapped():
+        fail("the 'who still holds a BS' table is empty or not shown")
     bsp.toggle_all()
     shell.update()
     if not bsp.full.winfo_ismapped() or not bsp.tv.get_children():
