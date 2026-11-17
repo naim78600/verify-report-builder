@@ -59,6 +59,7 @@ def test_pdf_long_cells_become_short_summaries(d, tmp_path):
     r.last_trips = [(700000 + i, "House", base + timedelta(hours=i) if i % 4 else None, "Finished", "Mgr") for i in range(12)]
     r.appointments = [{"trip_id": 700000 + i, "trip_type": "House", "time": base + timedelta(days=i), "type": "Visit",
                        "created_at": base, "reason": "not at home", "active": i == 11} for i in range(9)]
+    r.file_appointments = list(r.appointments)                               # v10.0.6: the cell shows the whole file's appointments
     lu = "\n".join("".join(t for t, _s in ln) for ln in last_update_short(r))
     assert lu.count("· House") == 3 and "older trip updates" in lu and "no activity" in lu
     ap = "\n".join("".join(t for t, _s in ln) for ln in appointment_short(r))

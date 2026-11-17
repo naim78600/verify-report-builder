@@ -30,7 +30,7 @@ from . import theme as T
 from .assets_path import asset
 from .billing import SLA_IN, SLA_OUT, before_after
 from .collect_prime import PrimeData, title_for
-from .report_text import _dt, appointment_lines, bill_slab_lines, has_due, last_update_lines, sla_restart_lines, summary_lines
+from .report_text import _dt, appointment_lines, bill_slab_lines, shown_appointments, has_due, last_update_lines, sla_restart_lines, summary_lines
 
 HIST_MAX = 6              # history lines shown per row in the PDF (newest); the Excel has them all
 LINES = {"concerns": 6, "history": 6, "slab": 6, "summary": 8, "last": 6, "appt": 6, "reason": 6}   # printed lines per cell (A4)
@@ -142,12 +142,13 @@ def appointment_short(r) -> list:
     """PDF version of the Appointment column: the active / newest SHOW_APPTS appointments, the rest counted."""
     restart = sla_restart_lines(r)
     head = (restart + [[("", "n")]]) if restart else []
-    if len(r.appointments) <= SHOW_APPTS:
+    appts_all = shown_appointments(r)
+    if len(appts_all) <= SHOW_APPTS:
         lines = appointment_lines(r)
         return head + ([] if restart and lines == [[("NO", "m")]] else lines)
-    keep = sorted(r.appointments, key=lambda a: (a.get("active", True), a.get("time") or a.get("created_at")), reverse=True)[:SHOW_APPTS]
+    keep = sorted(appts_all, key=lambda a: (a.get("active", True), a.get("time") or a.get("created_at")), reverse=True)[:SHOW_APPTS]
     lines = appointment_lines(SimpleNamespace(appointments=keep))      # that function only reads .appointments
-    lines += [[("", "n")], [(f"+{len(r.appointments) - SHOW_APPTS} more appointments (all in the Excel)", "m")]]
+    lines += [[("", "n")], [(f"+{len(appts_all) - SHOW_APPTS} more appointments (all in the Excel)", "m")]]
     return head + lines
 
 

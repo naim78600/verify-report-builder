@@ -88,8 +88,13 @@ NOTE_RULES = [
        r"address\s+(?:is\s+)?(?:mis\s?match|different|changed)[^.\n]{0,40}new", "New address found & verified"),
     _r(r"(?<!can\s)(?<!be\s)signed\s+(?:from|by|at)\s+(?:the\s+)?(?:applicant'?s?\s+)?branch|sign\s+by\s+branch\s+manager|"
        r"loi\s+(?:is\s+)?signed\s+from\s+branch", "Signed from branch", "loi"),
-    _r(r"(?:loi\s+(?:has\s+been\s+)?|has\s+been\s+)?(?<!be\s)signed\s+(?:from|by|at)\s+(?:the\s+)?(?:dhaka\s+)?(?:head\s*office|hq|corporate)",
+    # v10.0.6: "LOI Signed Dhaka Head Office" (no from / by / at) too - PL-20261115074128799, 17-11-2026
+    _r(r"(?:loi\s+(?:has\s+been\s+)?|has\s+been\s+)?(?<!be\s)(?<!not\s)signed\s+(?:(?:from|by|at|in)\s+)?(?:the\s+)?(?:dhaka\s+)?(?:head\s*office|hq|corporate)",
        "Signed from head office", "loi"),
+    # v10.0.6: "LOI not signed in front of me as entry restricted. LOI signed by Signatory Name: ..." - signed, but not before the
+    # verifier: shown with the LOI (Done only, not a Due), so the bank sees it (PL-20261115074128799)
+    _r(r"\bloi\s+(?:was\s+|is\s+|did\s+)?not\s+sign\w*\s+(?:in\s*front|infront)(?=[^\n]{0,200}(?:signed\s+by|signator\w*\s*(?:name|:)))",
+       "Not signed in front of me", "loi"),
     # ---- LOI ----
     _r(r"(?:need|want|requir|ask|must|without|bring|provide|send)\w*[^.\n]{0,40}forwarding\s+l[ae]t+er|forwarding\s+l[ae]t+er[^.\n]{0,20}(?:required|needed|not\s+(?:provided|submitted|given|have))",
        "Need forwarding letter", "loi"),
@@ -174,7 +179,8 @@ NOTE_RULES = [
        r"verification\s+(?:could\s+not|cannot|can'?t)", "Could not verify"),
 ]
 # good-news notes: written in Done only, never repeated in Due
-INFO_NOTES = {"System generated - no sign required", "New address found & verified", "Signed from branch", "Signed from head office"}
+INFO_NOTES = {"System generated - no sign required", "New address found & verified", "Signed from branch", "Signed from head office",
+              "Not signed in front of me"}
 
 _NEG_FALLBACK = re.compile(
     r"\b(?:not\s+(?:verif\w*|found|available|possible|allowed|signed|provided|match\w*|willing|interested|cooperat\w*|present|"
@@ -444,6 +450,8 @@ def _notes_for(text_all: str, outcome: str, rules, loi_trip: bool = False) -> tu
         if bare != text_all and re.search(r"signator\w*\s*(?:name|:)|sign\w*\s+by\b", text_all, _I) \
                 and not any(rx.search(bare) for rx, note, _t in rules if note == "LOI not verified"):
             found["loi"].remove("LOI not verified")
+    if "Will be signed from head office" in found["loi"] and "LOI not verified" in found["loi"]:
+        found["loi"].remove("LOI not verified")                  # v10.0.6: "Loi not signed because loi sign will be head office" = one reason, not two
     if "Submitted for verification" in found["loi"] and "Need to verify by email" in found["loi"]:
         found["loi"].remove("Need to verify by email")           # "they send the verified LOI by e-mail" answers a submitted LOI, it is not a request
     if "New address found & verified" in found["trip"] and "Given address wrong" in found["trip"]:
@@ -721,8 +729,47 @@ def analyze(views: list[TripView], submitted: bool, bank_label: str = "BS") -> S
     # every problem item of Done is repeated in Due (same wording)
     problems = [i.problem_only(info) for i in done if i.is_problem(info)]
     due = _merge(problems + due)
+    done, due = _head_office_loi(done, due, views)
 
     return _finish(done, due, list(skipped), submitted)
+
+
+HO_NOTE = "Will be signed from head office"
+HO_NEW_TRIP = "New trip created for head office verification"
+HO_ONLY = "Will be verified from head office"
+_HO = re.compile(r"head\s*office|\bhq\b|head\s*quarter|corporate\s+office", re.I)
+
+
+def _head_office_loi(done: list[Item], due: list[Item], views: list) -> tuple[list[Item], list[Item]]:
+    """v10.0.6 (Naim, 17-11-2026): a LOI that will be signed / verified at the head office is NOT done - it is only Due, worded:
+         a new document trip was made for it at the head office -> "LOI (New trip created for head office verification)"
+         otherwise (only the remark says so)                      -> "LOI (Will be verified from head office)"
+    A document trip counts as made for the head office when its comment or address names the head office (HQ / corporate office),
+    or when it is a LOI trip created after the remark that sent the LOI to the head office."""
+    def ho(i: Item) -> bool:
+        return i.label == "LOI" and HO_NOTE in (i.note or "")
+    hits = [i for i in done + due if ho(i)]
+    if not hits:
+        return done, due
+    remark_at = min((i.src[0] for i in hits if i.src and i.src[0]), default=None)
+    remark_ids = {i.src[1] for i in hits if len(i.src) > 1}
+    new_trip = False
+    for v in views:
+        t = v.trip
+        if t.get("type_code") in ("HOUSE", "OFFICE", "BANK", "GUARANTOR_HOUSE", "GUARANTOR_OFFICE") or t.get("id") in remark_ids:
+            continue                     # the trip whose own remark says "head office" is not a NEW trip for it
+        blob = " ".join(str(t.get(k) or "") for k in ("comment", "address", "exact_address", "place_name"))
+        later = bool(remark_at and t.get("created_at") and t["created_at"] - remark_at >= timedelta(minutes=30) and _doc_name(t) == "LOI")
+        if _HO.search(blob) or later:
+            new_trip = True
+            break
+    word = HO_NEW_TRIP if new_trip else HO_ONLY
+    keep = [n for i in hits for n in (i.note or "").split("; ") if n and n != HO_NOTE and n != "LOI not verified"]
+    note = "; ".join(dict.fromkeys([word] + keep))
+    base = hits[-1]
+    done = [i for i in done if not ho(i)]
+    due = [i for i in due if not ho(i)] + [replace(base, note=note, pending=True, rank=min(base.rank, 1))]
+    return done, _merge(due)
 
 
 def _finish(done: list[Item], due: list[Item], skipped: list[str], submitted: bool) -> Summary:

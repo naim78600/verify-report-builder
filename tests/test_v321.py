@@ -76,13 +76,16 @@ def test_a_row_without_folded_rows_keeps_its_own_summary_untouched():
     assert (out[0].summary.done, out[0].summary.due) == before and out[0].folded == []
 
 
-def test_items_the_row_did_not_have_are_never_added_from_the_folded_rows():
+def test_items_of_the_folded_rows_are_added_v1006():
+    """v10.0.6 (Naim, 17-11-2026): one tracker line = the whole report it stands for, so the trips of the folded rows that were
+    submitted with it are in Done / Due too (before: 'items the row did not have are never added')."""
     pk = _row("Package", [(_trip(1, "HOUSE", "Information ok."), "App")], SUB)
     ex = _row("Extra", [(_trip(9, "DOCUMENT", LOI_OK, "LOI", created=D(2026, 11, 2, 17, 47)), "App"),
                         (_trip(10, "BANK", "Statement ok.", created=D(2026, 11, 2, 17, 48)), "App")], SUB)
     before = (pk.summary.done, pk.summary.due)
     out = fold_complete([pk, ex])
-    assert (out[0].summary.done, out[0].summary.due) == before == ("App House", "0")
+    assert before == ("App House", "0")
+    assert (out[0].summary.done, out[0].summary.due) == ("App House, LOI, BS", "0")
 
 
 def test_only_items_that_are_due_are_replaced_the_other_done_items_stay():
@@ -153,3 +156,55 @@ def test_a_partially_submitted_file_is_listed_in_both_modes():
         if mode == "range":
             kw["w_till"] = date(2026, 11, 6)
         assert [x.file_no for x in select_rows([r], **kw)[1]] == ["PL-6"], mode
+
+
+def test_pending_file_due_has_every_open_trip_and_bs_numbers_never_mix_v1006():
+    """PL-20261115105306418 (17-11-2026): package H done, O hold, BS not visited, BS done, Co-App H done; then PG house + office on Hold
+    and two more bank statements done.  Before v10.0.6 the tracker said Done 'BS1, BS2' and Due only 'App Office' (the open BS and the
+    PG were lost)."""
+    c = D(2026, 11, 15, 20, 57)
+    pk = _row("Package", [(_trip(1, "HOUSE", "Information ok.", created=c), "App"), (_trip(2, "OFFICE", "", created=c, status=4), "App"),
+                          (_trip(3, "BANK", "", created=c, status=2), "App"),
+                          (_trip(4, "BANK", "Bank statement verified. Hard copy provided.", created=c), "App"),
+                          (_trip(5, "HOUSE", "Information ok.", created=c), "Co-App")])
+    pg = _row("Single", [(_trip(6, "GUARANTOR_HOUSE", "", created=c, status=4), "PG"), (_trip(7, "GUARANTOR_OFFICE", "", created=c, status=4), "PG")])
+    b3 = _row("Single", [(_trip(8, "BANK", "Bank statement verified. Hard copy provided.", created=D(2026, 11, 15, 20, 58)), "App")])
+    b4 = _row("Single", [(_trip(9, "BANK", "Bank statement verified. Hard copy provided.", created=D(2026, 11, 15, 20, 58)), "App")])
+    keep = fold_incomplete([pk, pg, b3, b4])
+    due = keep.summary.due
+    assert "App Office" in due and "PG House" in due and "Office" in due.split("PG House", 1)[1]
+    assert "BS1" in due and "BS1" not in keep.summary.done                   # the bank statement not visited yet stays Due
+    assert all(f"BS{i}" in keep.summary.done for i in (2, 3, 4))
+
+
+def test_a_dashboard_re_cpv_flag_is_a_re_cpv_in_the_history_column_v1006():
+    from report_builder.billing import history_for
+    f = {"start_date": D(2026, 11, 8, 20, 15), "concerns": [{"trips": [
+        {"id": 510291, "created_at": D(2026, 11, 16, 10, 59), "re_cpv": True, "type_code": "GUARANTOR_HOUSE", "comment": ""},
+        {"id": 509241, "created_at": D(2026, 11, 15, 17, 23), "re_cpv": False, "type_code": "RENTAL", "comment": "Rental verification."}]}]}
+    lines = history_for("PL-1", f, {}, {510291}, D(2025, 11, 1))
+    assert lines[0].startswith("Re-CPV | 16-11-2026 10:59 | Trip ID 510291") and lines[1].startswith("Extra | 15-11-2026 17:23 | Trip ID 509241")
+
+
+def test_remark_keywords_v1006():
+    """Remarks of 17-11-2026, read one by one (Naim: 'protita remark alada kore porun')."""
+    def one(code, rem, comment=""):
+        return analyze([TripView(_trip(1, code, rem, comment), "APPLICANT", "App")], True, "BS")
+    s = one("OFFICE", "Information ok. LOI Signed Dhaka Head Office.")
+    assert s.done == "App Office, LOI (Signed from head office)" and s.due == "0"
+    s = one("DOCUMENT", "Information OK. Confirmed by Receptionist. LOI not signed infront of me as entry restricted. LOI signed by "
+                        "Signatory Name :Kazi Md. Saidee Designation :Asst. Manager (HR)", "LOI VERIFICATION")
+    assert s.done == "LOI (Not signed in front of me)" and s.due == "0"
+    s = one("OFFICE", "Address ok. Information ok. Loi not signed because loi sign will be head office. Applicant was present and Signed in front of me.")
+    assert s.due == "LOI (Will be verified from head office)"                # one reason; v10.0.6 wording, Due only
+
+
+def test_loi_head_office_is_due_only_and_says_when_a_new_trip_was_made_v1006():
+    """Naim 17-11-2026: LOI for the head office is not Done; Due says whether a new document trip was made for it."""
+    office = _trip(1, "OFFICE", "Address ok. Information ok. Loi not signed because loi sign will be head office. Applicant was present and "
+                                "Signed in front of me.", created=D(2026, 11, 4, 21, 26))
+    hq = _trip(2, "DOCUMENT", "", "Loi sign will be head office. Address: Bank Asia Tower", created=D(2026, 11, 16, 11, 31), status=4)
+    s = analyze([TripView(office, "APPLICANT", "App"), TripView(hq, "APPLICANT", "App")], False, "BS")
+    assert "LOI" not in s.done and s.due == "LOI (New trip created for head office verification)"
+    s = analyze([TripView(office, "APPLICANT", "App")], False, "BS")
+    assert "LOI" not in s.done and s.due == "LOI (Will be verified from head office)"

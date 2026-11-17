@@ -1,6 +1,20 @@
-# Verify Report Builder — Version 10 (v10.0.5)
+# Verify Report Builder — Version 12 (v12.0.0)
 
-Prime Bank PLC ও LankaBangla-র কাজের জন্য: দৈনিক সাবমিশন ট্র্যাকার, মাসিক বিল, ফাইল হিস্টরি — আর নতুন **BS ট্র্যাকার**, **অফিস রিসিভ** ও **WhatsApp রিমাইন্ডার**। Verify থেকে **শুধু তথ্য পড়ে (GET)**, কিছু বদলায় না; পাসওয়ার্ড কোথাও সংরক্ষণ হয় না।
+Prime Bank PLC ও LankaBangla-র কাজের জন্য: দৈনিক সাবমিশন ট্র্যাকার, মাসিক বিল, ফাইল হিস্টরি, **BS**, **অফিস রিসিভ** ও **WhatsApp রিমাইন্ডার (ভয়েসসহ)**। Verify থেকে **শুধু তথ্য পড়ে (GET)**, কিছু বদলায় না; পাসওয়ার্ড কোথাও সংরক্ষণ হয় না।
+
+## Version 12-এ নতুন
+
+| | কী বদলেছে |
+|---|---|
+| **সহজ স্ক্রিন** | Barikoi-র রং (সবুজ); মেনু: আজ · BS · Reminder · Report · Bill (বাকিগুলো “আরও”-র নিচে); প্রতিটি বাটনের নিচে ছোট নির্দেশনা; ড্যাশবোর্ডের শব্দ (On Going / Hold / SLA পার) |
+| **আজ** | একটাই কার্ড “এখন করার কাজ” + সবুজ বাটন; On Going · Hold · SLA পার — তিনটি সংখ্যা; আজকের সময়সূচি (✓ = হয়ে গেছে); test ফাইল কখনো দেখায় না |
+| **BS** | তিনটি বড় বাটন: **অফিসে পেলাম · কুরিয়ার দিন · তালিকা দিন**; **কার কাছে BS আছে** — ভেরিফায়ার অনুযায়ী (কতগুলো), Trip ID, File No, **ব্যাংক**, **কবে তোলা (withdraw)**, কত দিন (৩ দিন+ লাল); “সব BS দেখুন”-এ পুরো তালিকা; মাসের Excel |
+| **Online BS** | Verifier নিজে ব্যাংকে জমা দেয় → WhatsApp-এ “জমা দিয়েছি” + স্লিপের ছবি → ছবি নিজে সেভ হয়: `রিপোর্ট ফোল্ডার/BS Slips/তারিখ/Trip ID - ভেরিফায়ার/` আর BS “ব্যাংকে জমা” হিসেবে বন্ধ হয় |
+| **রিমাইন্ডার — ৫ বার** | সকাল **৮টা** আজকের appointment · **১০টা** ও **১টা** সব On Going + Hold · **৩টা** বাকি appointment (ধন্যবাদসহ) · **৫:৩০** On Going + Hold। Hold-এ: সঠিক কারণ লিখে Update বা Remarks দিয়ে Finish (SLA ভাঙছে)। প্রতিটি ট্রিপের করণীয় (চেম্বার → Chamber report form, ভাড়া → Rental report form …), SLA = schedule + ১ কর্মদিবস 5:59 PM। BS জমার তাগিদ ১টা ও ৫:৩০-এ। সবসময় ড্যাশবোর্ডের নতুন তথ্য থেকে; Finish হওয়া ট্রিপ বাদ |
+| **ভয়েস** | প্রত্যেক ভেরিফায়ারের জন্য আলাদা ভয়েস (Pradeep কণ্ঠ): ট্রিপ আইডি সংখ্যা ধরে ধরে, আবেদনকারীর নাম বাংলায়, “S, L, A” ধীরে। PC-তে ইন্টারনেট লাগে (ফ্রি) |
+| **উত্তর — এক চাপে** | মেসেজের নিচে লিংক: 👉 যাচ্ছি / Finish করেছি / সমস্যা আছে (BS: আজ জমা দেব / জমা দিয়েছি / সমস্যা)। Verifier লিংকে চাপ দিলে উত্তর লেখা হয়ে যায়, শুধু Send। ভেতরের কোড দেখে সফটওয়্যার ঠিক ট্রিপে উত্তর বসায়। “জমা দিয়েছি” → স্লিপের ছবি চায়; “সমস্যা” → এক লাইনে কারণ চায় — এই ফিরতি মেসেজ হেল্পার খুলে দেয়, **Send আপনি চাপেন**। কল ও সাধারণ মেসেজ আগের মতোই |
+| **সেটিংস** | **আপনার WhatsApp নম্বর** দিন (যে নম্বরে WhatsApp Web চলে) — উত্তর-লিংক এই নম্বরে আসে |
+| **আগের নিয়ম** | ট্র্যাকার, বিল, ফাইল হিস্টরি, SLA, Incomplete, ইমেইল — v10.0.6-এর মতোই |
 
 ## Version 10-এ নতুন
 
@@ -32,7 +46,7 @@ Chrome → `chrome://extensions` → **Developer mode** চালু → **Load 
 
 ## Technical memo — every rule, by function (for developers)
 
-**For:** the developers of the Verify dashboard · **From:** Barikoi operations (Prime Bank PLC desk) · **Version:** 10.0.5 · **Date:** 15 November 2026
+**For:** the developers of the Verify dashboard · **From:** Barikoi operations (Prime Bank PLC desk) · **Version:** 12.0.0 · **Date:** 18 November 2026
 
 Verify Report Builder is a desktop tool that reads the Verify dashboard (GET only) and produces what is sent to Prime Bank PLC:
 the daily submission tracker, the monthly bill, and the file history. This memo writes down every rule the tool applies, from the
@@ -440,7 +454,10 @@ Reference: `shell.py`, `pages.py`, `gui.ReportsPage`, `i18n.py`.
 - **SLA Restart:** Appointment-এর *scheduled date* থেকে এবং **যেকোনো নতুন ট্রিপ** তৈরি হলে সঙ্গে সঙ্গে; In (Dhaka ও Chattogram City Corporation) = ২ কার্যদিবস, Out = ৪ কার্যদিবস। নতুন কলাম **“SLA Start / Restart Date”** (Excel ও PDF)।
 - **Incomplete** = শুধু Hold, Finished কিন্তু Submit হয়নি ও Partially Submitted।
 
-## সব ফিচার — প্রথম সংস্করণ থেকে Version 7 পর্যন্ত (বিস্তারিত; Version 10.0.5 উপরে)
+### Version 12.0.0 (১৮ নভেম্বর) — সহজ স্ক্রিন, ৫ বার রিমাইন্ডার + ভয়েস, এক-চাপে উত্তর, Online BS স্লিপ
+উপরের “Version 12-এ নতুন” টেবিল দেখুন। সব নিয়ম ফাংশন ধরে `docs/TECH_MEMO.md`-এর ১৫ নম্বর অংশে।
+
+## সব ফিচার — প্রথম সংস্করণ থেকে Version 7 পর্যন্ত (বিস্তারিত; Version 10 ও 12 উপরে)
 
 প্রতিটি ধাপে আগের সব ফিচার থেকে যায়; নিচে কোন সংস্করণে কী যোগ হয়েছে ক্রমানুসারে লেখা।
 

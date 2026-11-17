@@ -88,11 +88,17 @@ def sla_restart_lines(r: BillRow) -> list:
     return [[("SLA restarted from ", "rs"), (f"{r.sla_start:%d/%m/%Y}", "rs")], [(note, "m")]]
 
 
+def shown_appointments(r) -> list:
+    """What the Appointment History cell shows: every trip of the file (v10.0.6), else the row's own."""
+    return getattr(r, "file_appointments", None) or getattr(r, "appointments", None) or []
+
+
 def appointment_lines(r: BillRow) -> list:
-    if not r.appointments:
+    appts = shown_appointments(r)
+    if not appts:
         return [[("NO", "m")]]
     lines = []
-    for i, a in enumerate(r.appointments):
+    for i, a in enumerate(appts):
         if i:
             lines.append([("", "n")])
         lines.append([(f"Trip {a['trip_id']} · {a['trip_type']}", "b")])

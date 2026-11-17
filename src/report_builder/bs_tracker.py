@@ -65,6 +65,8 @@ class BSRow:
     office: dict = field(default_factory=dict)
     courier: dict = field(default_factory=dict)
     bank_received: dict = field(default_factory=dict)
+    finished: datetime | None = None             # v12: when the verifier finished the trip (= the day the BS was withdrawn / collected)
+    bank_submitted: dict = field(default_factory=dict)   # v12: Online BS handed in at the bank by the verifier (slip photo from WhatsApp)
 
     @property
     def collected(self) -> bool:
@@ -121,7 +123,8 @@ def bs_rows(files: list[dict], org: str, phones: dict | None = None, month: tupl
                     verifier=t.get("verifier", ""), verifier_id=vid, phone=(phones.get(vid) or {}).get("phone", "") if vid else "",
                     trip_status=t.get("status", ""), trip_status_code=t.get("status_code"), remarks=t.get("remarks", ""),
                     outcome=outcome, outcome_note=note, file_status=f.get("status", ""), sla=f.get("sla"),
-                    office=s.get("office") or {}, courier=s.get("courier") or {}, bank_received=s.get("bank_received") or {}))
+                    office=s.get("office") or {}, courier=s.get("courier") or {}, bank_received=s.get("bank_received") or {},
+                    finished=t.get("end_time") if t.get("status_code") == 5 else None, bank_submitted=s.get("bank_submitted") or {}))
     first = {}
     for r in out:
         k = (r.org, r.file_id)
@@ -137,10 +140,28 @@ def pending_bs(rows: list[BSRow]) -> list[BSRow]:
     for r in rows:
         if r.bank_received or r.outcome in NOT_COLLECTED_SET or r.trip_status_code in (6, 8):
             continue
-        if r.collected and (r.office or r.courier.get("no")):
+        if r.collected and (r.office or r.courier.get("no") or r.bank_submitted):
             continue
         out.append(r)
     return out
+
+
+def still_with_verifier(rows: list[BSRow]) -> list[BSRow]:
+    """V12 'who still holds a BS': withdrawn from the bank (collected), but not yet in the office, with a courier, received
+    by the bank, or (Online BS) handed in at the bank by the verifier.  Cancelled / withdrawn trips are left out."""
+    return [r for r in rows if r.collected and r.trip_status_code not in (6, 8)
+            and not (r.office or r.courier.get("no") or r.bank_received or r.bank_submitted)]
+
+
+def by_verifier(rows: list[BSRow]) -> list[tuple[str, list[BSRow]]]:
+    """Groups by verifier: the one holding the most first; inside, the oldest withdrawal first."""
+    groups: dict[str, list[BSRow]] = {}
+    for r in rows:
+        groups.setdefault(r.verifier or "—", []).append(r)
+    far = datetime.max
+    for g in groups.values():
+        g.sort(key=lambda r: (r.finished or far, r.trip_id))
+    return sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0]))
 
 
 # ============================================================================================ store
@@ -163,6 +184,16 @@ def set_office(store: dict, trip_id, *, giver: str, receiver: str, pages: str = 
     e = store.setdefault(str(trip_id), {})
     e["office"] = {"at": (when or datetime.now()).isoformat(timespec="minutes"), "giver": giver, "receiver": receiver,
                    "pages": str(pages), "note": note, "file_no": file_no, "bank": bank}
+    return e
+
+
+def set_bank_submitted(store: dict, trip_id, *, photos: list, verifier: str = "", via: str = "WhatsApp") -> dict:
+    """v12: an Online BS the verifier handed in at the bank himself; `photos` = the saved slip pictures."""
+    e = store.setdefault(str(trip_id), {})
+    b = dict(e.get("bank_submitted") or {})
+    b.update({"at": b.get("at") or datetime.now().isoformat(timespec="minutes"), "verifier": verifier, "via": via,
+              "photos": sorted(set(b.get("photos", [])) | {str(p) for p in photos})})
+    e["bank_submitted"] = b
     return e
 
 

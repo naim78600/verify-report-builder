@@ -21,7 +21,9 @@ from tkinter import messagebox, ttk
 
 from . import __version__, config, i18n
 from . import reminders as R
-from .bs_tracker import bs_rows, load_store, pending_bs
+from . import holidays as hol
+from . import voice
+from .bs_tracker import bs_rows, load_store, pending_bs, still_with_verifier
 from .client import ApiError, AuthError, Cancelled, ReadOnlyClient, verifier_phones
 from .collect import RunConfig, collect
 from .helper_server import HelperServer, helper_folder, helper_version
@@ -36,12 +38,12 @@ LOOKBACK_DAYS = 90
 def nav_items():
     return [
         ("home", L("আজ", "Today"), "⌂"),
-        ("tracker", L("দৈনিক ট্র্যাকার", "Daily Tracker"), "▤"),
-        ("bill", L("মাসিক বিল", "Monthly Bill"), "▭"),
-        ("bs", L("BS ট্র্যাকার", "BS Tracker"), "🏦"),
+        ("bs", "BS", "🏦"),
+        ("reminders", "Reminder", "💬"),
+        ("tracker", "Report", "▤"),
+        ("bill", "Bill", "▭"),
+        ("-", L("আরও", "More"), ""),
         ("receive", L("অফিস রিসিভ", "Office receive"), "📥"),
-        ("reminders", L("রিমাইন্ডার", "Reminders"), "💬"),
-        ("-", L("তথ্য", "Info"), ""),
         ("verifiers", L("ভেরিফায়ার", "Verifiers"), "👥"),
         ("history", L("ফাইল হিস্টরি", "File History"), "🕘"),
         ("settings", L("সেটিংস", "Settings"), "⚙"),
@@ -70,6 +72,7 @@ class Shell(tk.Tk):
         self.pages: dict = {}
         self.signed_in = False
         self.helper = HelperServer(lambda k, e: self.q.put(("helper", k, e)))
+        self.helper.slips_dir = self.out_dir / "BS Slips"
         self.helper_running = self.helper.start() if start_helper else False
         self.helper_dir = helper_folder()            # fixed folder for Chrome's "Load unpacked", always the newest files
         st = R.load_state()
@@ -303,6 +306,7 @@ class Shell(tk.Tk):
     def set_out_dir(self, d: Path):
         self.out_dir = Path(d)
         self.reports.out_dir = self.out_dir
+        self.helper.slips_dir = self.out_dir / "BS Slips"
         config.save_settings({"out_dir": str(self.out_dir)})
 
     def _status(self):
@@ -382,8 +386,13 @@ class Shell(tk.Tk):
         q = R.build_queue(self.data["files"], self.data["phones"], bs_pending=bs, round_key=round_key,
                           overrides=self.phone_overrides())
         st = R.load_state()
-        R.record_round(st, round_key, q)
+        try:
+            hset = set(hol.load())
+        except Exception:                                          # noqa: BLE001 - a broken holiday file must not stop the round
+            hset = set()
+        items = R.record_round(st, round_key, q, own_number=self.settings.get("own_whatsapp", ""), holidays=hset)
         R.save_state(st)
+        voice.make_clips_in_background(items, done=lambda res: self.q.put(("call", lambda: self._voices_done(res))))
         self.helper.round_key = round_key
         n = sum(1 for r in q if r.has_whatsapp_number)
         if notify:
@@ -392,6 +401,13 @@ class Shell(tk.Tk):
         if "reminders" in self.pages:
             self.pages["reminders"].refresh()
         return n
+
+    def _voices_done(self, res: dict):
+        if res.get("failed"):
+            self.toast(L(f"⚠ {len(res['failed'])} জনের ভয়েস তৈরি হয়নি (ইন্টারনেট?)। মেসেজ ভয়েস ছাড়াই যাবে।",
+                         f"⚠ {len(res['failed'])} voices could not be made (internet?). Those messages go without a voice."))
+        if "reminders" in self.pages:
+            self.pages["reminders"].refresh()
 
     # ================================================================== clock (office days, 10 AM - 6:15 PM)
     def _tick(self):
@@ -425,10 +441,10 @@ class Shell(tk.Tk):
                 label = "12:00 PM" if key == "12pm" else "6:15 PM"
 
                 def after_check(label=label):
-                    pend = pending_bs(self.bs_all())
-                    off = sum(1 for r in pend if r.bs_type == "Offline")
-                    self.toast(L(f"🏦 {label} BS চেক: {len(pend)} টি BS বাকি (অফলাইন {off})। দৈনিক ট্র্যাকারের সময়ও হয়েছে।",
-                                 f"🏦 {label} BS check: {len(pend)} bank statements pending (offline {off}). Also time for the daily tracker."))
+                    held = still_with_verifier(self.bs_all())
+                    off = sum(1 for r in held if r.bs_type == "Offline")
+                    self.toast(L(f"🏦 {label} BS হিসাব: {len(held)} টি BS এখনো verifier-এর কাছে (অফলাইন {off})। দৈনিক ট্র্যাকারের সময়ও হয়েছে।",
+                                 f"🏦 {label} BS check: {len(held)} bank statements still with verifiers (offline {off}). Also time for the daily tracker."))
                     if "bs" in self.pages:
                         self.pages["bs"].refresh()
                 self.refresh_data("bs", then=after_check)
@@ -469,6 +485,11 @@ class Shell(tk.Tk):
                     self._status()
                     if k == "reply" and e.get("kind") == "no_whatsapp":
                         R.NO_WA_CACHE.add(e.get("phone", ""))
+                    if k == "media" and e.get("files"):
+                        self.toast(L(f"📷 স্লিপের ছবি জমা হলো ({len(e['files'])} টি) · BS ফোল্ডারে রাখা হয়েছে",
+                                     f"📷 Slip photo saved ({len(e['files'])}) · in the BS folder"))
+                        if "bs" in self.pages:
+                            self.pages["bs"].refresh()
                     if "reminders" in self.pages:
                         self.pages["reminders"].refresh()
                     if "home" in self.pages:

@@ -68,6 +68,7 @@
       <div class="bk-muted" id="bk-msg">প্রোগ্রামে রাউন্ড তৈরি হলে এখানে দেখাবে।</div>
       <div class="bk-row"><button class="bk-primary" id="bk-start">শুরু করুন</button><button id="bk-stop">থামান</button>
         <button id="bk-skip">পরের জন</button></div>
+      <div class="bk-fu" id="bk-fu" style="display:none"></div>
     </div>`;
   document.body.appendChild(box);
   const $ = (id) => box.querySelector("#" + id);
@@ -117,8 +118,8 @@
     if (!c) return false;
     c.focus();
     c.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
-    await sleep(1500);
-    return true;
+    for (let i = 0; i < 15 && !attachmentOpen(); i++) await sleep(100);   // WhatsApp shows the attachment drawer
+    return attachmentOpen() || (await sleep(1000), true);
   }
 
   async function continueRun() {
@@ -144,15 +145,15 @@
     if (!composer()) { say("চ্যাট খোলেনি। ‘শুরু করুন’ আবার চাপুন।"); return; }
     const name = chatTitle();
     if (name) post("/contact", { name, phone: it.phone });
+    const before = lastMsgId();                            // taken before the voice goes in: a quick Send is still seen
     if (it.voice) {
       const ok = await attachVoice(it.voice);
-      say(ok && attachmentOpen() ? "২ বার Send: ১) ডানে নিচের সবুজ Send (ভয়েস যাবে)  ২) তারপর মেসেজের Send।"
+      say(ok ? "২ বার Send: ১) ডানে নিচের সবুজ Send (ভয়েস যাবে)  ২) তারপর মেসেজের Send।"
                                     : "ভয়েস যুক্ত করা যায়নি; শুধু মেসেজ পাঠান (Send চাপুন)।");
     } else {
       say("মেসেজ লেখা আছে। Send চাপুন।");
     }
     // wait until YOU press Send: a new message of yours is the last one, the message box is empty and no attachment waits
-    const before = lastMsgId();
     let done = false;
     for (let i = 0; i < 1200; i++) {                       // up to 10 minutes
       await sleep(500);
@@ -170,6 +171,80 @@
       if (!(await store.get("bk_run"))) { say("থামানো হয়েছে।"); return; }
     }
     openNext();
+  }
+
+  // ---------------------------------------------------------------- V12 follow-ups ("ছবি পাঠান" / "সমস্যা লিখুন") and slip photos
+  S.asks = [];
+  async function refreshAsks() {
+    const r = await get("/asks");
+    S.asks = r.ok ? (r.data.asks || []) : [];
+    const toSend = S.asks.filter((a) => !a.sent && !a.answered);
+    const photos = S.asks.filter((a) => a.want === "photo" && !a.answered);
+    const arrived = photos.filter((a) => S.photoIn[a.phone]);
+    const el = $("bk-fu");
+    if (!toSend.length && !photos.length) { el.style.display = "none"; return; }
+    el.style.display = "block";
+    el.innerHTML = (toSend.length ? `<div><b>ফিরতি মেসেজ: ${toSend.length}টি</b> <span class="bk-muted">(ছবি / কারণ চাওয়া)</span></div>
+        <div class="bk-row"><button class="bk-primary" id="bk-fu-go">পাঠানো শুরু</button></div>` : "") +
+      (arrived.length ? `<div style="margin-top:6px"><b>📷 ছবি এসেছে: ${arrived.map((a) => escapeHtml(a.verifier)).join(", ")}</b></div>
+        <div class="bk-muted">বাঁ দিকের তালিকা থেকে চ্যাটটি খুলুন — ছবি নিজে সেভ হবে।</div>` : "") +
+      (photos.length > arrived.length ? `<div class="bk-muted" style="margin-top:6px">স্লিপের ছবির অপেক্ষা: ${photos.filter((a) => !S.photoIn[a.phone]).map((a) => escapeHtml(a.verifier)).join(", ")}</div>` : "");
+    const b = el.querySelector("#bk-fu-go");
+    if (b) b.onclick = async () => { await store.set("bk_fu_skip", []); openNextAsk(); };
+  }
+  async function openNextAsk() {
+    await refreshAsks();
+    const skip = (await store.get("bk_fu_skip")) || [];
+    const a = S.asks.find((x) => !x.sent && !x.answered && !skip.includes(x.phone));
+    if (!a) { await store.set("bk_fu", null); say("ফিরতি মেসেজ সব পাঠানো শেষ ✓"); return; }
+    await store.set("bk_fu", { phone: a.phone, at: Date.now() });
+    location.href = `https://web.whatsapp.com/send?phone=${a.phone}&text=${encodeURIComponent(a.text)}`;
+  }
+  async function continueAsk() {
+    const run = await store.get("bk_fu");
+    if (!run || Date.now() - run.at > 10 * 60 * 1000) return false;
+    for (let i = 0; i < 60 && !composer(); i++) await sleep(500);
+    if (!composer()) return true;
+    say("ফিরতি মেসেজ লেখা আছে — Send চাপুন।");
+    const before = lastMsgId();
+    for (let i = 0; i < 1200; i++) {
+      await sleep(500);
+      const c = composer();
+      if (lastMsgId() !== before && c && !(c.textContent || "").trim()) {
+        await post("/ask_sent", { phone: run.phone });
+        for (let s = BREAK_SECONDS; s > 0; s--) { say(`পাঠানো হয়েছে ✓  পরেরটি ${s} সেকেন্ড পরে`); await sleep(1000); }
+        await openNextAsk();
+        return true;
+      }
+      if (!(await store.get("bk_fu"))) return true;
+    }
+    await store.set("bk_fu", null);
+    return true;
+  }
+  // a picture in the open chat, sent by the verifier after our "send the slip photo" message -> saved by the program
+  const imgSeen = new Set();
+  S.photoIn = {};                                          // chat-list rows showing a new photo from someone we asked for a slip
+  const PHOTO_PREVIEW = /^(📷\s*)?(photo|ছবি|image)$/i;
+  async function grabPhotos(phone) {
+    const a = S.asks.find((x) => x.phone === phone && x.want === "photo");
+    if (!a) return;
+    const all = messages();
+    let lastOut = -1;
+    all.forEach((m, i) => { if (isMine(m)) lastOut = i; });
+    for (const m of all.slice(lastOut + 1)) {
+      const id = m.getAttribute("data-testid") || m.getAttribute("data-id") || "";
+      if (!id || imgSeen.has(id)) continue;
+      const img = [...m.querySelectorAll("img")].filter((i) => (i.src || "").startsWith("blob:"))
+        .sort((x, y) => (y.naturalWidth * y.naturalHeight) - (x.naturalWidth * x.naturalHeight))[0];
+      if (!img) continue;
+      imgSeen.add(id);
+      try {
+        const blob = await (await fetch(img.src)).blob();
+        const b64 = await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(blob); });
+        const r = await post("/media", { phone, b64, type: blob.type, msg: id });
+        if (r.ok && r.data && r.data.ok) { delete S.photoIn[phone]; say(`স্লিপের ছবি সেভ হয়েছে ✓ (${r.data.files.length}টি ট্রিপ)`); }
+      } catch (e) { imgSeen.delete(id); }
+    }
   }
 
   // ---------------------------------------------------------------- replies (read only)
@@ -192,8 +267,10 @@
     return false;
   }
   async function readReplies() {
-    if (!S.connected || !S.items.length) return;
-    const known = new Set(S.items.map((i) => i.phone));
+    if (!S.connected) return;
+    await refreshAsks();
+    const known = new Set(S.items.map((i) => i.phone).concat(S.asks.map((a) => a.phone)));
+    if (!known.size) return;
     const rows = document.querySelectorAll('#pane-side [role="listitem"], #pane-side [role="row"]');
     for (const row of rows) {
       const spans = row.querySelectorAll("span[title]");
@@ -203,6 +280,11 @@
       if (!phone || !known.has(phone)) continue;
       if (lastIsMine(row)) continue;                       // our own message shows ticks
       const preview = (spans[spans.length - 1].getAttribute("title") || "").trim();
+      const wantsPhoto = S.asks.some((a) => a.phone === phone && a.want === "photo");
+      if (wantsPhoto && (row.querySelector('[data-icon="status-image"], [data-icon*="image"]') || PHOTO_PREVIEW.test(preview))) {
+        S.photoIn[phone] = true;                           // a photo is not a text answer: the program saves it from the open chat
+        continue;
+      }
       if (!preview || preview === title || seen.get(phone) === preview) continue;
       seen.set(phone, preview);
       await post("/reply", { phone, text: preview });
@@ -211,6 +293,7 @@
     const t = chatTitle();
     const phone = phoneForTitle(t);
     if (phone && known.has(phone)) {
+      await grabPhotos(phone);
       const all = messages();
       let lastOut = -1;
       all.forEach((m, i) => { if (isMine(m)) lastOut = i; });
@@ -249,6 +332,7 @@
       if (c.ok && c.data && c.data.ok) { await store.set("bk_skip", []); openNext(); }
     }, 4000);
     setInterval(readReplies, READ_EVERY_MS);
-    continueRun();
+    await refreshAsks();
+    if (!(await continueAsk())) continueRun();
   })();
 })();
