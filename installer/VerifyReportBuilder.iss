@@ -1,7 +1,7 @@
 ; Inno Setup script - builds a normal Windows installer (Setup.exe) around the one-file app.
-; Build:  iscc /DAppVersion=10.0.6 /DArch=x64 installer\VerifyReportBuilder.iss      (Arch = x64 | x86)
+; Build:  iscc /DAppVersion=12.0.0 /DArch=x64 installer\VerifyReportBuilder.iss      (Arch = x64 | x86)
 #ifndef AppVersion
-  #define AppVersion "10.0.6"
+  #define AppVersion "12.0.0"
 #endif
 #ifndef Arch
   #define Arch "x64"

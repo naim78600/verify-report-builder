@@ -1,6 +1,6 @@
-# Verify Report Builder — Version 10 (ভেরিফাই রিপোর্ট বিল্ডার)
+# Verify Report Builder — Version 12 (ভেরিফাই রিপোর্ট বিল্ডার)
 
-**Version 10.0.6** · Prime Bank PLC · LankaBangla Finance · Barikoi Technologies Limited
+**Version 12.0.0** · Prime Bank PLC · LankaBangla Finance · Barikoi Technologies Limited
 
 Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্যার। Verify ড্যাশবোর্ড থেকে Prime Bank PLC-এর ফাইল সংগ্রহ করে **দৈনিক সাবমিশন ট্র্যাকার** (Complete + Incomplete, Excel + PDF) বানায় এবং **সরাসরি ব্যাংককে ইমেইল** পাঠায়।
 **Verify থেকে শুধু তথ্য পড়ে (GET); কোনো তথ্য বদলায় না।** লগইন পাসওয়ার্ড ও ইমেইলের App Password কোথাও সংরক্ষণ হয় না।
@@ -44,7 +44,7 @@ Chrome → `chrome://extensions` → **Developer mode** চালু → **Load 
 | Mac (Apple Silicon M1–M4) | `VerifyReportBuilder-Mac-AppleSilicon.dmg` | খুলে অ্যাপটি **Applications**-এ টেনে আনুন |
 | Mac (Intel) | `VerifyReportBuilder-Mac-Intel.dmg` | একই |
 
-ইনস্টলার না চাইলে `.zip` (portable) ফাইলও আছে। রিপোজিটরি **প্রাইভেট** — ডাউনলোডের জন্য GitHub-এ সাইন-ইন লাগবে (**Releases** পাতা; Release-এর নাম “Verify Report Builder Version 10 (v10.0.6)”)।
+ইনস্টলার না চাইলে `.zip` (portable) ফাইলও আছে। রিপোজিটরি **প্রাইভেট** — ডাউনলোডের জন্য GitHub-এ সাইন-ইন লাগবে (**Releases** পাতা; Release-এর নাম “Verify Report Builder Version 12 (v12.0.0)”)।
 প্রথমবার খুললে ডিজিটাল স্বাক্ষর নেই বলে সতর্কতা আসে: **Windows:** More info → Run anyway। **Mac:** System Settings → Privacy & Security → *Open Anyway* (অথবা `xattr -dr com.apple.quarantine /Applications/VerifyReportBuilder.app`)।
 
 ## প্রতিদিনের ওয়ার্কফ্লো (দিনে দুইবার)
@@ -171,6 +171,9 @@ Chrome → `chrome://extensions` → **Developer mode** চালু → **Load 
 - **লাইভ ৯০ দিনের ডেটায় ফল:** ১৫২৫ সারির মধ্যে ৫৯৪টিতে Appointment ও ২১৫টিতে নতুন ট্রিপের কারণে SLA restart; SLA Breach ৫১১ থেকে ১০২।
 
 ---
+
+### Version 12.0.0 (১৮ নভেম্বর) — সহজ স্ক্রিন, ৫ বার রিমাইন্ডার + ভয়েস, এক-চাপে উত্তর, Online BS স্লিপ
+উপরের “Version 12-এ নতুন” টেবিল দেখুন। সব নিয়ম ফাংশন ধরে `docs/TECH_MEMO.md`-এর ১৫ নম্বর অংশে।
 
 ### Version 10.0.6 (১৫ নভেম্বর) — A4, BS ট্র্যাকার, অফিস রিসিভ, WhatsApp রিমাইন্ডার, নতুন উইন্ডো (বাংলা / English)
 উপরের “Version 10-এ নতুন” টেবিল দেখুন। সব নিয়ম ফাংশন ধরে `docs/TECH_MEMO.md`-এর ১৪ নম্বর অংশে।

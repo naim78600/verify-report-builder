@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Barikoi Verify Helper",
-  "version": "10.0.5",
+  "version": "12.0.0",
   "description": "Verify Report Builder helper for WhatsApp Web: opens each verifier's chat with the reminder typed in and the voice clip attached. You press Send. Reads replies back to the program on this computer.",
   "permissions": ["storage"],
   "host_permissions": ["http://127.0.0.1:47321/*"],

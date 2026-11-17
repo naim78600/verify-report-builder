@@ -184,20 +184,23 @@ def test_queue_priority_appointments_and_both_clients():
     assert "C" not in [r.verifier for r in q]                                  # appointment on a later day: skipped
     e = q[-1]
     assert sorted(t.file_no for t in e.tasks) == ["F-NORMAL", "L-HOLD"]          # both clients in one message
-    assert q[0].voice == "sla_passed" and q[2].voice == "appointment_today" and e.voice == "general"
+    # v12 (18-11-2026): the voice is made per verifier (no fixed clips); the message names the trip in dashboard words
     msg = R.message(q[0], "1pm")
-    assert "F-SLA" in msg and "SLA পার" in msg and "১ = যাচ্ছি" in msg
+    assert "F-SLA" in msg and "SLA: ❌ পার হয়ে গেছে" in msg and "1 = যাচ্ছি / কাজ চলছে" in msg      # no own number: plain 1/2/3
+    q8 = R.build_queue(_snap(), PHONES, round_key="8am", now=NOW.replace(hour=8))
+    assert [r.verifier for r in q8] == ["D"]                                     # 8 AM: today's appointments only
     q10 = R.build_queue(_snap(), PHONES, round_key="10am", now=NOW.replace(hour=10))
-    assert [r.verifier for r in q10] == ["A", "B", "D", "E"]                      # 10 AM: appointments first, then every on-going / hold trip
+    assert [r.verifier for r in q10] == ["A", "B", "D", "E"]                      # 10 AM: every On Going + Hold trip
     assert "C" not in [r.verifier for r in q10]                                # later-day appointment still skipped
-    assert "আজ অ্যাপয়েন্টমেন্ট" in R.message(q10[2], "10am") and "চলমান" in R.message(q10[3], "10am")
+    assert "Appointment: আজ" in R.message(q10[2], "10am") and "HOLD" in R.message(q10[3], "10am")
 
 
 def test_bs_due_in_reminders_and_number_override():
     rows = BT.bs_rows([_file(9, "F-BS", [_trip(91, remarks="hard copy provided", agent=2, verifier="B")])], "Prime Bank PLC", store={})
-    q = R.build_queue({}, PHONES, bs_pending=rows, round_key="4pm", now=NOW, overrides={"2": "8801999999999"})
-    assert q[0].bs_due == ["F-BS"] and q[0].phone == "8801999999999" and q[0].voice == "bs_submit"
-    assert "ব্যাংক স্টেটমেন্ট অফিসে জমা দিন" in R.message(q[0], "4pm")
+    q = R.build_queue({}, PHONES, bs_pending=rows, round_key="1pm", now=NOW, overrides={"2": "8801999999999"})
+    assert [b.file_no for b in q[0].bs_due] == ["F-BS"] and q[0].phone == "8801999999999"
+    assert "Bank Statement এখনো অফিসে জমা হয়নি" in R.message(q[0], "1pm")
+    assert R.build_queue({}, PHONES, bs_pending=rows, round_key="10am", now=NOW.replace(hour=10)) == []   # BS only at 1 PM and 5:30 PM
 
 
 @pytest.mark.parametrize("text,kind", [
@@ -215,7 +218,8 @@ def test_problem_reason_kept():
 
 def test_catch_up_round_and_day_summary(tmp_store):
     st = {}
-    assert R.due_round(st, datetime(2026, 11, 16, 9, 0)) is None
+    assert R.due_round(st, datetime(2026, 11, 16, 7, 30)) is None
+    assert R.due_round(st, datetime(2026, 11, 16, 9, 0)) == "8am"
     assert R.due_round(st, datetime(2026, 11, 16, 14, 30)) == "1pm"             # PC was off at 1 PM: offered when it opens
     assert R.due_round(st, datetime(2026, 11, 16, 19, 0)) is None               # after 6:15 PM: nothing
     assert R.due_round(st, datetime(2026, 11, 20, 14, 0)) is None               # Friday
@@ -250,7 +254,7 @@ def test_helper_server_local_only_and_flow(tmp_store):
         assert req("/ping", origin="chrome-extension://abc")[0] == 200
         assert req("/round", origin="https://evil.example")[0] == 403              # a web page can never read the list
         code, data = req("/round", origin="chrome-extension://abc")
-        assert code == 200 and len(data["items"]) == 4 and data["items"][0]["voice"] == "sla_passed"
+        assert code == 200 and len(data["items"]) == 4 and data["items"][0]["code"].startswith("VB-")
         assert req("/sent", {"phone": PHONES[1]["phone"]}, "chrome-extension://abc")[1]["ok"]
         assert req("/reply", {"phone": PHONES[2]["phone"], "text": "ji jacchi"}, "chrome-extension://abc")[1]["kind"] == R.GOING
         assert req("/reply", {"phone": "8801000000000", "text": "spam"}, "chrome-extension://abc")[1] == {"ignored": True}
@@ -334,7 +338,7 @@ def test_helper_folder_is_fixed_and_fresh(tmp_path, monkeypatch):
     (d / "content.js").write_text("old", encoding="utf-8")
     assert "lastIsMine" in (HS.helper_folder() / "content.js").read_text(encoding="utf-8")   # an old copy is replaced
     js = (d / "content.js").read_text(encoding="utf-8")
-    assert "wds-ic-read" in js and ".click()" not in js and HS.helper_version() == "10.0.5"
+    assert "wds-ic-read" in js and ".click()" not in js and HS.helper_version() == "12.0.0"
 
 
 def test_verifier_list_shapes_live_server_answers_taskers():
@@ -353,8 +357,8 @@ def test_message_names_every_trip_and_own_text_is_never_a_reply():
     q = R.build_queue(_snap(), PHONES, round_key="1pm", now=NOW)
     msg = R.message(q[0], "1pm")
     t = q[0].tasks[0]
-    assert msg.startswith(f"আসসালামু আলাইকুম, {q[0].verifier}।")
-    assert f"File: {t.file_no} | Trip: {t.trip_id} | {t.trip_type}" in msg            # exactly which trip
+    assert msg.startswith(f"আসসালামু আলাইকুম, {q[0].verifier}\n")
+    assert f"Trip ID {t.trip_id} · {t.type_label}" in msg and f"File No: {t.file_no}" in msg   # exactly which trip
     assert R.is_own_text(msg) and R.is_own_text(msg[:60]) and not R.is_own_text("আসসালামু আলাইকুম ভাই, যাচ্ছি")
     st = {}
     R.record_round(st, "1pm", q, NOW)
@@ -363,7 +367,8 @@ def test_message_names_every_trip_and_own_text_is_never_a_reply():
     R.day_state(st)["replies"].append({"phone": q[0].phone, "text": msg, "kind": R.GOING, "reason": "", "at": "x"})
     assert [r["text"] for r in R.day_state(st)["replies"]] == ["1"]                   # an old wrong entry is dropped
     big = R.Reminder(1, "A", "8801711000001", tasks=[R.Task("o", f"F{i}", i, "House", R.P_NORMAL) for i in range(45)])
-    assert "আরও 15টি ট্রিপ" in R.message(big, "1pm")
+    big_msg = R.message(big, "1pm")
+    assert "আরও ৩৭টি ট্রিপ" in big_msg and "ON GOING — ৪৫টি" in big_msg and big_msg.count("Trip ID") == R.MAX_TRIPS
     js = (Path(__file__).resolve().parents[1] / "src/report_builder/assets/whatsapp_helper/content.js").read_text(encoding="utf-8")
     css = (Path(__file__).resolve().parents[1] / "src/report_builder/assets/whatsapp_helper/panel.css").read_text(encoding="utf-8")
     assert 'conv-msg-' in js and "lastMsgId" in js and "attachmentOpen" in js and ".click()" not in js

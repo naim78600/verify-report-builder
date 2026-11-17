@@ -398,3 +398,41 @@ Reference: `shell.py`, `pages.py`, `gui.ReportsPage`, `i18n.py`.
    in memory while the program is open (the 10 AM … 6:15 PM jobs need it); it is never written to disk.
 2. White side bar: Today, Daily Tracker, Monthly Bill, BS Tracker, Office receive, Reminders, Verifiers, File History, Settings.
    The report page is the v7 page with the same rules. Excel / PDF stay in English in both languages.
+
+## 15. Version 12 (18 November 2026)
+
+**Reminder rounds** (`reminders.ROUNDS`, `build_queue`): 8:00 AM today's active appointments only; 10:00 AM, 1:00 PM and 5:30 PM every
+trip of an On Going / Hold file that is not finished; 3:00 PM appointments still open (with a thank-you line for trips finished today).
+Office days only (not Friday / Saturday), catch-up of the latest missed round until 6:15 PM (`due_round`). Files whose File No
+contains "test" are never reminded. Bank statements to hand in ride along only at 1:00 PM and 5:30 PM (`BS_ROUNDS`): collected and not
+in the office / with a courier / received by the bank; an Online BS is skipped once it is marked handed in at the bank.
+
+**Message** (`message`): dashboard words — `Trip ID · type · status`, File No / Applicant, Appointment, Hold reason / Comment, what to do
+(`TODO`, by `task_kind`: chamber → Chamber report form, rental → Rental report form, LOI, PG sign …), SLA line (`report_due`: an
+appointment → next working day 5:59 PM, else the file SLA). Hold trips first, with the request to update the Hold reason or finish with
+remarks. At most 8 trips are written (`MAX_TRIPS`), the count in the heading is the full count.
+
+**Answers** (`tap_links`, `parse_code`, `record_reply`): each message has one code `VB-MMDD-round-n`; the links are
+`https://wa.me/<own number>?text=<short English words> #<code>-T1..T3 | B1..B3`. T1 going, T2 done, T3 problem, B1 will hand in today,
+B2 handed in, B3 problem. The code ties the answer to the trips of that message (`find_item`). B2 opens a photo ask (`FOLLOW_PHOTO`),
+a problem opens a note ask (`FOLLOW_NOTE`); the next plain text from that number is the note. Asks are in `reminders.json → asks`.
+No own number in Settings → plain "1 = … 2 = … 3 = …" lines instead of links.
+
+**Follow-ups and slip photos** (`helper_server`: `GET /asks`, `POST /ask_sent`, `POST /media`; `content.js`: `openNextAsk`,
+`continueAsk`, `grabPhotos`): the helper opens each follow-up chat with the text typed — the person presses Send. A picture that
+arrives after a photo ask (chat list shows "Photo") is announced in the panel; when the chat is open the helper reads the full-size
+image (blob URL) and posts it. The program saves one copy per BS trip of that answer in
+`<reports folder>/BS Slips/<YYYY-MM-DD>/<Trip ID> - <verifier>/slip HHMMSS.jpg` and marks the BS `bank_submitted`
+(`bs_tracker.set_bank_submitted`). More slips are taken for 6 hours after the first one; the same message is never saved twice.
+The helper never presses Send (`.click()` does not occur in content.js).
+
+**Voice** (`voice.py`, `voice_text`): one clip per message, Microsoft Edge read-aloud voice `bn-BD-PradeepNeural`, rate −12 %, made on
+the PC when the round is prepared (internet needed), kept 3 days in `~/.verify_report_builder/voices`. Trip IDs digit by digit, names
+in Bangla letters (`translit`), "S, L, A" and "এল, ও, আই" letter by letter. If a clip cannot be made the message goes without it.
+
+**BS page** (`pages.BSPage`, `bs_tracker.still_with_verifier`, `by_verifier`): "who still holds a BS" = collected (from the remark),
+trip not cancelled / withdrawn, and not in the office, with a courier, received by the bank or handed in at the bank; grouped by verifier
+(most first), oldest withdrawal first, with the bank and the day the trip was finished (= withdrawn).
+
+**End-to-end check** (`devtools/e2e_v12/run.py`): the real helper extension on a mock WhatsApp page against the real HelperServer —
+round sent (text + voice), tap-link answers, follow-ups, slip photo saved, note saved.

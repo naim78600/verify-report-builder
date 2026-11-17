@@ -126,6 +126,25 @@ def main():
         bsp.refresh()
     if not bsp.rows:
         fail("no BS rows on the BS page")
+    if not bsp.who.get_children():
+        fail("the 'who still holds a BS' table is empty")
+    bsp.toggle_all()
+    shell.update()
+    if not bsp.full.winfo_ismapped() or not bsp.tv.get_children():
+        fail("'see every BS' did not open the full list")
+    shot(shell, "bn_bs_all")
+    bsp.toggle_all()
+    step("Today: one job card + On Going / Hold / SLA passed")
+    shell.show("home")
+    hp = shell.pages["home"]
+    hp.refresh()
+    if not hp.now_what.cget("text") or hp.k_go.value.cget("text") == "–":
+        fail("the Today page did not fill in")
+    shell.show("settings")
+    shell.pages["settings"].own.set("01700000099")
+    shell.pages["settings"].save_own()
+    if shell.settings.get("own_whatsapp") != "8801700000099":
+        fail(f"own WhatsApp number not saved: {shell.settings.get('own_whatsapp')!r}")
     p = out / "bs.xlsx"
     from report_builder import bs_tracker as BT
     BT.write_bs_excel(bsp.rows, p, "smoke")
@@ -142,6 +161,10 @@ def main():
     shot(shell, "bn_receive_added")
     step("reminder round prepared")
     shell.prepare_round("1pm")
+    from report_builder import reminders as R
+    its = R.day_state(R.load_state())["rounds"]["1pm"]["items"]
+    if its and "wa.me/8801700000099" not in its[0]["text"]:
+        fail("the answer links (own number) are missing in the reminder")
     shell.show("reminders")
     shot(shell, "bn_reminders_round")
     rp = shell.pages["reminders"]

@@ -10,10 +10,10 @@ import tkinter as tk
 import tkinter.font as tkfont
 from datetime import date, datetime
 
-P = {   # v10 look: white side bar, soft grey page, indigo accent (as the approved UI design)
-    "side": "#FFFFFF", "side_hi": "#EEF2FF", "side_tx": "#374151", "side_mute": "#6B7280", "side_on": "#2F4AC0",
-    "bg": "#F5F7FB", "card": "#FFFFFF", "line": "#E6E9F2", "text": "#111827", "mute": "#6B7280",
-    "accent": "#2F4AC0", "accent_hi": "#1E3191", "accent_soft": "#EEF2FF", "navy": "#1F3A5F", "ink": "#111827",
+P = {   # v12 look: Barikoi colours (barikoi.com: green #16A249, light green #D1FAE2, slate page), white side bar
+    "side": "#FFFFFF", "side_hi": "#D1FAE2", "side_tx": "#334155", "side_mute": "#64748B", "side_on": "#0F7A36",
+    "bg": "#F8FAFC", "card": "#FFFFFF", "line": "#E2E8F0", "text": "#020817", "mute": "#64748B",
+    "accent": "#16A249", "accent_hi": "#0F7A36", "accent_soft": "#D1FAE2", "navy": "#1F3A5F", "ink": "#020817",
     "ok": "#15803D", "ok_bg": "#DCFCE7", "warn": "#B45309", "warn_bg": "#FEF3C7", "bad": "#B91C1C", "bad_bg": "#FEE2E2",
     "off": "#E5E7EB", "off_tx": "#9CA3AF", "wa": "#16A34A",
 }
@@ -47,6 +47,7 @@ class Button(tk.Label):
         "secondary": (P["text"], "#FFFFFF", "#F3F4F6"),
         "ghost": (P["side_tx"], P["side"], P["side_hi"]),
         "danger": (P["bad"], P["bad_bg"], "#FECACA"),
+        "soft": (P["accent_hi"], P["accent_soft"], "#BBF7D0"),
     }
 
     def __init__(self, parent, text, command, kind="secondary", font=None, padx=16, pady=8, **kw):

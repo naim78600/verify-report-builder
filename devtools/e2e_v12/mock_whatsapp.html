@@ -1,0 +1,88 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>WhatsApp (mock)</title>
+<style>
+body{margin:0;font:14px sans-serif;display:flex;height:100vh}
+#pane-side{width:300px;border-right:1px solid #ddd;overflow:auto}
+#pane-side [role=listitem]{padding:8px;border-bottom:1px solid #eee;cursor:pointer}
+#main{flex:1;display:flex;flex-direction:column}
+#msgs{flex:1;overflow:auto;padding:8px}
+.in{background:#fff;border:1px solid #ddd;margin:4px;padding:6px;max-width:60%}
+.out{background:#d9fdd3;margin:4px 4px 4px auto;padding:6px;max-width:60%}
+footer{display:flex;gap:6px;padding:6px;border-top:1px solid #ddd}
+footer div[contenteditable]{flex:1;border:1px solid #ccc;min-height:22px;padding:4px;white-space:pre-wrap}
+#drawer{position:fixed;inset:40px 40px auto auto;background:#fff;border:2px solid green;padding:10px}
+</style></head>
+<body>
+<div id="pane-side"></div>
+<div id="main"></div>
+<script>
+/* A small stand-in for web.whatsapp.com with the same page parts the helper reads (checked on the live page, Nov 2026):
+   chat list rows with span[title], [data-testid="last-msg-status"] ticks, #main header title, footer contenteditable composer,
+   messages as [data-testid="conv-msg-<id>"] with <svg><title>wds-ic-read</title> on our own ones, blob: images, and the
+   attachment drawer ("Remove attachment").  Chats live in localStorage so /send?phone=&text= page loads keep the history. */
+const NAMES = JSON.parse(localStorage.getItem("mock_names") || "{}");
+const DB = () => JSON.parse(localStorage.getItem("mock_chats") || "{}");
+const SAVE = (d) => localStorage.setItem("mock_chats", JSON.stringify(d));
+let open = null, nextId = Number(localStorage.getItem("mock_id") || 1);
+const newId = () => { nextId++; localStorage.setItem("mock_id", nextId); return "m" + nextId; };
+const blobs = {};
+function imgBlobUrl(id) {
+  if (blobs[id]) return blobs[id];
+  const c = document.createElement("canvas"); c.width = 640; c.height = 480;
+  const g = c.getContext("2d");
+  for (let i = 0; i < 400; i++) { g.fillStyle = `hsl(${(i * 37) % 360},70%,50%)`; g.fillRect((i * 53) % 640, (i * 29) % 480, 40, 30); }
+  g.fillStyle = "#000"; g.font = "40px sans-serif"; g.fillText("BANK DEPOSIT SLIP " + id, 40, 240);
+  const url = c.toDataURL("image/jpeg", 0.9);
+  const bin = atob(url.split(",")[1]); const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  blobs[id] = URL.createObjectURL(new Blob([arr], { type: "image/jpeg" }));
+  return blobs[id];
+}
+const tick = '<span data-testid="last-msg-status"><svg><title>wds-ic-read</title></svg></span>';
+function render() {
+  const d = DB();
+  const side = document.getElementById("pane-side");
+  side.innerHTML = Object.entries(d).map(([ph, c]) => {
+    const last = c.msgs[c.msgs.length - 1] || {};
+    const prev = last.img ? "Photo" : (last.text || "");
+    return `<div role="listitem" data-phone="${ph}"><span title="${c.name}">${c.name}</span><div>${last.out ? tick : ""}` +
+      (last.img && !last.out ? '<span data-icon="status-image"></span>' : "") + `<span title="${prev.replace(/"/g, "&quot;")}">${prev}</span></div></div>`;
+  }).join("");
+  side.querySelectorAll("[role=listitem]").forEach((r) => r.onclick = () => { open = r.dataset.phone; history.pushState({}, "", "/"); render(); });
+  const main = document.getElementById("main");
+  if (!open || !d[open]) { main.innerHTML = "<p>Choose a chat</p>"; return; }
+  const keep = main.querySelector("footer div[contenteditable]");
+  const draft = keep ? keep.textContent : (window.__draft || "");
+  main.innerHTML = `<header><span dir="auto" title="${d[open].name}">${d[open].name}</span></header><div id="msgs">` +
+    d[open].msgs.map((m) => `<div data-testid="conv-msg-${m.id}" class="${m.out ? "out" : "in"}">` +
+      (m.img ? `<img src="${imgBlobUrl(m.id)}" width="160">` : `<span data-testid="selectable-text">${m.text}</span>`) +
+      (m.out ? "<svg><title>wds-ic-read</title></svg>" : "") + "</div>").join("") +
+    `</div><footer><div contenteditable="true" data-testid="conversation-compose-box-input"></div><button id="mock-send">Send</button></footer>`;
+  const comp = main.querySelector("footer div[contenteditable]");
+  comp.textContent = draft; window.__draft = "";
+  comp.addEventListener("paste", (e) => {
+    const f = e.clipboardData && e.clipboardData.files && e.clipboardData.files[0];
+    if (!f) return;
+    e.preventDefault();
+    window.__attached = f;
+    const dr = document.createElement("div"); dr.id = "drawer";
+    dr.innerHTML = `<span>${f.name} (${f.type}, ${f.size} bytes)</span> <button aria-label="Remove attachment">x</button> <button id="mock-send-attach" aria-label="Send 1 selected">Send</button>`;
+    document.body.appendChild(dr);
+    dr.querySelector("#mock-send-attach").onclick = () => { window.__lastAttach = { name: f.name, type: f.type, size: f.size }; dr.remove(); addMsg(open, { out: true, text: "🎤 voice" }); };
+  });
+  main.querySelector("#mock-send").onclick = () => { const t = comp.textContent.trim(); if (!t) return; comp.textContent = ""; addMsg(open, { out: true, text: t }); };
+}
+function addMsg(ph, m) {
+  const d = DB(); d[ph] = d[ph] || { name: NAMES[ph] || ("+" + ph), msgs: [] };
+  d[ph].msgs.push({ id: newId(), ...m }); SAVE(d); render();
+}
+window.mockIncoming = (ph, text, img) => addMsg(ph, { out: false, text, img: !!img });
+window.mockOpen = (ph) => { open = ph; render(); };
+const u = new URL(location.href);
+if (u.pathname.startsWith("/send")) {
+  const ph = u.searchParams.get("phone");
+  const d = DB(); d[ph] = d[ph] || { name: NAMES[ph] || ("+" + ph), msgs: [] }; SAVE(d);
+  open = ph; window.__draft = u.searchParams.get("text") || "";
+}
+render();
+</script></body></html>

@@ -4,7 +4,7 @@ from __future__ import annotations
 import sys
 import threading
 import tkinter as tk
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -91,144 +91,219 @@ class Page(tk.Frame):
 
 # ============================================================================================ Today
 class HomePage(Page):
-    title_bn, title_en = "আজকের কাজ", "Today"
+    """V12 'আজ' (Naim, 18-11-2026: very simple): ONE card with the thing to do now + one green button, three numbers in the
+    dashboard's own words (On Going, Hold, SLA passed), and the rest of today's schedule.  Test files are never shown."""
+    title_bn, title_en = "আজ", "Today"
 
     def __init__(self, master, shell):
         super().__init__(master, shell)
         self.action(L("↻  ড্যাশবোর্ড থেকে আনুন", "↻  Read the dashboard"), lambda: shell.refresh_data("manual"))
-        self.action(L("দৈনিক ট্র্যাকার বানান", "Make the daily tracker"), lambda: shell.show("tracker"), kind="dark")
-        self.sched = self.card(self.body, fill="x")
-        tk.Label(self.sched, text=L("আজকের সময়সূচি", "Today's schedule"), bg=P["card"], fg=P["text"], font=self.f.h3).pack(anchor="w", padx=18, pady=(14, 8))
-        self.slots = tk.Frame(self.sched, bg=P["card"])
-        self.slots.pack(fill="x", padx=18, pady=(0, 16))
+        hint(self.head, self.f, L("ড্যাশবোর্ডের নতুন তথ্য আনে (নিজেও সময়মতো আনে)", "Brings the newest dashboard data (also done by itself)"),
+             side="right")
+        # ---- the one thing to do now
+        self.now = tk.Frame(self.body, bg=P["card"], highlightbackground=P["accent"], highlightthickness=2)
+        self.now.pack(fill="x")
+        left = tk.Frame(self.now, bg=P["card"])
+        left.pack(side="left", fill="x", expand=True, padx=24, pady=20)
+        self.now_when = tk.Label(left, text="", bg=P["card"], fg=P["accent"], font=self.f.h3)
+        self.now_when.pack(anchor="w")
+        self.now_what = tk.Label(left, text="", bg=P["card"], fg=P["text"], font=(self.f.family, 18, "bold"))
+        self.now_what.pack(anchor="w")
+        self.now_how = tk.Label(left, text="", bg=P["card"], fg=P["mute"], font=self.f.small, wraplength=560, justify="left")
+        self.now_how.pack(anchor="w", pady=(2, 0))
+        self.now_btn = Button(self.now, L("শুরু করুন", "Start"), self.do_now, kind="primary", font=self.f.big, padx=28, pady=14)
+        self.now_btn.pack(side="right", padx=24)
+        # ---- three numbers, dashboard words
         grid = tk.Frame(self.body, bg=P["bg"])
-        grid.pack(fill="x", pady=14)
-        self.k_open = self.kpi(grid, L("চলমান ফাইল", "Open files"), hint="ON GOING + HOLD")
-        self.k_sla = self.kpi(grid, L("SLA পার / আজ শেষ", "SLA passed / due today"), color=P["bad"])
-        self.k_bs = self.kpi(grid, L("বাকি BS", "Pending BS"), color=P["warn"])
-        self.k_rep = self.kpi(grid, L("WhatsApp উত্তর", "WhatsApp replies"), color=P["ok"])
-        for i, k in enumerate((self.k_open, self.k_sla, self.k_bs, self.k_rep)):
+        grid.pack(fill="x", pady=16)
+        self.k_go = self.kpi(grid, "On Going", hint=L("কাজ চলছে", "work running"))
+        self.k_hold = self.kpi(grid, "Hold", color=P["warn"], hint=L("কারণ লিখে আটকে আছে", "stopped with a reason"))
+        self.k_sla = self.kpi(grid, L("SLA পার হয়েছে", "SLA passed"), color=P["bad"], hint=L("এদের reminder আগে যায়", "reminded first"))
+        for i, k in enumerate((self.k_go, self.k_hold, self.k_sla)):
             k.grid(row=0, column=i, sticky="nsew", padx=(0 if i == 0 else 12, 0))
             grid.grid_columnconfigure(i, weight=1, uniform="k")
-        att = self.card(self.body, fill="both", expand=True)
-        tk.Label(att, text=L("নজর দিতে হবে", "Needs attention"), bg=P["card"], fg=P["text"], font=self.f.h3).pack(anchor="w", padx=18, pady=(14, 8))
-        box, self.tv = self.table(att, [("st", L("অবস্থা", "Status"), 120, "w"), ("file", "File No", 190, "w"),
-                                        ("what", L("কী বাকি", "What is left"), 300, "w"), ("ver", L("ভেরিফায়ার", "Verifier"), 160, "w"),
-                                        ("rep", L("শেষ উত্তর", "Last reply"), 260, "w")], height=9)
-        box.pack(fill="both", expand=True, padx=1, pady=(0, 1))
+        # ---- today's schedule
+        tk.Label(self.body, text=L("আজকের সময়সূচি (সফটওয়্যার নিজে চালায়)", "Today's schedule (the software runs it)"), bg=P["bg"],
+                 fg=P["text"], font=self.f.h3).pack(anchor="w", pady=(4, 6))
+        self.sched = tk.Frame(self.body, bg=P["bg"])
+        self.sched.pack(fill="x", anchor="w")
+        self._now_cmd = None
 
     def on_data(self):
         self.refresh()
 
-    def refresh(self):
-        now = datetime.now()
-        self.sub.config(text=f"{now:%A, %d %B %Y}")
-        for w in self.slots.winfo_children():
-            w.destroy()
+    def _schedule(self) -> list:
         st = R.load_state()
         ds = R.day_state(st)
         checks = self.shell.settings.get("bs_checks", {}).get(date.today().isoformat(), [])
-        slots = [("10:00", "10am", L("রিমাইন্ডার রাউন্ড (সব চলমান/হোল্ড)", "Reminder round (all on-going / hold)")),
-                 ("12:00", "12pm", L("১ম ফেজ ট্র্যাকার + BS চেক", "1st phase tracker + BS check")),
-                 ("01:00", "1pm", L("রিমাইন্ডার রাউন্ড", "Reminder round")),
-                 ("04:00", "4pm", L("রিমাইন্ডার রাউন্ড", "Reminder round")),
-                 ("06:15", "615pm", L("২য় ফেজ ট্র্যাকার + BS চেক", "2nd phase tracker + BS check"))]
-        for i, (clock, key, text) in enumerate(slots):
-            done = key in ds["rounds"] or key in checks
-            col = tk.Frame(self.slots, bg=P["card"])
-            col.grid(row=0, column=i, sticky="nsew")
-            self.slots.grid_columnconfigure(i, weight=1, uniform="s")
-            dot = tk.Canvas(col, width=18, height=18, bg=P["card"], highlightthickness=0)
-            dot.create_oval(2, 2, 16, 16, fill=P["ok"] if done else "#E5E7EB", outline="")
-            dot.pack(anchor="w")
-            tk.Label(col, text=clock, bg=P["card"], fg=P["text"], font=self.f.h3).pack(anchor="w", pady=(4, 0))
-            tk.Label(col, text=("✓ " if done else "") + text, bg=P["card"], fg=P["ok"] if done else P["mute"], font=self.f.tiny,
-                     wraplength=170, justify="left").pack(anchor="w")
+        out = []
+        for key, t in R.ROUNDS:
+            what = R.ROUND_WHAT[R.ROUND_KIND[key]]
+            out.append((t, key, L(f"Reminder: {what[0]}", f"Reminder: {what[1]}"), key in ds["rounds"], "round"))
+        out += [(time(12, 0), "12pm", L("১ম ফেজ ট্র্যাকার + BS হিসাব", "1st phase tracker + BS check"), "12pm" in checks, "tracker"),
+                (time(18, 15), "615pm", L("২য় ফেজ ট্র্যাকার + BS হিসাব", "2nd phase tracker + BS check"), "615pm" in checks, "tracker")]
+        return sorted(out, key=lambda x: x[0])
+
+    def refresh(self):
+        now = datetime.now()
+        self.sub.config(text=f"{now:%A, %d %B %Y}" + L(" · সবুজ বাটনটাই এখনকার কাজ", " · the green button is the job now"))
+        sched = self._schedule()
+        for w in self.sched.winfo_children():
+            w.destroy()
+        for t, key, text, done, _k in sched:
+            row = tk.Frame(self.sched, bg=P["bg"])
+            row.pack(fill="x", pady=2)
+            tk.Label(row, text=("✓ " if done else "   ") + t.strftime("%I:%M %p").lstrip("0"), bg=P["bg"],
+                     fg=P["ok"] if done else P["side_tx"], font=self.f.btn, width=11, anchor="w").pack(side="left")
+            tk.Label(row, text=text, bg=P["bg"], fg=P["mute"] if done else P["text"], font=self.f.small, anchor="w").pack(side="left")
+        # the job now: the latest passed slot that is not done, else the next one
+        st = R.load_state()
+        ds = R.day_state(st)
+        rk = R.due_round(st, now)
+        sent_all = True
+        if ds["rounds"]:
+            last_rk = sorted(ds["rounds"], key=lambda k: ds["rounds"][k]["prepared"])[-1]
+            items = ds["rounds"][last_rk]["items"]
+            sent_all = all(i.get("sent") for i in items)
+        if rk or (ds["rounds"] and not sent_all):
+            key = rk or last_rk
+            n = len(ds["rounds"][key]["items"]) if key in ds["rounds"] else 0
+            self.now_when.config(text=L(f"এখন করার কাজ · {R.ROUND_LABEL[key]}", f"The job now · {R.ROUND_LABEL[key]}"))
+            self.now_what.config(text=L(f"Reminder পাঠান ({num(n)} জন)" if n else "Reminder তৈরি করে পাঠান",
+                                        f"Send the reminder ({n} people)" if n else "Prepare and send the reminder"))
+            self.now_how.config(text=L("চাপলে WhatsApp-এ প্রথম চ্যাট খুলবে। মেসেজ ও ভয়েস তৈরি থাকবে, আপনি শুধু Send চাপবেন।",
+                                       "WhatsApp opens the first chat with the message and the voice ready; you only press Send."))
+            self._now_cmd = lambda: self.shell.show("reminders")
+        else:
+            nxt = next(((t, text) for t, key, text, done, _k in sched if not done and t > now.time()), None)
+            self.now_when.config(text=L("এখন কিছু বাকি নেই", "Nothing waiting now"))
+            self.now_what.config(text=L("দৈনিক ট্র্যাকার বানান", "Make the daily tracker"))
+            self.now_how.config(text=(L(f"পরের কাজ {nxt[0]:%I:%M %p}-এ: {nxt[1]}। ", f"Next at {nxt[0]:%I:%M %p}: {nxt[1]}. ") if nxt else "")
+                                + L("চাইলে এখনই ট্র্যাকার Excel + PDF বানাতে পারেন।", "You can make the tracker Excel + PDF now."))
+            self._now_cmd = lambda: self.shell.show("tracker")
         files = self.shell.data["files"]
         if not files:
             return
-        open_files = [f for fl in files.values() for f in fl if f.get("status_code") in (2, 3)]
+        live = [f for fl in files.values() for f in fl if "test" not in (f.get("file_no") or "").lower()]
+        go = [f for f in live if f.get("status_code") == 2]
+        hold = [f for f in live if f.get("status_code") == 3]
         today = date.today()
-        sla_pass = [f for f in open_files if f.get("sla") and f["sla"].date() < today]
-        sla_today = [f for f in open_files if f.get("sla") and f["sla"].date() == today]
-        self.k_open.value.config(text=num(len(open_files)))
-        self.k_sla.value.config(text=f"{num(len(sla_pass))} / {num(len(sla_today))}")
-        self.k_sla.hint.config(text=L("এদের রিমাইন্ডার আগে যায়", "these are reminded first"))
-        pend = BT.pending_bs(self.shell.bs_all())
-        off = sum(1 for r in pend if r.bs_type == "Offline")
-        self.k_bs.value.config(text=num(len(pend)))
-        self.k_bs.hint.config(text=L(f"অফলাইন {num(off)} · অনলাইন {num(len(pend) - off)}", f"offline {off} · online {len(pend) - off}"))
-        sm = R.day_summary(st)
-        self.k_rep.value.config(text=num(sm["replied"]))
-        self.k_rep.hint.config(text=L(f"সমস্যা {num(sm['problems'])} · উত্তর আসেনি {num(sm['no_reply'])}",
-                                      f"problems {sm['problems']} · no reply {sm['no_reply']}"))
-        last = {r["phone"]: r for r in ds["replies"]}
-        phones = self.shell.data["phones"]
-        self.tv.delete(*self.tv.get_children())
-        rows = []
-        for f in sla_pass + sla_today:
-            for c in f.get("concerns") or []:
-                for t in c.get("trips") or []:
-                    if t.get("status_code") in R.OPEN_TRIP:
-                        ph = (phones.get(t.get("agent_id")) or {}).get("phone", "")
-                        rp = last.get(ph)
-                        rows.append(((L("SLA পার", "SLA passed"), "bad") if f in sla_pass else (L("আজ শেষ", "Due today"), "warn"),
-                                     f["file_no"], f"{t.get('type', '')} · {t.get('status', '')}", t.get("verifier", ""),
-                                     (f"{R.REPLY_TEXT.get(rp['kind'], '')} {('· ' + rp['reason']) if rp.get('reason') else ''}" if rp else
-                                      L("উত্তর আসেনি", "no reply"))))
-        for (st_txt, tag), fno, what, ver, rep in rows[:60]:
-            self.tv.insert("", "end", values=(st_txt, fno, what, ver, rep), tags=(tag,))
+        sla_pass = [f for f in go + hold if f.get("sla") and f["sla"].date() < today]
+        self.k_go.value.config(text=num(len(go)))
+        self.k_hold.value.config(text=num(len(hold)))
+        self.k_sla.value.config(text=num(len(sla_pass)))
+
+    def do_now(self):
+        if self._now_cmd:
+            self._now_cmd()
 
 
 # ============================================================================================ BS Tracker
+def hint(parent, f, text, side=None, bg=None, wrap=260):
+    """The small grey line that says what a button does (Naim: an instruction under every button)."""
+    lab = tk.Label(parent, text=text, bg=bg or parent.cget("bg"), fg=P["mute"], font=f.tiny, wraplength=wrap, justify="left")
+    if side:
+        lab.pack(side=side, padx=(8, 0))
+    else:
+        lab.pack(anchor="w")
+    return lab
+
+
 class BSPage(Page):
-    title_bn, title_en = "BS ট্র্যাকার", "BS Tracker"
+    """V12 BS (Naim, 18-11-2026): press the button for what happened - three big cards; the Online BS line (slip photos from
+    WhatsApp, saved by date / trip / verifier); 'who still holds how many BS' with the bank and the day it was withdrawn."""
+    title_bn, title_en = "Bank Statement", "Bank Statement"
 
     def __init__(self, master, shell):
         super().__init__(master, shell)
-        self.action(L("Signed list আপলোড", "Upload signed list"), self.upload_signed)
-        self.action(L("কুরিয়ার", "Courier"), self.courier)
-        self.action(L("অফিস রিসিভ", "Office receive"), lambda: shell.show("receive"))
-        self.action(L("মাসিক Excel", "Monthly Excel"), self.monthly_excel, kind="dark")
+        self.action(L("মাসের Excel", "Monthly Excel"), self.monthly_excel)
         bar = tk.Frame(self.body, bg=P["bg"])
-        bar.pack(fill="x", pady=(0, 12))
+        bar.pack(fill="x", pady=(0, 10))
         today = date.today()
         self.month = tk.StringVar(value=f"{today:%Y-%m}")
         months = [f"{(today.year * 12 + today.month - 1 - i) // 12}-{(today.year * 12 + today.month - 1 - i) % 12 + 1:02d}"
                   for i in range(0, 12)]                          # every month, none skipped
-        tk.Label(bar, text=L("মাস (trip create)", "Month (trip created)"), bg=P["bg"], fg=P["mute"], font=self.f.small).pack(side="left")
+        tk.Label(bar, text=L("মাস", "Month"), bg=P["bg"], fg=P["mute"], font=self.f.small).pack(side="left")
         cb = ttk.Combobox(bar, textvariable=self.month, values=months, width=9, state="readonly")
         cb.pack(side="left", padx=(6, 16))
         cb.bind("<<ComboboxSelected>>", lambda _e: self.month_changed())
         self.org = tk.StringVar(value="all")
         Segmented(bar, self.f, [("all", L("দুই ক্লায়েন্ট", "Both clients")), ("Prime Bank PLC", "Prime Bank"),
                                 ("LankaBangla Finance Limited", "LankaBangla")], self.org, self.refresh).pack(side="left")
-        self.only = tk.StringVar(value="all")
-        Segmented(bar, self.f, [("all", L("সব", "All")), ("pending", L("বাকি", "Pending")), ("no", L("তোলা হয়নি", "Not collected"))],
-                  self.only, self.refresh).pack(side="left", padx=12)
-        self.funnel = self.card(self.body, fill="x")
-        self.fcells = []
-        for i, lab in enumerate((L("১ · trip create", "1 · trip created"), L("২ · ব্যাংক থেকে তোলা", "2 · collected"),
-                                 L("৩ · অফিসে জমা", "3 · in the office"), L("৪ · কুরিয়ার", "4 · courier"),
-                                 L("৫ · ব্যাংক রিসিভ", "5 · bank received"))):
-            c = tk.Frame(self.funnel, bg=P["card"])
-            c.grid(row=0, column=i, sticky="nsew", padx=16, pady=12)
-            self.funnel.grid_columnconfigure(i, weight=1, uniform="f")
-            tk.Label(c, text=lab, bg=P["card"], fg=P["mute"], font=self.f.tiny).pack(anchor="w")
-            v = tk.Label(c, text="–", bg=P["card"], fg=P["text"], font=(self.f.family, 20, "bold"))
-            v.pack(anchor="w")
-            s = tk.Label(c, text="", bg=P["card"], fg=P["mute"], font=self.f.tiny)
-            s.pack(anchor="w")
-            self.fcells.append((v, s))
-        tbl = self.card(self.body, fill="both", expand=True, pady=(12, 0))
-        box, self.tv = self.table(tbl, [("created", L("Created", "Created"), 110, "w"), ("trip", "Trip ID", 70, "w"),
-                                        ("file", "File No", 160, "w"), ("bank", L("ব্যাংক", "Bank"), 150, "w"),
-                                        ("type", L("ধরন", "Type"), 64, "w"), ("ver", L("ভেরিফায়ার", "Verifier"), 110, "w"),
-                                        ("out", L("রিমার্ক থেকে ফলাফল", "Outcome (from remarks)"), 190, "w"),
-                                        ("now", L("এখন কোথায়", "Now"), 120, "w")], height=14)
+        hint(bar, self.f, L("যা ঘটল, সেই বাটন চাপুন। বাকি হিসাব সফটওয়্যার রাখে।", "Press the button for what happened; the software keeps the rest."),
+             side="left", wrap=360)
+        # ---- three cards
+        cards = tk.Frame(self.body, bg=P["bg"])
+        cards.pack(fill="x")
+        self.cards = []
+        for i, (title, how, btn, cmd, kind) in enumerate((
+                (L("Verifier BS অফিসে দিল", "Verifier brought the BS"), L("Offline BS হাতে পেলে চাপুন, Trip ID লিখে টিক দিন",
+                 "When an offline BS reaches you, press and tick its Trip ID"), L("অফিসে পেলাম", "Received in office"),
+                 lambda: shell.show("receive"), "primary"),
+                (L("ব্যাংকে পাঠালাম", "Sent to the bank"), L("অফিসে থাকা BS-এর কুরিয়ারের নাম, স্লিপ নম্বর আর স্লিপের ছবি দিন",
+                 "Courier name, slip number and slip picture of the BS in the office"), L("কুরিয়ার দিন", "Add courier"), self.courier, "soft"),
+                (L("ব্যাংক বুঝে পেল", "The bank received them"), L("ব্যাংকের সই করা তালিকার ছবি / PDF / Excel দিন, নিজে মিলিয়ে নেবে",
+                 "Give the bank's signed list (photo / PDF / Excel); it is matched by itself"), L("তালিকা দিন", "Give the list"),
+                 self.upload_signed, "soft"))):
+            c = tk.Frame(cards, bg=P["card"], highlightbackground=P["accent"] if i == 0 else P["line"], highlightthickness=2 if i == 0 else 1)
+            c.grid(row=0, column=i, sticky="nsew", padx=(0 if i == 0 else 12, 0))
+            cards.grid_columnconfigure(i, weight=1, uniform="c")
+            v = tk.Label(c, text="–", bg=P["card"], fg=P["accent"] if i == 0 else P["text"], font=(self.f.family, 24, "bold"))
+            v.pack(anchor="w", padx=18, pady=(14, 0))
+            tk.Label(c, text=title, bg=P["card"], fg=P["text"], font=self.f.h3).pack(anchor="w", padx=18)
+            tk.Label(c, text=how, bg=P["card"], fg=P["mute"], font=self.f.tiny, wraplength=240, justify="left").pack(anchor="w", padx=18, pady=(2, 8))
+            Button(c, btn, cmd, kind=kind, font=self.f.btn, padx=14, pady=10).pack(fill="x", padx=18, pady=(0, 16))
+            self.cards.append(v)
+        # ---- online BS line
+        on = self.card(self.body, fill="x", pady=(12, 0))
+        left = tk.Frame(on, bg=P["card"])
+        left.pack(side="left", fill="x", expand=True, padx=18, pady=12)
+        tk.Label(left, text=L("Online BS: verifier নিজে ব্যাংকে জমা দেয়", "Online BS: the verifier hands it in at the bank"),
+                 bg=P["card"], fg=P["text"], font=self.f.h3).pack(anchor="w")
+        tk.Label(left, text=L("WhatsApp-এ “জমা দিয়েছি” + স্লিপের ছবি পাঠালে নিজে জমা হয় (তারিখ › Trip ID › verifier ফোল্ডারে)",
+                              "“Handed in” + the slip photo on WhatsApp is saved by itself (date › Trip ID › verifier folders)"),
+                 bg=P["card"], fg=P["mute"], font=self.f.tiny).pack(anchor="w")
+        self.online = tk.Label(on, text="", bg=P["card"], fg=P["text"], font=self.f.body)
+        self.online.pack(side="left", padx=12)
+        Button(on, L("ফোল্ডার খুলুন", "Open the folder"), self.open_slips, font=self.f.small, padx=12, pady=8).pack(side="right", padx=18)
+        # ---- who holds how many BS
+        head = tk.Frame(self.body, bg=P["bg"])
+        head.pack(fill="x", pady=(16, 6))
+        tk.Label(head, text=L("কার কাছে BS আছে (অফিসে আসেনি)", "Who still holds a BS (not in the office)"), bg=P["bg"], fg=P["text"],
+                 font=self.f.h3).pack(side="left")
+        self.all_btn = Button(head, L("সব BS দেখুন", "See every BS"), self.toggle_all, font=self.f.small, padx=10, pady=5)
+        self.all_btn.pack(side="right")
+        tbl = self.card(self.body, fill="both", expand=True)
+        box, self.who = self.table(tbl, [("ver", L("ভেরিফায়ার", "Verifier"), 170, "w"), ("trip", "Trip ID", 80, "center"),
+                                         ("file", "File No", 170, "w"), ("bank", L("ব্যাংক", "Bank"), 200, "w"),
+                                         ("type", L("ধরন", "Type"), 70, "center"),
+                                         ("wd", L("কবে তোলা (withdraw)", "Withdrawn on"), 120, "center"),
+                                         ("days", L("কত দিন", "Days"), 60, "center")], height=10)
         box.pack(fill="both", expand=True, padx=1, pady=1)
+        self.full = self.card(self.body, fill="both", expand=True, pady=(12, 0))
+        fbox, self.tv = self.table(self.full, [("created", L("Created", "Created"), 110, "w"), ("trip", "Trip ID", 70, "w"),
+                                               ("file", "File No", 160, "w"), ("bank", L("ব্যাংক", "Bank"), 150, "w"),
+                                               ("type", L("ধরন", "Type"), 64, "w"), ("ver", L("ভেরিফায়ার", "Verifier"), 110, "w"),
+                                               ("out", L("রিমার্ক থেকে ফলাফল", "Outcome (from remarks)"), 190, "w"),
+                                               ("now", L("এখন কোথায়", "Now"), 120, "w")], height=10)
+        fbox.pack(fill="both", expand=True, padx=1, pady=1)
+        self.full.pack_forget()
+        self.show_all = False
         self.rows: list = []
         self.month_rows: dict = {}
+
+    def toggle_all(self):
+        self.show_all = not self.show_all
+        self.all_btn.config(text=L("লুকান", "Hide") if self.show_all else L("সব BS দেখুন", "See every BS"))
+        if self.show_all:
+            self.full.pack(fill="both", expand=True, pady=(12, 0))
+        else:
+            self.full.pack_forget()
+
+    def open_slips(self):
+        p = self.shell.helper.slips_dir or config.default_output_dir() / "BS Slips"
+        p.mkdir(parents=True, exist_ok=True)
+        open_path(p)
 
     def on_data(self):
         self.month_rows.clear()
@@ -274,38 +349,45 @@ class BSPage(Page):
             for r in rows:                                          # the person's entries may have changed since
                 s = store.get(str(r.trip_id), {})
                 r.office, r.courier, r.bank_received = s.get("office") or {}, s.get("courier") or {}, s.get("bank_received") or {}
+                r.bank_submitted = s.get("bank_submitted") or {}
         else:
             rows = [r for r in self.shell.bs_all() if r.created and (r.created.year, r.created.month) == (y, m)]
         if self.org.get() != "all":
             rows = [r for r in rows if r.org == self.org.get()]
-        return rows
+        return [r for r in rows if "test" not in (r.file_no or "").lower()]
 
     def refresh(self):
         rows = self.current_rows()
         self.rows = rows
-        got = [r for r in rows if r.collected]
-        no = [r for r in rows if r.outcome in bs_rules.NOT_COLLECTED_SET]
-        office = [r for r in rows if r.office]
-        cour = [r for r in rows if r.courier.get("no")]
-        bank = [r for r in rows if r.bank_received]
-        vals = [(len(rows), L(f"অফলাইন {num(sum(1 for r in rows if r.bs_type == 'Offline'))}", f"offline {sum(1 for r in rows if r.bs_type == 'Offline')}")),
-                (len(got), L(f"তোলা হয়নি {num(len(no))}", f"not collected {len(no)}")),
-                (len(office), L(f"বাকি {num(max(0, len(got) - len(office)))}", f"pending {max(0, len(got) - len(office))}")),
-                (len(cour), ""), (len(bank), "")]
-        for (v, s), (n, hint) in zip(self.fcells, vals):
+        held = BT.still_with_verifier(rows)
+        office = [r for r in rows if r.office and not r.courier.get("no") and not r.bank_received]
+        cour = [r for r in rows if r.courier.get("no") and not r.bank_received]
+        for v, n in zip(self.cards, (len(held), len(office), len(cour))):
             v.config(text=num(n))
-            s.config(text=hint)
+        online = [r for r in rows if r.bs_type == "Online" and r.collected]
+        sub = sum(1 for r in online if r.bank_submitted)
+        self.online.config(text=L(f"{num(sub)} জমা · {num(len(online) - sub)} বাকি", f"{sub} handed in · {len(online) - sub} left"))
         when = self.shell.data["at"]
-        self.sub.config(text=L(f"{self.month.get()} · ড্যাশবোর্ড {when:%I:%M %p}" if when else self.month.get(),
-                               f"{self.month.get()} · dashboard {when:%I:%M %p}" if when else self.month.get()))
-        show = rows
-        if self.only.get() == "pending":
-            show = BT.pending_bs(rows)
-        elif self.only.get() == "no":
-            show = no
+        y, m = map(int, self.month.get().split("-"))
+        self.sub.config(text=f"{date(y, m, 1):%B %Y}" + (L(f" · ড্যাশবোর্ড {when:%I:%M %p}", f" · dashboard {when:%I:%M %p}") if when else ""))
+        # who holds how many: one bold line per verifier (with the count), then his BS, oldest first
+        self.who.delete(*self.who.get_children())
+        today = date.today()
+        for ver, items in BT.by_verifier(held):
+            self.who.insert("", "end", values=(f"{ver}  ({num(len(items))})", "", "", "", "", "", ""), tags=("blue",))
+            for r in items:
+                d = (today - r.finished.date()).days if r.finished else None
+                self.who.insert("", "end", iid=f"w|{r.org}|{r.trip_id}",
+                                values=("", r.trip_id, r.file_no, r.bank or r.bank_written,
+                                        L("অনলাইন", "Online") if r.bs_type == "Online" else L("অফলাইন", "Offline"),
+                                        f"{r.finished:%d %b %Y}" if r.finished else "–", num(d) if d is not None else "–"),
+                                tags=("bad",) if d is not None and d >= 3 else ())
+        if not held:
+            self.who.insert("", "end", values=(L("সব BS অফিসে / ব্যাংকে পৌঁছেছে ✓", "Every BS reached the office / bank ✓"),
+                                               "", "", "", "", "", ""), tags=("ok",))
         self.tv.delete(*self.tv.get_children())
         prev, zebra = None, False
-        for r in show:
+        for r in rows:
             if (r.org, r.file_id) != prev:
                 zebra, prev = not zebra, (r.org, r.file_id)
             tag = "ok" if r.collected else ("bad" if r.outcome in bs_rules.NOT_COLLECTED_SET else ("warn" if r.outcome == bs_rules.CHECK else "mute"))
@@ -318,7 +400,6 @@ class BSPage(Page):
     def selected(self) -> list:
         ids = set(self.tv.selection())
         return [r for r in self.rows if f"{r.org}|{r.trip_id}" in ids]
-
     def monthly_excel(self):
         rows = self.current_rows()
         if not rows:
@@ -363,14 +444,19 @@ class BSPage(Page):
 
     def courier(self):
         sel = self.selected()
+        if not sel:                                                 # nothing chosen: every BS waiting in the office
+            sel = [r for r in self.rows if r.office and not r.courier.get("no") and not r.bank_received]
         if not sel:
-            messagebox.showinfo(L("সারি বাছুন", "Choose rows"), L("তালিকা থেকে এক বা একাধিক BS বাছুন (Ctrl চেপে)।",
-                                                                 "Choose one or more BS in the list (hold Ctrl)."))
+            messagebox.showinfo(L("অফিসে কোনো BS নেই", "No BS in the office"),
+                                L("আগে “অফিসে পেলাম” দিয়ে BS রিসিভ করুন, তারপর কুরিয়ার দিন।",
+                                  "First receive the BS with “Received in office”, then add the courier."))
             return
         CourierDialog(self, sel)
 
 
 BT_LOOKBACK = 85
+GOOD = (R.GOING, R.DONE, R.WILL_SUBMIT, R.SUBMITTED)
+VOICE_DIR = config.SETTINGS_DIR / "voices"
 
 
 class CourierDialog(tk.Toplevel):
@@ -724,12 +810,13 @@ class RemindersPage(Page):
                         else L("আজ এখনো কোনো রিমাইন্ডার তৈরি হয়নি", "No reminder prepared yet today"))
         # step 1
         if rk:
-            self.s1_text.config(text=L(f"{num(len(items))} জনের মেসেজ লেখা ও ভয়েস বাছা হয়েছে ({ds['rounds'][rk]['prepared'][11:16]})।",
-                                       f"{len(items)} messages written, a voice picked for each (at {ds['rounds'][rk]['prepared'][11:16]})."))
+            nv = sum(1 for i in items if (VOICE_DIR / f"{i.get('voice')}.mp3").exists())
+            self.s1_text.config(text=L(f"{num(len(items))} জনের মেসেজ লেখা হয়েছে, ভয়েস তৈরি {num(nv)}/{num(len(items))} ({ds['rounds'][rk]['prepared'][11:16]})।",
+                                       f"{len(items)} messages written, voice ready {nv}/{len(items)} (at {ds['rounds'][rk]['prepared'][11:16]})."))
             self.s1_btn.config(text=L("আবার তৈরি করুন", "Prepare again"))
         else:
-            self.s1_text.config(text=L("সফটওয়্যার ১০টা, ১টা ও ৪টায় নিজে তৈরি করে। এখনই চাইলে ডানের বাটন চাপুন।",
-                                       "The software prepares it at 10, 1 and 4 by itself. Press the button to do it now."))
+            self.s1_text.config(text=L("সফটওয়্যার সকাল ৮টা, ১০টা, দুপুর ১টা, ৩টা ও বিকেল ৫:৩০-এ নিজে তৈরি করে। এখনই চাইলে ডানের বাটন চাপুন।",
+                                       "The software prepares it at 8, 10, 1, 3 and 5:30 by itself. Press the button to do it now."))
             self.s1_btn.config(text=L("এখনই তৈরি করুন", "Prepare now"))
         self._dot(self.n1, "done" if rk else "now")
         # step 2
@@ -745,7 +832,7 @@ class RemindersPage(Page):
         self.s2_btn.enable(not all_sent)
         self._dot(self.n2, "done" if all_sent else ("now" if rk else ""))
         # step 3
-        good = sum(1 for i in items if last.get(i["phone"], {}).get("kind") in (R.GOING, R.DONE))
+        good = sum(1 for i in items if last.get(i["phone"], {}).get("kind") in GOOD)
         bad = sum(1 for i in items if last.get(i["phone"], {}).get("kind") == R.PROBLEM)
         none = sum(1 for i in items if i.get("sent") and i["phone"] not in last)
         for lbl, v in zip(self.k, (good, bad, none)):
@@ -755,19 +842,17 @@ class RemindersPage(Page):
         # the list
         self.tv.delete(*self.tv.get_children())
         tab = self.tab.get()
-        voice_name = {"sla_passed": L("SLA পার", "SLA passed"), "appointment_today": L("আজ অ্যাপয়েন্টমেন্ট", "Appointment today"),
-                      "bs_submit": L("BS জমা দিন", "Hand in BS"), "general": L("সাধারণ", "General")}
         for it in items:
             rp = last.get(it["phone"])
             kind = rp["kind"] if rp else None
             if tab == "replied" and not rp or tab == "problem" and kind != R.PROBLEM or tab == "none" and rp:
                 continue
             pr = it.get("priority", 3)
-            tag = "bad" if kind == R.PROBLEM else ("ok" if kind in (R.GOING, R.DONE) else ("bad" if pr == 0 else ("warn" if pr in (1, 2) else "")))
+            tag = "bad" if kind == R.PROBLEM else ("ok" if kind in GOOD else ("bad" if pr == 0 else ("warn" if pr in (1, 2) else "")))
             self.tv.insert("", "end", values=(R.PRIORITY_TEXT.get(pr, ""), it["verifier"], ", ".join(it.get("files", []))[:120],
-                                              voice_name.get(it.get("voice"), ""),
+                                              "✓" if (VOICE_DIR / f"{it.get('voice')}.mp3").exists() else L("নেই", "none"),
                                               (L(f"পাঠানো {it['sent'][11:16]}", f"sent {it['sent'][11:16]}") if it.get("sent") else L("তৈরি", "ready")),
-                                              (f"{R.REPLY_TEXT.get(kind, kind)}" + (f" · “{rp['text'][:60]}”" if rp else "")) if rp else "—"),
+                                              (f"{R.REPLY_TEXT.get(kind, kind)}" + (f" · {rp['reason'][:60]}" if rp.get("reason") else "")) if rp else "—"),
                            tags=(tag,) if tag else ())
         no = (ds["rounds"][rk].get("no_whatsapp", []) if rk else []) + [
             {"verifier": i["verifier"], "phone": i["phone"]} for i in items if i["phone"] in R.NO_WA_CACHE]
@@ -922,11 +1007,33 @@ class SettingsPage(Page):
         from .gui_mail import SentLogDialog, SignatureDialog
         line(L("ইমেইল সিগনেচার", "E-mail signature"), lambda r: Button(r, L("🖋  বদলান", "🖋  Change"), lambda: SignatureDialog(shell.reports), font=f.small, padx=10, pady=6))
         line(L("পাঠানো ইমেইল", "Sent e-mails"), lambda r: Button(r, L("📨  দেখুন", "📨  Show"), lambda: SentLogDialog(shell.reports), font=f.small, padx=10, pady=6))
+        self.own = tk.StringVar(value=shell.settings.get("own_whatsapp", ""))
+
+        def own_box(r):
+            box = tk.Frame(r, bg=P["card"])
+            Entry(box, f, self.own, width=16).pack(side="left", ipady=3)
+            Button(box, L("সেভ", "Save"), self.save_own, kind="primary", font=f.small, padx=12, pady=5).pack(side="left", padx=6)
+            tk.Label(box, text=L("যে নম্বরে WhatsApp Web চলে। Verifier-এর ‘উত্তর দিন’ লিংক এই নম্বরে আসে।",
+                                 "The number WhatsApp Web runs on. The verifiers' answer links come to this number."),
+                     bg=P["card"], fg=P["mute"], font=f.tiny).pack(side="left", padx=6)
+            return box
+        line(L("আপনার WhatsApp নম্বর", "Your WhatsApp number"), own_box)
         line(L("WhatsApp হেল্পার", "WhatsApp helper"), lambda r: Button(r, L("ফোল্ডার খুলুন", "Open folder"), lambda: open_path(asset("whatsapp_helper")), font=f.small, padx=10, pady=6))
         line(L("সাইন আউট", "Sign out"), lambda r: Button(r, L("সাইন আউট", "Sign out"), self.sign_out, kind="danger", font=f.small, padx=10, pady=6))
         tk.Label(self.body, text=L("Excel / PDF রিপোর্ট সবসময় ইংরেজিতে (ব্যাংক যেভাবে পড়ে)। শুধু প্রোগ্রামের স্ক্রিন বাংলা / ইংরেজি হয়।",
                                    "Excel / PDF reports are always in English (as the bank reads them). Only the program's screens change."),
                  bg=P["bg"], fg=P["mute"], font=f.small).pack(anchor="w", pady=(12, 0))
+
+    def save_own(self):
+        ph = normalize_phone(self.own.get())
+        if ph and not is_bd_mobile(ph):
+            messagebox.showwarning(L("নম্বর ঠিক নেই", "Number not valid"), L("বাংলাদেশের মোবাইল নম্বর দিন (01XXXXXXXXX)।",
+                                                                           "Give a Bangladesh mobile number (01XXXXXXXXX)."))
+            return
+        config.save_settings({"own_whatsapp": ph})
+        self.shell.settings["own_whatsapp"] = ph
+        self.own.set(ph)
+        self.shell.toast(L("সেভ হয়েছে। পরের রিমাইন্ডার থেকে ‘উত্তর দিন’ লিংক যাবে।", "Saved. Answer links go out from the next reminder."))
 
     def lang_changed(self):
         i18n.set_lang(self.shell.lang.get())

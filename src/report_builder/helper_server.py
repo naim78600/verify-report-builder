@@ -9,6 +9,10 @@ that carries a web page's Origin (any https://... site) is refused, so no websit
   POST /sent   {phone}    -> marks that verifier's message as sent (Naim pressed Send)
   POST /reply  {phone, text, at}   -> a reply read from WhatsApp Web; understood by reminders.parse_reply
   POST /contact {name, phone}      -> the chat name WhatsApp shows for that number (to read replies from the chat list)
+  GET  /asks               -> V12 follow-ups: messages to send ("send the slip photo", "write the problem") and photo waits
+  POST /ask_sent {phone}   -> Naim pressed Send on a follow-up
+  POST /media {phone, b64, type, msg}  -> a photo the verifier sent after "জমা দিয়েছি": saved in
+                              <reports folder>/BS Slips/<date>/<Trip ID> - <verifier>/  and the BS marked "handed in at the bank"
 Nothing is sent to WhatsApp from here; the helper only fills the message box and attaches the clip.
 """
 from __future__ import annotations
@@ -17,6 +21,7 @@ import json
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Callable
 
 from . import reminders as R
@@ -36,6 +41,7 @@ class HelperServer:
         self.start_token: str | None = None  # "Start sending" pressed in the program: the first WhatsApp tab takes it
         self.start_until = 0.0
         self.httpd: ThreadingHTTPServer | None = None
+        self.slips_dir: Path | None = None   # <reports folder>/BS Slips (the program sets it; default: the default reports folder)
 
     # ------------------------------------------------------------------ the Chrome helper
     @property
@@ -68,8 +74,10 @@ class HelperServer:
             if not rk:
                 return []
             items = ds["rounds"][rk]["items"]
-            out = [{"phone": i["phone"], "verifier": i["verifier"], "text": i["text"], "voice": i["voice"], "sent": bool(i.get("sent")),
-                    "round": rk, "priority": R.PRIORITY_TEXT.get(i.get("priority"), "")} for i in items]
+            from . import voice as V
+            out = [{"phone": i["phone"], "verifier": i["verifier"], "text": i["text"], "sent": bool(i.get("sent")),
+                    "voice": i["voice"] if (V.clip_path(i["voice"]).exists() or asset("voices", i["voice"] + ".ogg").is_file()) else "",
+                    "round": rk, "code": i.get("code", ""), "priority": R.PRIORITY_TEXT.get(i.get("priority"), "")} for i in items]
             out.sort(key=lambda i: i["sent"])
             return out
 
@@ -104,6 +112,75 @@ class HelperServer:
             R.save_state(st)
         self.on_event("reply", e)
         return e
+
+    # ------------------------------------------------------------------ V12 follow-ups and slip photos
+    def asks(self) -> list[dict]:
+        with self.lock:
+            st = R.load_state()
+            names = {i["phone"]: i["verifier"] for d in st.get("days", {}).values() for rd in d.get("rounds", {}).values()
+                     for i in rd.get("items", [])}
+            return [{**a, "verifier": names.get(a["phone"], a["phone"])} for a in R.open_asks(st)]
+
+    def ask_sent(self, phone: str) -> bool:
+        with self.lock:
+            st = R.load_state()
+            a = st.get("asks", {}).get(phone)
+            if not a:
+                return False
+            from datetime import datetime
+            a["sent"] = datetime.now().isoformat(timespec="minutes")
+            R.save_state(st)
+            return True
+
+    def save_media(self, phone: str, b64: str, ctype: str, msg: str = "") -> dict:
+        """A slip photo after "জমা দিয়েছি": one copy per BS trip of that answer, in a folder people can open."""
+        import base64
+        from datetime import datetime
+        from . import bs_tracker as BT
+        from . import config
+        with self.lock:
+            st = R.load_state()
+            a = st.get("asks", {}).get(phone)
+            if not a or a.get("want") != "photo":
+                return {"ignored": True}
+            if a.get("answered") and (datetime.now() - datetime.fromisoformat(a["answered"])).total_seconds() > 6 * 3600:
+                return {"ignored": True, "why": "old answer"}         # more slips are taken for 6 hours after the first one
+            seen = a.setdefault("msgs", [])
+            if msg and msg in seen:
+                return {"ignored": True, "why": "already saved"}
+            try:
+                data = base64.b64decode(b64.split(",", 1)[-1], validate=False)
+            except ValueError:
+                return {"error": "bad picture"}
+            if len(data) < 500:
+                return {"error": "too small"}
+            ext = ".png" if "png" in (ctype or "") else ".webp" if "webp" in (ctype or "") else ".jpg"
+            item = R.find_item(st, a.get("code", "")) or {}
+            who = "".join(ch for ch in (item.get("verifier") or phone) if ch.isalnum() or ch in " .-_").strip() or phone
+            now = datetime.now()
+            base = (self.slips_dir or config.default_output_dir() / "BS Slips") / f"{now:%Y-%m-%d}"
+            saved = []
+            store = BT.load_store()
+            for tid in a.get("trips") or ["no-trip"]:
+                folder = base / f"{tid} - {who}"
+                folder.mkdir(parents=True, exist_ok=True)
+                p = folder / f"slip {now:%H%M%S}{ext}"
+                n = 2
+                while p.exists():
+                    p = folder / f"slip {now:%H%M%S} ({n}){ext}"
+                    n += 1
+                p.write_bytes(data)
+                saved.append(str(p))
+                if tid != "no-trip":
+                    BT.set_bank_submitted(store, tid, photos=[p], verifier=item.get("verifier", ""))
+            BT.save_store(store)
+            if msg:
+                seen.append(msg)
+            a.setdefault("answered", now.isoformat(timespec="minutes"))
+            a["photos"] = a.get("photos", []) + saved
+            R.save_state(st)
+        self.on_event("media", {"phone": phone, "files": saved})
+        return {"ok": True, "files": saved}
 
     def add_contact(self, name: str, phone: str) -> None:
         with self.lock:
@@ -143,7 +220,8 @@ class HelperServer:
                 self.wfile.write(data)
 
             def _json(self) -> dict:
-                n = min(int(self.headers.get("Content-Length") or 0), 100_000)
+                cap = 20_000_000 if self.path == "/media" else 100_000          # a slip photo can be a few MB
+                n = min(int(self.headers.get("Content-Length") or 0), cap)
                 try:
                     return json.loads(self.rfile.read(n) or b"{}")
                 except ValueError:
@@ -157,10 +235,15 @@ class HelperServer:
                     return self._send(200, {"ok": True, "app": "Verify Report Builder", "version": __version__})
                 if self.path == "/round":
                     return self._send(200, {"items": srv.current_items(), "contacts": srv.contacts(), "start": srv.pending_start()})
+                if self.path == "/asks":
+                    return self._send(200, {"asks": srv.asks()})
                 if self.path.startswith("/voice/"):
                     name = self.path.split("/voice/", 1)[1].split("?")[0]
                     if not name.replace("_", "").isalnum():
                         return self._send(404, {"error": "no such clip"})
+                    from . import voice as V
+                    if V.clip_path(name).is_file():
+                        return self._send(200, V.clip_path(name).read_bytes(), "audio/mpeg")
                     for ext, ctype in ((".ogg", "audio/ogg"), (".mp3", "audio/mpeg"), (".wav", "audio/wav")):
                         p = asset("voices", name + ext)
                         if p.is_file():
@@ -178,6 +261,11 @@ class HelperServer:
                     return self._send(200, {"ok": srv.mark_sent(str(body.get("phone", "")))})
                 if self.path == "/reply":
                     return self._send(200, srv.add_reply(str(body.get("phone", "")), str(body.get("text", "")), body.get("at")))
+                if self.path == "/ask_sent":
+                    return self._send(200, {"ok": srv.ask_sent(str(body.get("phone", "")))})
+                if self.path == "/media":
+                    return self._send(200, srv.save_media(str(body.get("phone", "")), str(body.get("b64", "")),
+                                                          str(body.get("type", "")), str(body.get("msg", ""))))
                 if self.path == "/contact":
                     srv.add_contact(str(body.get("name", "")), str(body.get("phone", "")))
                     return self._send(200, {"ok": True})
