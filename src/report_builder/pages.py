@@ -275,10 +275,10 @@ class BSPage(Page):
         self.all_btn = Button(head, L("সব BS দেখুন", "See every BS"), self.toggle_all, font=self.f.small, padx=10, pady=5)
         self.all_btn.pack(side="right")
         tbl = self.who_card = self.card(self.body, fill="both", expand=True)
-        box, self.who = self.table(tbl, [("ver", L("ভেরিফায়ার", "Verifier"), 170, "w"), ("trip", "Trip ID", 80, "center"),
+        box, self.who = self.table(tbl, [("ver", L("ভেরিফায়ার", "Verifier"), 210, "w"), ("trip", "Trip ID", 80, "center"),
                                          ("file", "File No", 170, "w"), ("bank", L("ব্যাংক", "Bank"), 200, "w"),
                                          ("type", L("ধরন", "Type"), 70, "center"),
-                                         ("wd", L("কবে তোলা (withdraw)", "Withdrawn on"), 120, "center"),
+                                         ("wd", L("Withdraw তারিখ", "Withdrawn on"), 130, "center"),
                                          ("days", L("কত দিন", "Days"), 60, "center")], height=10)
         box.pack(fill="both", expand=True, padx=1, pady=1)
         self.full = self.card(self.body)                  # shown in place of the table above ("see every BS")
@@ -383,7 +383,7 @@ class BSPage(Page):
                                         f"{r.finished:%d %b %Y}" if r.finished else "–", num(d) if d is not None else "–"),
                                 tags=("bad",) if d is not None and d >= 3 else ())
         if not held:
-            self.who.insert("", "end", values=(L("সব BS অফিসে / ব্যাংকে পৌঁছেছে ✓", "Every BS reached the office / bank ✓"),
+            self.who.insert("", "end", values=(L("কারো কাছে BS নেই ✓", "No BS left with anyone ✓"),
                                                "", "", "", "", "", ""), tags=("ok",))
         self.tv.delete(*self.tv.get_children())
         prev, zebra = None, False
