@@ -1,3 +1,20 @@
+# ######################################################################################################################
+# ★★★ REPORT SUMMARY (DONE / DUE) LOGIC OF VERIFY REPORT BUILDER - THIS WHOLE FILE ★★★
+#
+# Every block of the Done / Due logic is marked "★ DONE/DUE LOGIC" (search for it). Other rules the dashboard's tracker must copy to
+# give the same report are marked "◆ DASHBOARD-MATCH LOGIC" (billing.py, report_text.py, activity.py, geo.py, prime_excel.py).
+# Reading order for a developer:
+#   1. clean_text / xml_safe        - how the remark text is cleaned
+#   2. NOTE_RULES / INFO_NOTES      - the words in brackets and what triggers them
+#   3. _doc_name                    - what a Document trip is (LOI, Chamber, Rental ...)
+#   4. _trip_text / _notes_for      - remarks only, "Information ok", "last statement wins", fallback note
+#   5. analyze                      - per trip: Done or Due, notes, Sign / LOI read from other remarks, Inactive rules
+#   6. _merge / _beats              - one entry per (person, part)
+#   7. _head_office_loi             - "LOI (New trip created for head office verification)" / "(Will be verified from head office)"
+#   8. _sorted / _render / _finish  - order, printed text, "Due-0", "Report not yet submitted"
+# Which trips go into one report line: billing.refresh_summary (one summary over all folded rows of the file).
+# Full explanation: the doc "VRB report logic for the dashboard team (v13)" and docs/TECH_MEMO.md.
+# ######################################################################################################################
 """Report Summary engine: reads EVERY trip's full remarks / appointment reasons (never the back-office comment)
 and writes the tracker-style two lines
 
@@ -37,6 +54,10 @@ RULES_FILE = config.SETTINGS_DIR / "summary_rules.json"
 _XML_BAD = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f\ufffe\uffff]")
 
 
+# ==============================================================================================================
+# ★ DONE/DUE LOGIC: 1. text cleaning
+#   \x19 / curly quote -> apostrophe, forbidden characters dropped, invisible marks removed.
+# ==============================================================================================================
 def xml_safe(s):
     """Text for an Excel cell: characters XML 1.0 forbids (and C1 controls) are dropped - Excel / Numbers call a file with
     one of them "damaged".  The dashboard sends a right single quote cut to a lone \x19 ("Didn\x19t"): it becomes an apostrophe."""
@@ -70,6 +91,10 @@ _PAYSLIP_ONLY = (r"(?:does\s*n[o']?t|do\s*n[o']?t|not)\s+(?:be\s+)?verif\w*[^.\n
 _PAYSLIP_RX = re.compile(_PAYSLIP_ONLY, re.IGNORECASE)
 # "Phone number :- Not interested" / "Number: Disagree to give number" / "signatory deny to provide visiting card" describe a contact detail the
 # person kept back, not a refusal to verify
+# ==============================================================================================================
+# ★ DONE/DUE LOGIC: 2a. remarks that are NOT problems
+#   a refusal to give a phone number / visiting card is ignored.
+# ==============================================================================================================
 _CONTACT_REFUSAL = re.compile(
     r"(?:(?:phone|mobile|cell|contact)\s*(?:no\.?|number)?|\bnumber|\bno\.?)\s*[:\-]+\s*(?:not\s+interest\w*|dis\s?agre\w*|deny|denied|refus\w+|unwilling|not\s+willing)"
     r"(?:\s+to\s+(?:give|provid\w*|share|tell)(?:\s+(?:the\s+|his\s+|her\s+)?(?:phone\s+|mobile\s+)?(?:number|no\.?))?)?"
@@ -82,6 +107,11 @@ def _r(p: str, note: str, target: str = "trip"):
     return (re.compile(p, _I), note, target)
 
 
+# ==============================================================================================================
+# ★ DONE/DUE LOGIC: 2. NOTE RULES - the bracket notes
+#   (regex, printed note, target). target 'loi' = a LOI note, 'trip' = about the visit. Tried in order, every
+#   match kept, max 2 shown per trip. User rules from ~/.verify_report_builder/summary_rules.json are tried first.
+# ==============================================================================================================
 NOTE_RULES = [
     # ---- good news (kept in Done only) ----
     _r(r"new\s+address[^.\n]{0,40}(?:verif\w*|found|confirm\w*|ok)|(?:verif\w*|found|confirm\w*)[^.\n]{0,25}new\s+address|"
@@ -179,9 +209,17 @@ NOTE_RULES = [
        r"verification\s+(?:could\s+not|cannot|can'?t)", "Could not verify"),
 ]
 # good-news notes: written in Done only, never repeated in Due
+# ==============================================================================================================
+# ★ DONE/DUE LOGIC: 2b. good-news notes
+#   shown in Done only, never repeated in Due.
+# ==============================================================================================================
 INFO_NOTES = {"System generated - no sign required", "New address found & verified", "Signed from branch", "Signed from head office",
               "Not signed in front of me"}
 
+# ==============================================================================================================
+# ★ DONE/DUE LOGIC: 2c. fallback note
+#   no rule matched: the first negative sentence (about 60 characters) becomes the note.
+# ==============================================================================================================
 _NEG_FALLBACK = re.compile(
     r"\b(?:not\s+(?:verif\w*|found|available|possible|allowed|signed|provided|match\w*|willing|interested|cooperat\w*|present|"
     r"received|picked|responding|exist\w*|working|available)|n't|unable|cannot|can't|couldn't|refus\w*|wrong|missing|"
@@ -296,6 +334,10 @@ def _short(s: str, limit: int = 60) -> str:
     return (cut or s[:limit]) + "…"
 
 
+# ==============================================================================================================
+# ★ DONE/DUE LOGIC: 3. what a Document trip is
+#   trip type first (Chamber, Rental, Car Quotation, Tuition), then the COMMENT, then remarks / place.
+# ==============================================================================================================
 def _doc_name(trip: dict) -> str:
     c = (trip.get("comment") or "")
     t = " ".join([c, trip.get("remarks") or "", trip.get("place_name") or ""])
@@ -351,6 +393,10 @@ _LOI_NEG = re.compile(r"loi\s+not\s+(?:sign\w*|verif\w*)[^.\n]{0,40}|not\s+(?:si
 # The report follows the LAST update: such a sentence settles what the verifier wrote before it - "Previous signatory not available.
 # LOI signed in front of me" is a finished LOI, not a due one.  A sentence that is itself negative / future ("LOI not signed",
 # "will be signed from head office", "need forwarding letter") is never a "done" statement.
+# ==============================================================================================================
+# ★ DONE/DUE LOGIC: 4a. 'done' sentences
+#   a sentence saying the LOI / sign was done settles problems written before it (last statement wins).
+# ==============================================================================================================
 _DONE = re.compile(      # (sing / singed / varified / verifed are the verifiers' usual typos)
     r"\bloi\b[^.\n]{0,25}\b(?:sign(?:ed)?|sing(?:ed)?|verified|varified|verifed|varifed|verifie|varifie|veriffied)\s+(?:by|in\s*front|infront)\b"
     r"|\bloi\b[^.\n]{0,25}\b(?:signed|singed|verified|varified|verifed|varifed|verifie|varifie|veriffied)\b"
@@ -379,6 +425,10 @@ def _latest_appt_reason(trip: dict) -> list:
     return [clean_text(ap[-1].get("reason"))]
 
 
+# ==============================================================================================================
+# ★ DONE/DUE LOGIC: 4b. text read = REMARKS only
+#   the back-office comment is the instruction, not the result; an open trip adds its newest appointment reason.
+# ==============================================================================================================
 def _trip_text(trip: dict) -> tuple[str, str]:
     """(outcome text = remarks (+ appointment reasons while the trip is still open), comment)."""
     rem = clean_text(trip.get("remarks"))
@@ -416,6 +466,10 @@ def _collect(text: str, rules) -> dict:
     return found
 
 
+# ==============================================================================================================
+# ★ DONE/DUE LOGIC: 4c. notes of one trip
+#   'Information ok' keeps only good news; last statement wins; head-office / payslip special cases; fallback.
+# ==============================================================================================================
 def _notes_for(text_all: str, outcome: str, rules, loi_trip: bool = False) -> tuple[dict, bool]:
     """-> ({"loi": [...], "trip": [...]}, fallback_used).
 
@@ -506,12 +560,20 @@ def _appt_time(trip: dict):
     return ap[-1]["time"]
 
 
+# ==============================================================================================================
+# ★ DONE/DUE LOGIC: 5a. appointment text in Due
+#   'Appointment dd-mm-yyyy hh:mm AM/PM' of the latest active appointment.
+# ==============================================================================================================
 def _appt_text(trip: dict) -> str:
     """'Appointment 02-11-2026 10:00 AM' from the latest active appointment (else any)."""
     t = _appt_time(trip)
     return f"Appointment {t:%d-%m-%Y %I:%M %p}" if t else ""
 
 
+# ==============================================================================================================
+# ★ DONE/DUE LOGIC: 5b. upcoming appointment
+#   until the appointment day has passed, no negative note is written for the open trip.
+# ==============================================================================================================
 def appt_upcoming(trip: dict) -> bool:
     """v6: the appointment day has not passed yet (today counts).  Until then nothing negative is written about the trip - the
     applicant GAVE a time, that is all the bank needs to read.  A negative note is written only once the day is over and the
@@ -552,6 +614,10 @@ def _reason_of(outcome: str) -> str:
     return _short(m.group(1) if m and len(m.group(1).strip()) > 5 else outcome)
 
 
+# ==============================================================================================================
+# ★ DONE/DUE LOGIC: 5c. v13 replaced BS
+#   Inactive / Canceled / Withdrawn BS redone by a LATER Finished BS of the same person: dropped, no BS number.
+# ==============================================================================================================
 def _replaced_banks(views: list) -> set:
     """id() of every BANK trip that is Canceled / Inactive / Withdrawn and was redone by a LATER Finished BANK trip of the same
     person (same role label: App / Co-App / PG1 ...)."""
@@ -569,6 +635,12 @@ def _replaced_banks(views: list) -> set:
     return out
 
 
+# ==============================================================================================================
+# ★ DONE/DUE LOGIC: 5. THE ENGINE - Done / Due of one report line
+#   per trip: House / Office / BS1.. / LOI / Sign / Chamber ...; finished -> Done (+ notes); open -> Due (appointment / status);
+#   Canceled / Inactive with a problem remark -> Due; then merge, redone items leave Due, every problem repeats in Due,
+#   head-office LOI rule, order, final text.
+# ==============================================================================================================
 def analyze(views: list[TripView], submitted: bool, bank_label: str = "BS") -> Summary:
     rules = _user_rules() + NOTE_RULES
     info = info_notes()
@@ -764,6 +836,10 @@ HO_ONLY = "Will be verified from head office"
 _HO = re.compile(r"head\s*office|\bhq\b|head\s*quarter|corporate\s+office", re.I)
 
 
+# ==============================================================================================================
+# ★ DONE/DUE LOGIC: 7. head-office LOI
+#   never Done; Due as 'LOI (New trip created for head office verification)' or '(Will be verified from head office)'.
+# ==============================================================================================================
 def _head_office_loi(done: list[Item], due: list[Item], views: list) -> tuple[list[Item], list[Item]]:
     """v10.0.6 (Naim, 17-11-2026): a LOI that will be signed / verified at the head office is NOT done - it is only Due, worded:
          a new document trip was made for it at the head office -> "LOI (New trip created for head office verification)"
@@ -796,6 +872,10 @@ def _head_office_loi(done: list[Item], due: list[Item], views: list) -> tuple[li
     return done, _merge(due)
 
 
+# ==============================================================================================================
+# ★ DONE/DUE LOGIC: 8c. final text
+#   'Done-0' / 'Due-0'; nothing due but the file not Submitted -> 'Due-Report not yet submitted'.
+# ==============================================================================================================
 def _finish(done: list[Item], due: list[Item], skipped: list[str], submitted: bool) -> Summary:
     uncertain, reasons = bool(skipped), list(skipped)
     for it in done + due:
@@ -857,6 +937,10 @@ def _beats(it: Item, old: Item) -> bool:
     return _weak(old) and _newer(it, old)
 
 
+# ==============================================================================================================
+# ★ DONE/DUE LOGIC: 6. merge
+#   one entry per (person, part): a finished trip beats an open one, a later trip an earlier one.
+# ==============================================================================================================
 def _merge(items: list[Item]) -> list[Item]:
     """One entry per (who, label). A finished trip beats an open / canceled one; later beats earlier."""
     out: list[Item] = []
@@ -869,6 +953,10 @@ def _merge(items: list[Item]) -> list[Item]:
     return out
 
 
+# ==============================================================================================================
+# ★ DONE/DUE LOGIC: 8a. order
+#   App -> documents (LOI, BS, BS1.., Chamber, Rental ...) -> Co-App -> PG; House, Office, Sign inside a person.
+# ==============================================================================================================
 _ORDER = ["App", "", "Co-App", "PG", "PG1", "PG2"]            # tracker order: App -> docs (LOI, BS ...) -> Co-App -> PG
 _DOC_ORDER = ["LOI", "BS", "BS1", "BS2", "BS3", "BS4", "Chamber", "Rental", "Car Quotation", "PEC", "Payslip", "Tuition"]
 _PART_ORDER = {"House": 0, "Office": 1, "Sign": 2}

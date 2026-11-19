@@ -216,6 +216,10 @@ def file_type_of(file_no: str, fallback: str = "") -> str:
     return fallback
 
 
+# ==============================================================================================================
+# ★ DONE/DUE LOGIC: person labels used in Done / Due
+#   App, Co-App, PG (one guarantor) or PG1 / PG2.
+# ==============================================================================================================
 def concern_info(file: dict) -> dict:
     """concern id -> dict(no, label, who, role, name)."""
     order = {"APPLICANT": 0, "CO_APPLICANT": 1, "GUARANTOR": 2}
@@ -237,6 +241,10 @@ def concern_info(file: dict) -> dict:
     return out
 
 
+# ==============================================================================================================
+# ◆ DASHBOARD-MATCH LOGIC: Concerns Name
+#   v13 tracker: every trip of the file (file_concern_lines); the monthly bill: the row's own trips.
+# ==============================================================================================================
 def concern_lines(file: dict, info: dict, trips: list | None) -> list[str]:
     """Numbered lines: '1. Applicant: NAME - House, Office'. trips=None -> names only (all concerns)."""
     lines = []
@@ -274,6 +282,10 @@ def extra_category(trip: dict) -> str:
     return "Extra Document"
 
 
+# ==============================================================================================================
+# ◆ DASHBOARD-MATCH LOGIC: Re-CPV / Extra Trip column
+#   every Re-CPV / Extra event of the last year, this row's own first.
+# ==============================================================================================================
 def history_for(file_no: str, file: dict, recpv_by_file: dict, row_trip_ids: set, since: datetime) -> list[str]:
     """Column 'Re-CPV / Extra Trip (ID)': last-year events of this file number, this row's own first."""
     events: list[Event] = []
@@ -328,6 +340,10 @@ def _trip_label(t: dict) -> str:
     return BASE_TYPE.get(t.get("type_code", ""), t.get("type") or "Trip")
 
 
+# ==============================================================================================================
+# ◆ DASHBOARD-MATCH LOGIC: Appointment History
+#   every appointment of every trip of the file (file_appointments).
+# ==============================================================================================================
 def appointments_for(trips: list) -> list[dict]:
     """Appointments of the trips of ONE row (oldest first) - straight from the dashboard."""
     out = []
@@ -340,6 +356,10 @@ def appointments_for(trips: list) -> list[dict]:
     return out
 
 
+# ==============================================================================================================
+# ◆ DASHBOARD-MATCH LOGIC: Last Update Details
+#   newest activity of the file + of each trip, short words (activity.short_activity).
+# ==============================================================================================================
 def last_update_for(logs: "FileLogs | None", trips: list, labels: dict | None = None) -> tuple:
     """Newest activity-log entry of the whole file, and of each trip of this row."""
     if logs is None or not logs.ok or not logs.events:
@@ -424,6 +444,11 @@ def _pg_groups(cts: list, kind: str | None, recpv_by_trip: dict) -> list:
     return out
 
 
+# ==============================================================================================================
+# ◆ DASHBOARD-MATCH LOGIC: bill rows
+#   Package = first 5 live trips of the start day; documents created with it billed apart; 6th+ = Extra Trip;
+#   later trips = Re-CPV (tracker / is_for_recpv) or Extra; PG house + office same day = one PG row.
+# ==============================================================================================================
 def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileLogs | None,
                history_since: datetime) -> list[BillRow]:
     info = concern_info(file)
@@ -554,6 +579,10 @@ def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileL
             # still reads them (Done "LOI ..." belongs to the package report, exactly as before the bill split)
             views += [TripView(t, c["role"].upper(), info[c["id"]]["who"]) for c, t in split]
         r.views = views
+        # ======================================================================================================
+        # ★ DONE/DUE LOGIC: first summary of a bill row
+        #   the row's own trips (+ the documents created with the package for the Package row).
+        # ======================================================================================================
         r.summary = analyze(views, r.submitted, "BS")
         if r.summary.uncertain:
             r.flags["summary"] = "; ".join(dict.fromkeys(r.summary.reasons)) or "সংক্ষেপ নিশ্চিত নয়"
@@ -619,6 +648,10 @@ def link_siblings(rows: list[BillRow]) -> None:
             r.file_rows = [x for x in rs if x is not r]
 
 
+# ==============================================================================================================
+# ◆ DASHBOARD-MATCH LOGIC: SLA Start / Restart Date
+#   latest of: Receive Date, newest live trip's creation day, latest-created appointment's date.
+# ==============================================================================================================
 def sla_start_for(r: BillRow, report_date: date, holiday_set: set[date]) -> tuple[date | None, date | None, date | None]:
     """-> (SLA Start Date, appointment date that restarted it or None, new-trip day that restarted it or None).
 
@@ -654,6 +687,10 @@ def sla_start_for(r: BillRow, report_date: date, holiday_set: set[date]) -> tupl
     return best if best[0] > base else (base, None, None)
 
 
+# ==============================================================================================================
+# ◆ DASHBOARD-MATCH LOGIC: TAT / Extra TAT / SLA breach
+#   In 2 / Out 4 working days (Fri + Sat + holidays off); after an appointment: next working day by 5:59 PM.
+# ==============================================================================================================
 def compute_tat(r: BillRow, report_date: date, holiday_set: set[date]) -> None:
     """Same numbers as the Excel formulas (Fri+Sat off, holidays from the list).  The days are counted from the SLA Start Date
     (Receive Date, or the appointment day when an appointment restarted the SLA): the day after it is day 1."""
@@ -683,6 +720,9 @@ def retime_folded(rows: list[BillRow], report_date: date, holiday_set: set[date]
             compute_tat(r, report_date, holiday_set)
 
 
+# ==============================================================================================================
+# ◆ DASHBOARD-MATCH LOGIC: Before / After 12 PM
+# ==============================================================================================================
 def before_after(r: BillRow) -> str:
     if not r.submitted_at:
         return ""
@@ -733,6 +773,9 @@ def tracker_window(report_date: date, hset: set[date] | None) -> tuple[date, dat
 _TEST_FILE = re.compile(r"(^|[-_ ])test([-_ \d]|$)", re.IGNORECASE)
 
 
+# ==============================================================================================================
+# ◆ DASHBOARD-MATCH LOGIC: test files never reported
+# ==============================================================================================================
 def is_test_file(file_no: str) -> bool:
     """Practice / test applications (e.g. "PB-PL-Test-123456") are not bank work and never belong in the bank's report."""
     return bool(_TEST_FILE.search(file_no or ""))
@@ -742,6 +785,10 @@ DEAD_TRIP = (6, 7, 8)         # Canceled / Inactive / Withdrawn trip: nothing le
                               # trip of an old, already Submitted file came back as an overdue ghost row once the file was re-opened)
 
 
+# ==============================================================================================================
+# ◆ DASHBOARD-MATCH LOGIC: is the file pending at the report time
+#   closed / submitted / partial / pending (re-opened by a new live trip).
+# ==============================================================================================================
 def file_state(r: BillRow, as_of: datetime | None = None) -> str:
     """What was the FILE (not one bill row) waiting for at `as_of` (None = now)?  The dashboard works per file, so the
     Incomplete list does too:
@@ -818,6 +865,10 @@ def _due_text(r: BillRow, mates: list[BillRow]) -> str:
     return ""
 
 
+# ==============================================================================================================
+# ◆ DASHBOARD-MATCH LOGIC: Pending Reason
+#   Hold: comment | Partially Submitted: Due items | Finished - not yet submitted | Appointment ... (reason...)
+# ==============================================================================================================
 def classify_reason(r: BillRow, mates: list[BillRow] | None = None, state: str = "pending") -> None:
     """Why is the file not submitted?  Sets r.reason / r.reason_kind (empty = nothing found -> light-blue cell + Check List line).
     `mates` = every pending row of the same file (the reason belongs to the FILE, not to one bill row).
@@ -878,6 +929,10 @@ def _fold_into(keep: BillRow, dropped: list[BillRow]) -> None:
         refresh_summary(keep, dropped)
 
 
+# ==============================================================================================================
+# ★ DONE/DUE LOGIC: ONE summary over all folded rows of the file
+#   the trips of the kept row + every folded row, without duplicates, oldest first -> analyze() once.
+# ==============================================================================================================
 def refresh_summary(keep: BillRow, others: list[BillRow]) -> None:
     """Report Summary = the whole report this ONE line stands for (v10.0.6, Naim 17-11-2026).  A line that stands for several bill rows of
     one file (the others are only listed in its Bill Slab history) reads the trips of ALL of them together:
@@ -905,6 +960,9 @@ def refresh_summary(keep: BillRow, others: list[BillRow]) -> None:
         keep.flags["summary"] = "; ".join(dict.fromkeys(new.reasons)) or "সংক্ষেপ নিশ্চিত নয়"
 
 
+# ==============================================================================================================
+# ◆ DASHBOARD-MATCH LOGIC: one Complete line per file and submission day
+# ==============================================================================================================
 def fold_complete(rows: list[BillRow]) -> list[BillRow]:
     """ONE row per file and submission day.  The Bill Slab column already carries the whole billing history of the file, so a
     Re-CPV / Extra row that was submitted together with (or on the same day as) the Package row is not listed a second time:
@@ -931,6 +989,9 @@ def fold_complete(rows: list[BillRow]) -> list[BillRow]:
     return out
 
 
+# ==============================================================================================================
+# ◆ DASHBOARD-MATCH LOGIC: one Incomplete line per pending file
+# ==============================================================================================================
 def fold_incomplete(rs: list[BillRow]) -> BillRow:
     """ONE row per pending file: the row that is the most overdue (then the oldest, then Package before Re-CPV / Extra).
     The others are shown in its Bill Slab history; the reason is worked out over all of them."""
@@ -940,6 +1001,9 @@ def fold_incomplete(rs: list[BillRow]) -> BillRow:
     return keep
 
 
+# ==============================================================================================================
+# ◆ DASHBOARD-MATCH LOGIC: Incomplete = Hold / Partially Submitted / Finished-not-Submitted only
+# ==============================================================================================================
 def listed_by_status(rs: list[BillRow], state: str) -> bool:
     """The Incomplete rule, by the status of the file (as the dashboard shows it) - ONLY these three:
         Partially Submitted -> listed          Hold -> listed (with the written reason)
@@ -949,6 +1013,10 @@ def listed_by_status(rs: list[BillRow], state: str) -> bool:
     return pending_kind(rs, state) in ("partial", "hold", "finished")
 
 
+# ==============================================================================================================
+# ◆ DASHBOARD-MATCH LOGIC: Complete / Incomplete selection
+#   tracker window, 12 PM phase cut-off, 90-day look-back, test files out.
+# ==============================================================================================================
 def select_rows(rows: list[BillRow], mode: str, report_date: date, w_from: date | None = None,
                 w_till: date | None = None, hset: set[date] | None = None,
                 scope: str = "sla_partial", today: date | None = None,

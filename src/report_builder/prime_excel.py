@@ -269,6 +269,10 @@ def _write_rows(ws, r0: int, rows, checks: list, section: str, cols: list) -> in
         ec = get_column_letter(col["Extra TAT"])
         ac = get_column_letter(col["Area"])
         end = f"INT({sc}{r})" if sub else "ReportDate"
+        # ======================================================================================================
+        # ◆ DASHBOARD-MATCH LOGIC: Excel formulas TAT / Extra TAT / SLA
+        #   plain NETWORKDAYS.INTL (no _xlfn.), Holidays sheet filled; Extra TAT by Area or appointment.
+        # ======================================================================================================
         _put(ws, r, col["TAT"], f'=MAX(0,NETWORKDAYS.INTL({rc}{r}+1,{end},"0000110",{HOLIDAY_RANGE}))', formula=True)
         if row.sla_appt:                                      # appointment: due the next working day by 5:59 PM, In and Out alike
             late = f'+IF(MOD({sc}{r},1)>=0.75,1,0)' if sub else ""

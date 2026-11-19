@@ -18,6 +18,10 @@ def _utc_to_dhaka(s: str | None) -> datetime | None:
     return datetime.strptime(f"{m.group(1)} {m.group(2)}", "%Y-%m-%d %H:%M:%S") + DHAKA
 
 
+# ==============================================================================================================
+# ◆ DASHBOARD-MATCH LOGIC: Last Update wording
+#   raw activity-log text -> File Submitted / Outcome / remarks updated / Inactive / Trip details edited.
+# ==============================================================================================================
 def short_activity(act: str, prev, cur, etype: str) -> str:
     """One short, plain phrase for a log line (kept close to the dashboard's own words)."""
     a = (act or "").strip()
