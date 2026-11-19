@@ -452,3 +452,8 @@ Four tracker rules added after comparing the VRB tracker with the dashboard's ow
 
 TAT formula kept as `NETWORKDAYS.INTL` (no `_xlfn.` prefix): it is part of the ISO OOXML function set; LibreOffice shows #NAME? for
 `_xlfn.NETWORKDAYS.INTL` (checked), while the plain name works in Excel and LibreOffice.
+
+### Logic markers in the source (v13, 19-11-2026)
+Search the code for `★ DONE/DUE LOGIC` (the Report Summary engine: summary.py, billing.refresh_summary / concern_info, report_text.summary_lines)
+and `◆ DASHBOARD-MATCH LOGIC` (other rules the dashboard tracker must copy: selection, folding, Pending Reason, SLA / TAT, Area, columns).
+summary.py starts with a reading-order index. Comments only - no behaviour changed.

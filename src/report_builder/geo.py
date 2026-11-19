@@ -156,6 +156,10 @@ def classify_text(*texts: str) -> str | None:
     return None
 
 
+# ==============================================================================================================
+# ◆ DASHBOARD-MATCH LOGIC: Area In / Out
+#   coordinates first, then visit coordinates, then address words; near a border an outside place name wins.
+# ==============================================================================================================
 def trip_area(trip: dict) -> tuple[str, bool, str]:
     """Decide In/Out for one trip -> (area, sure, why).
 

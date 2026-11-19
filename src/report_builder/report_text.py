@@ -31,6 +31,10 @@ def bill_slab_lines(r: BillRow) -> list:
     return lines
 
 
+# ==============================================================================================================
+# ★ DONE/DUE LOGIC: printed Report Summary cell
+#   'Done-...' and 'Due-...' lines with the coloured problem notes.
+# ==============================================================================================================
 def summary_lines(r: BillRow) -> list:
     """Done / Due as two lines.  Done: finished items (problems in amber brackets).
     Due: the same problems repeated with a soft marker; "0" (green) when nothing is open."""
@@ -74,6 +78,9 @@ def sla_start_label(r: BillRow) -> str:
     return f"{r.sla_start:%d/%m/%Y}" if getattr(r, "sla_start", None) else ""
 
 
+# ==============================================================================================================
+# ◆ DASHBOARD-MATCH LOGIC: SLA restart line of the Appointment cell
+# ==============================================================================================================
 def sla_restart_lines(r: BillRow) -> list:
     """Plain words for a banker: the SLA was restarted (by an appointment or by a new trip), and from which day.  [] = no restart."""
     if not getattr(r, "sla_start", None):
