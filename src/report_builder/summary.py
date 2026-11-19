@@ -552,6 +552,23 @@ def _reason_of(outcome: str) -> str:
     return _short(m.group(1) if m and len(m.group(1).strip()) > 5 else outcome)
 
 
+def _replaced_banks(views: list) -> set:
+    """id() of every BANK trip that is Canceled / Inactive / Withdrawn and was redone by a LATER Finished BANK trip of the same
+    person (same role label: App / Co-App / PG1 ...)."""
+    far = datetime(2100, 1, 1)
+    banks = [v for v in views if v.trip.get("type_code") == "BANK"]
+    out = set()
+    for v in banks:
+        t = v.trip
+        if t.get("status_code") not in (6, 7, 8):
+            continue
+        made = t.get("created_at") or far
+        if any(w is not v and w.who == v.who and w.trip.get("status_code") == FINISHED and (w.trip.get("created_at") or far) > made
+               for w in banks):
+            out.add(id(t))
+    return out
+
+
 def analyze(views: list[TripView], submitted: bool, bank_label: str = "BS") -> Summary:
     rules = _user_rules() + NOTE_RULES
     info = info_notes()
@@ -561,7 +578,11 @@ def analyze(views: list[TripView], submitted: bool, bank_label: str = "BS") -> S
     def _bank_counts(t: dict) -> bool:       # an Inactive bank trip that carries a remark is a statement of its own (BS2 ...)
         st = t.get("status_code")
         return st not in (6, 7, 8) or (st == 7 and (t.get("remarks") or "").strip() not in ("", "-"))
-    total_bank = sum(1 for v in views if v.trip.get("type_code") == "BANK" and _bank_counts(v.trip))
+    # v13 (Naim, 19-11-2026): a bank statement trip made Inactive / Canceled / Withdrawn and REDONE by a later bank trip of the same
+    # person that is Finished (a Re-CPV BS) is replaced: its old problem is no longer Due and it takes no BS number
+    # (PL-20261111115745017: BS 507264 Inactive "call not received" -> Re-CPV BS 511377 done -> Done "BS", Due-0).
+    replaced = _replaced_banks(views)
+    total_bank = sum(1 for v in views if v.trip.get("type_code") == "BANK" and _bank_counts(v.trip) and id(v.trip) not in replaced)
     skipped: list[str] = []
 
     for v in views:
@@ -603,6 +624,9 @@ def analyze(views: list[TripView], submitted: bool, bank_label: str = "BS") -> S
         elif code in ("OFFICE", "GUARANTOR_OFFICE"):
             primary = Item(who, "Office")
         elif code == "BANK":
+            if id(t) in replaced:
+                skipped.append(f"ট্রিপ {t.get('id')} {_STATUS_TEXT.get(status, status)} - পরে নতুন BS ট্রিপ Finished (রিপোর্ট সারাংশে বাদ)")
+                continue
             if _bank_counts(t):
                 n_bank += 1
             primary = Item("", f"{bank_label}{n_bank}" if total_bank > 1 else bank_label)

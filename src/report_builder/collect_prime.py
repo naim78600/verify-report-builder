@@ -391,6 +391,12 @@ def collect_prime(cfg: PrimeConfig, progress: Progress = _noop, cancel: threadin
     if d.dash.get("ok"):
         d.dash["check"] = dashboard_check(d)
         ck = d.dash["check"]
+        # v13 (Naim, 19-11-2026): a file submitted in these dates and re-opened since (a new Re-CPV ...) stays in the Complete
+        # Report (it WAS submitted) but its row says so clearly
+        reo = dict(ck.get("reopened") or [])
+        for r in d.complete:
+            if r.file_no in reo:
+                r.reopen_note = f"Re-opened since - {reo[r.file_no]} on the dashboard"
         if ck["missing"]:
             d.notes.append(f"ড্যাশবোর্ডের Submitted তালিকায় {ck['dashboard']} টি ফাইল, রিপোর্টের Complete-এ মিলেছে {ck['matched']} টি। "
                            "মেলেনি: " + "; ".join(f"{no} ({why})" for no, why in ck["missing"][:6]) + ("…" if len(ck["missing"]) > 6 else ""))

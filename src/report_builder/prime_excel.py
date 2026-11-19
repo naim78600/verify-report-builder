@@ -201,7 +201,7 @@ def _banner(ws, d: PrimeData, name: str, rows, is_incomplete: bool, cols: list) 
     sg = sum(1 for x in rows if x.kind == "Single")
     rc = sum(1 for x in rows if x.kind == "ReCpv")
     ex = sum(1 for x in rows if x.kind == "Extra")
-    n_files = len({x.file_id for x in rows})
+    n_files = len({x.file_no for x in rows})          # v13: unique file numbers (two applications of one File No = one file)
     items = [(("Incomplete" if is_incomplete else "Complete") + f" rows · {n_files} files", len(rows), accent),
              ("Package", pk, T.NAVY), ("Extra Trip", sg, T.NAVY), ("Re-CPV", rc, T.NAVY), ("Extra Doc / Trip", ex, T.NAVY),
              ("Area In", sum(1 for x in rows if x.area == "In"), T.IN), ("Area Out", sum(1 for x in rows if x.area == "Out"), T.OUT),
@@ -226,7 +226,7 @@ def _write_rows(ws, r0: int, rows, checks: list, section: str, cols: list) -> in
     for n, row in enumerate(rows):
         sub = row.submitted
         zebra = _fill(T.ZEBRA) if n % 2 else None
-        concerns = "\n".join(row.concern_lines)
+        concerns = "\n".join(row.file_concern_lines or row.concern_lines)
         history = "\n\n".join(row.history_lines)
         slab_l, sum_l, upd_l, app_l = bill_slab_lines(row), summary_lines(row), last_update_lines(row), appointment_lines(row)
         lu = last_update_date(row)
@@ -237,7 +237,8 @@ def _write_rows(ws, r0: int, rows, checks: list, section: str, cols: list) -> in
             "SLA Start / Restart Date": row.sla_start or (row.receive_dt.date() if row.receive_dt else None),
             "Submission Date-Time": row.reported_at if sub else "Pending",
             "Before / After 12 PM": before_after(row) if sub else "-",
-            "Report Status": row.status + (f"\n({row.status_note})" if row.status_note and not sub else ""),
+            "Report Status": row.status + (f"\n({row.status_note})" if row.status_note and not sub else "")
+                             + (f"\n({row.reopen_note})" if sub and row.reopen_note else ""),
             "Last Update Date": lu.date() if lu else "N/A",
         }
         for t in col:
@@ -280,8 +281,9 @@ def _write_rows(ws, r0: int, rows, checks: list, section: str, cols: list) -> in
         out = row.area == "Out"
         ws.cell(r, col["Area"]).font = Font(name=FONT, bold=True, color=T.OUT if out else T.IN)
         ws.cell(r, col["Area"]).fill = _fill(T.OUT_BG if out else T.IN_BG)
-        ws.cell(r, col["Report Status"]).font = Font(name=FONT, bold=True, color=T.POS if sub else T.NEG)
-        ws.cell(r, col["Report Status"]).fill = _fill(T.POS_BG if sub else T.NEG_BG)
+        reo = sub and bool(row.reopen_note)
+        ws.cell(r, col["Report Status"]).font = Font(name=FONT, bold=True, color=T.NEG if reo or not sub else T.POS)
+        ws.cell(r, col["Report Status"]).fill = _fill(T.NEG_BG if reo or not sub else T.POS_BG)
         ws.cell(r, col["File No"]).font = Font(name=FONT, bold=True, color=T.NAVY)
         if row.sla_restarted:                                 # restarted (appointment / new trip): plum cell, easy to see
             ws.cell(r, col["SLA Start / Restart Date"]).font = Font(name=FONT, bold=True, color=T.RESTART)

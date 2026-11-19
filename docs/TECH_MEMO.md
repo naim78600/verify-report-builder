@@ -436,3 +436,19 @@ trip not cancelled / withdrawn, and not in the office, with a courier, received 
 
 **End-to-end check** (`devtools/e2e_v12/run.py`): the real helper extension on a mock WhatsApp page against the real HelperServer —
 round sent (text + voice), tap-link answers, follow-ups, slip photo saved, note saved.
+
+## 16. Version 13 (19 November 2026)
+
+Four tracker rules added after comparing the VRB tracker with the dashboard's own tracker of 19-11-2026 Phase 2; nothing else changed.
+
+1. **Replaced bank statement** (`summary._replaced_banks`, used in `summary.analyze`): a BANK trip that is Canceled / Inactive /
+   Withdrawn (status 6/7/8) is dropped from the Report Summary - not Due, no BS number - when a LATER BANK trip of the same person
+   (same role label) is Finished (status 5). If the later BS is not finished yet, the old problem stays Due (v6 rule).
+2. **Concerns Name = every trip of the file** (`billing.build_rows` -> `BillRow.file_concern_lines`; used by `prime_excel` and
+   `prime_pdf`). The monthly bill keeps `concern_lines` (the bill row's own trips).
+3. **KPI "FILES" = unique File No** (`prime_excel._report_sheet`, `n_files`).
+4. **Re-opened file** (`collect_prime.collect_prime` after `dashboard_check`): a Complete row whose file is no longer Submitted on
+   the dashboard gets `reopen_note` ("Re-opened since - now On Going on the dashboard"), shown in Report Status in orange (Excel + PDF).
+
+TAT formula kept as `NETWORKDAYS.INTL` (no `_xlfn.` prefix): it is part of the ISO OOXML function set; LibreOffice shows #NAME? for
+`_xlfn.NETWORKDAYS.INTL` (checked), while the plain name works in Excel and LibreOffice.

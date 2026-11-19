@@ -1,6 +1,6 @@
-# Verify Report Builder — Version 12 (ভেরিফাই রিপোর্ট বিল্ডার)
+# Verify Report Builder — Version 13 (ভেরিফাই রিপোর্ট বিল্ডার)
 
-**Version 12.0.0** · Prime Bank PLC · LankaBangla Finance · Barikoi Technologies Limited
+**Version 13.0.0** · Prime Bank PLC · LankaBangla Finance · Barikoi Technologies Limited
 
 Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্যার। Verify ড্যাশবোর্ড থেকে Prime Bank PLC-এর ফাইল সংগ্রহ করে **দৈনিক সাবমিশন ট্র্যাকার** (Complete + Incomplete, Excel + PDF) বানায় এবং **সরাসরি ব্যাংককে ইমেইল** পাঠায়।
 **Verify থেকে শুধু তথ্য পড়ে (GET); কোনো তথ্য বদলায় না।** লগইন পাসওয়ার্ড ও ইমেইলের App Password কোথাও সংরক্ষণ হয় না।
@@ -44,7 +44,7 @@ Chrome → `chrome://extensions` → **Developer mode** চালু → **Load 
 | Mac (Apple Silicon M1–M4) | `VerifyReportBuilder-Mac-AppleSilicon.dmg` | খুলে অ্যাপটি **Applications**-এ টেনে আনুন |
 | Mac (Intel) | `VerifyReportBuilder-Mac-Intel.dmg` | একই |
 
-ইনস্টলার না চাইলে `.zip` (portable) ফাইলও আছে। রিপোজিটরি **প্রাইভেট** — ডাউনলোডের জন্য GitHub-এ সাইন-ইন লাগবে (**Releases** পাতা; Release-এর নাম “Verify Report Builder Version 12 (v12.0.0)”)।
+ইনস্টলার না চাইলে `.zip` (portable) ফাইলও আছে। রিপোজিটরি **প্রাইভেট** — ডাউনলোডের জন্য GitHub-এ সাইন-ইন লাগবে (**Releases** পাতা; Release-এর নাম “Verify Report Builder Version 13 (v13.0.0)”)।
 প্রথমবার খুললে ডিজিটাল স্বাক্ষর নেই বলে সতর্কতা আসে: **Windows:** More info → Run anyway। **Mac:** System Settings → Privacy & Security → *Open Anyway* (অথবা `xattr -dr com.apple.quarantine /Applications/VerifyReportBuilder.app`)।
 
 ## প্রতিদিনের ওয়ার্কফ্লো (দিনে দুইবার)
@@ -171,6 +171,13 @@ Chrome → `chrome://extensions` → **Developer mode** চালু → **Load 
 - **লাইভ ৯০ দিনের ডেটায় ফল:** ১৫২৫ সারির মধ্যে ৫৯৪টিতে Appointment ও ২১৫টিতে নতুন ট্রিপের কারণে SLA restart; SLA Breach ৫১১ থেকে ১০২।
 
 ---
+
+### Version 13.0.0 (১৯ নভেম্বর) — ট্র্যাকারের ৪টি নতুন নিয়ম (ড্যাশবোর্ডের ট্র্যাকারের সাথে মিলিয়ে)
+১) Inactive / Canceled BS ট্রিপ পরে নতুন BS ট্রিপে (Re-CPV) Finished হলে পুরনো সমস্যা আর Due-তে নেই, নম্বরও নেয় না (PL-20261111115745017 → Done "BS", Due-0)। নতুন BS এখনো শেষ না হলে আগের মতোই Due।
+২) ট্র্যাকারের Concerns Name-এ ফাইলের সব ট্রিপ (Document, Rental, Chamber, Re-CPV, পরের ট্রিপসহ) — Report Summary যে ট্রিপগুলো পড়ে সেগুলোই। মাসিক বিলের সারি আগের মতো।
+৩) উপরের KPI ঘরে “FILES” = আলাদা File No-এর সংখ্যা (একই File No-এর দুই application = ১টি ফাইল)।
+৪) এই তারিখে Submitted, পরে ড্যাশবোর্ডে আবার খোলা (re-opened) ফাইল Complete Report-এই থাকে, কিন্তু Report Status-এ কমলা রঙে লেখা “(Re-opened since - now On Going on the dashboard)” — Excel ও PDF দুটোতেই।
+TAT সূত্র (NETWORKDAYS.INTL) আগের মতোই: Excel ও LibreOffice দুটোতেই চলে; _xlfn. লাগালে LibreOffice-এ #NAME? হয়, তাই বদলানো হয়নি। বাকি সব নিয়ম v12.0.0-এর মতো।
 
 ### Version 12.0.0 (১৮ নভেম্বর) — সহজ স্ক্রিন, ৫ বার রিমাইন্ডার + ভয়েস, এক-চাপে উত্তর, Online BS স্লিপ
 উপরের “Version 12-এ নতুন” টেবিল দেখুন। সব নিয়ম ফাংশন ধরে `docs/TECH_MEMO.md`-এর ১৫ নম্বর অংশে।

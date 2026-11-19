@@ -242,6 +242,9 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
                 when = f"<font color='#{T.MUTED}'>Pending</font>"
             st_color = T.POS if sub else T.NEG
             status = r.status + (f"<br/><font size='6'>({escape(r.status_note)})</font>" if r.status_note and not sub else "")
+            if sub and r.reopen_note:                           # v13: submitted in these dates, re-opened since
+                st_color = T.NEG
+                status += f"<br/><font size='6'>({escape(r.reopen_note)})</font>"
             out = r.area == "Out"
             xt = r.extra_tat if r.extra_tat is not None else ""
             sla_txt = "SLA Breach" if r.sla_breach else "Within SLA"
@@ -261,7 +264,7 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
                 "SL": _p(r.sl, center),
                 "File No": Paragraph(f"<b><font color='#{T.NAVY}'>{escape(_safe(r.file_no))}</font></b><br/><font color='#{T.MUTED}'>{escape(r.file_type)}</font>", base),
                 "Applicant Name": _p(getattr(r, "applicant", "") or "", base),
-                "Concerns": cap(_p("\n".join(r.concern_lines), base), ix["Concerns"], LINES["concerns"]),
+                "Concerns": cap(_p("\n".join(r.file_concern_lines or r.concern_lines), base), ix["Concerns"], LINES["concerns"]),
                 "Re-CPV / Extra Trip (ID)": cap(_p(hist, base), ix["Re-CPV / Extra Trip (ID)"], LINES["history"]),
                 "Bill Slab": cap(Paragraph(_markup(bill_slab_lines(r), kc), base), ix["Bill Slab"], LINES["slab"]),
                 "Area": Paragraph(f'<font color="#{T.OUT if out else T.IN}"><b>{r.area}</b></font>', center),
@@ -281,7 +284,7 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
             data.append([cells[h] for h in hs])
             style.append(("BACKGROUND", (ix["Bill Slab"], i), (ix["Bill Slab"], i), _c(T.KIND_BG.get(r.kind, "FFFFFF"))))
             style.append(("BACKGROUND", (ix["Area"], i), (ix["Area"], i), _c(T.OUT_BG if out else T.IN_BG)))
-            style.append(("BACKGROUND", (ix["Report Status"], i), (ix["Report Status"], i), _c(T.POS_BG if sub else T.NEG_BG)))
+            style.append(("BACKGROUND", (ix["Report Status"], i), (ix["Report Status"], i), _c(T.POS_BG if sub and not r.reopen_note else T.NEG_BG)))
             if r.sla_restarted:
                 style.append(("BACKGROUND", (ix["SLA Start / Restart Date"], i), (ix["SLA Start / Restart Date"], i), _c(T.RESTART_BG)))
             if has_due(r):
