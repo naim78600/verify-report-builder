@@ -1,6 +1,14 @@
-# Verify Report Builder — Version 12 (v12.0.0)
+# Verify Report Builder — Version 13 (v13.0.0)
 
 Prime Bank PLC ও LankaBangla-র কাজের জন্য: দৈনিক সাবমিশন ট্র্যাকার, মাসিক বিল, ফাইল হিস্টরি, **BS**, **অফিস রিসিভ** ও **WhatsApp রিমাইন্ডার (ভয়েসসহ)**। Verify থেকে **শুধু তথ্য পড়ে (GET)**, কিছু বদলায় না; পাসওয়ার্ড কোথাও সংরক্ষণ হয় না।
+
+## Version 13-এ নতুন
+
+১) Inactive / Canceled BS ট্রিপ পরে নতুন BS ট্রিপে (Re-CPV) Finished হলে পুরনো সমস্যা আর Due-তে নেই, নম্বরও নেয় না (PL-20261111115745017 → Done "BS", Due-0)। নতুন BS এখনো শেষ না হলে আগের মতোই Due।
+২) ট্র্যাকারের Concerns Name-এ ফাইলের সব ট্রিপ (Document, Rental, Chamber, Re-CPV, পরের ট্রিপসহ) — Report Summary যে ট্রিপগুলো পড়ে সেগুলোই। মাসিক বিলের সারি আগের মতো।
+৩) উপরের KPI ঘরে “FILES” = আলাদা File No-এর সংখ্যা (একই File No-এর দুই application = ১টি ফাইল)।
+৪) এই তারিখে Submitted, পরে ড্যাশবোর্ডে আবার খোলা (re-opened) ফাইল Complete Report-এই থাকে, কিন্তু Report Status-এ কমলা রঙে লেখা “(Re-opened since - now On Going on the dashboard)” — Excel ও PDF দুটোতেই।
+TAT সূত্র (NETWORKDAYS.INTL) আগের মতোই: Excel ও LibreOffice দুটোতেই চলে; _xlfn. লাগালে LibreOffice-এ #NAME? হয়, তাই বদলানো হয়নি। বাকি সব নিয়ম v12.0.0-এর মতো।
 
 ## Version 12-এ নতুন
 
@@ -46,7 +54,7 @@ Chrome → `chrome://extensions` → **Developer mode** চালু → **Load 
 
 ## Technical memo — every rule, by function (for developers)
 
-**For:** the developers of the Verify dashboard · **From:** Barikoi operations (Prime Bank PLC desk) · **Version:** 12.0.0 · **Date:** 18 November 2026
+**For:** the developers of the Verify dashboard · **From:** Barikoi operations (Prime Bank PLC desk) · **Version:** 13.0.0 · **Date:** 19 November 2026
 
 Verify Report Builder is a desktop tool that reads the Verify dashboard (GET only) and produces what is sent to Prime Bank PLC:
 the daily submission tracker, the monthly bill, and the file history. This memo writes down every rule the tool applies, from the
@@ -457,7 +465,14 @@ Reference: `shell.py`, `pages.py`, `gui.ReportsPage`, `i18n.py`.
 ### Version 12.0.0 (১৮ নভেম্বর) — সহজ স্ক্রিন, ৫ বার রিমাইন্ডার + ভয়েস, এক-চাপে উত্তর, Online BS স্লিপ
 উপরের “Version 12-এ নতুন” টেবিল দেখুন। সব নিয়ম ফাংশন ধরে `docs/TECH_MEMO.md`-এর ১৫ নম্বর অংশে।
 
-## সব ফিচার — প্রথম সংস্করণ থেকে Version 7 পর্যন্ত (বিস্তারিত; Version 10 ও 12 উপরে)
+### Version 13.0.0 (১৯ নভেম্বর) — ট্র্যাকারের ৪টি নতুন নিয়ম (ড্যাশবোর্ডের ট্র্যাকারের সাথে মিলিয়ে)
+১) Inactive / Canceled BS ট্রিপ পরে নতুন BS ট্রিপে (Re-CPV) Finished হলে পুরনো সমস্যা আর Due-তে নেই, নম্বরও নেয় না (PL-20261111115745017 → Done "BS", Due-0)। নতুন BS এখনো শেষ না হলে আগের মতোই Due।
+২) ট্র্যাকারের Concerns Name-এ ফাইলের সব ট্রিপ (Document, Rental, Chamber, Re-CPV, পরের ট্রিপসহ) — Report Summary যে ট্রিপগুলো পড়ে সেগুলোই। মাসিক বিলের সারি আগের মতো।
+৩) উপরের KPI ঘরে “FILES” = আলাদা File No-এর সংখ্যা (একই File No-এর দুই application = ১টি ফাইল)।
+৪) এই তারিখে Submitted, পরে ড্যাশবোর্ডে আবার খোলা (re-opened) ফাইল Complete Report-এই থাকে, কিন্তু Report Status-এ কমলা রঙে লেখা “(Re-opened since - now On Going on the dashboard)” — Excel ও PDF দুটোতেই।
+TAT সূত্র (NETWORKDAYS.INTL) আগের মতোই: Excel ও LibreOffice দুটোতেই চলে; _xlfn. লাগালে LibreOffice-এ #NAME? হয়, তাই বদলানো হয়নি। বাকি সব নিয়ম v12.0.0-এর মতো।
+
+## সব ফিচার — প্রথম সংস্করণ থেকে Version 7 পর্যন্ত (বিস্তারিত; Version 10, 12 ও 13 উপরে)
 
 প্রতিটি ধাপে আগের সব ফিচার থেকে যায়; নিচে কোন সংস্করণে কী যোগ হয়েছে ক্রমানুসারে লেখা।
 

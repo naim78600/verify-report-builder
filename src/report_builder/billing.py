@@ -126,6 +126,8 @@ class BillRow:
     category: str = ""                    # line 2 of Bill Slab (dashboard words)
     trips: list = field(default_factory=list)          # [(concern, trip)]
     concern_lines: list = field(default_factory=list)
+    file_concern_lines: list = field(default_factory=list)   # v13: every trip of the file (tracker's Concerns Name)
+    reopen_note: str = ""                                    # v13: Complete row whose file the dashboard re-opened since
     history_lines: list = field(default_factory=list)
     receive_dt: datetime | None = None
     area: str = "In"
@@ -510,6 +512,15 @@ def build_rows(file: dict, recpv_by_trip: dict, recpv_by_file: dict, logs: FileL
                 r.category = "Extra Trip" if many else extra_category(t0)
                 r.receive_dt = t0.get("created_at")
             r.concern_lines = concern_lines(file, info, trips)
+        # v13 (Naim, 19-11-2026): the tracker's Concerns Name lists EVERY trip of the file (Document, Rental, Chamber, Re-CPV and
+        # later trips too) - the same trips the Report Summary reads; the monthly bill keeps the row's own trips (concern_lines)
+        r.file_concern_lines = concern_lines(file, info, flat)
+        named = {int(re.match(r"(\d+)\.", s).group(1)) for s in r.file_concern_lines}
+        for c in file["concerns"]:
+            ci = info[c["id"]]
+            if ci["no"] not in named:
+                r.file_concern_lines.append(f'{ci["no"]}. {ci["label"]}: {c["name"]}')
+        r.file_concern_lines.sort(key=lambda s: int(re.match(r"(\d+)\.", s).group(1)))
         r.history_lines = history_for(file["file_no"], file, recpv_by_file, {t["id"] for _c, t in trips}, history_since)
         r.area, r.area_sure, r.area_why = row_area(trips)
         if not r.area_sure:
