@@ -139,11 +139,8 @@ def write_mushak_pdf(bill: Bill, path: Path) -> Path:
     """Write the Mushak-6.3 of one bill (template + this month's values)."""
     from pypdf import PdfReader, PdfWriter
 
-    tpl = PdfReader(str(asset(TEMPLATE)))
-    page = tpl.pages[0]
-    page.merge_page(PdfReader(io.BytesIO(_overlay(bill))).pages[0])
-    w = PdfWriter()
-    w.add_page(page)
+    w = PdfWriter(clone_from=str(asset(TEMPLATE)))
+    w.pages[0].merge_page(PdfReader(io.BytesIO(_overlay(bill))).pages[0])
     w.add_metadata({"/Title": f"Mushak-6.3 - Prime Bank PLC - {bill.file_type} - {month_name(bill.month)} {bill.year}",
                     "/Author": "Barikoi Technologies Limited"})
     path = Path(path)

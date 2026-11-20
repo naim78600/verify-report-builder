@@ -4,6 +4,7 @@ from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from pypdf import PdfReader  # noqa: E402
 
@@ -64,3 +65,23 @@ def test_bill_attachments_folder(tmp_path):
     (d / "Certificate of Return of Income 2025.pdf").write_bytes(b"%PDF-1.4")
     (d / ".DS_Store").write_bytes(b"x")
     assert [p.name for p in bill_attachments(tmp_path)] == ["Certificate of Return of Income 2025.pdf"]
+
+
+def test_a_copy_re_created_under_another_prefix_is_one_package():
+    """Live November 2026: PL-20261115112802097 (all trips Canceled) was created again next day as HL-20261115112802097."""
+    from datetime import datetime as D
+    from test_v6 import _file, _rows, _t
+    from report_builder.monthly_bill import build_month_bill, file_key
+    assert file_key("PL-20261115112802097") == file_key("HL-20261115112802097") == "20261115112802097"
+    assert file_key("PB-PL-20261108060811878") == file_key("PL-20261108060811878")
+    assert file_key("CC--20261027071214529") == file_key("CC-20261027071214529")
+    assert file_key("PL-0274") == "PL-0274"                                   # short numbers are not folded
+    c = D(2026, 11, 15, 10, 0)
+    dead = _file([("APPLICANT", [_t(1, "HOUSE", c, status=6), _t(2, "OFFICE", c, status=6)])], no="PL-20261115112802097", start=c)
+    dead["id"] = 8
+    live = _file([("APPLICANT", [_t(3, "HOUSE", c), _t(4, "OFFICE", c)])], no="HL-20261115112802097", start=c)
+    live["type"] = "Loan"                                                    # HL- numbers are Loan files on the dashboard (application type)
+    mb = build_month_bill(_rows(dead) + _rows(live), 2026, 11, date(2026, 11, 20))
+    billed = [i for b in mb.bills.values() for i in b.items]
+    assert [i.trip_ids for i in billed] == ["3, 4"]
+    assert len(mb.excluded) == 1 and "created again" in mb.excluded[0][2] and "HL-20261115112802097" in mb.excluded[0][2]

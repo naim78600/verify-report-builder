@@ -472,4 +472,8 @@ No billing rule changed. Added:
    `pdf_from_excel` remakes the Mushak from the edited workbook, so its amounts follow the Penalty sheet's Apply choices.
 3. **`bill_out.bill_attachments(out_dir)`**: files in `<output folder>/Bill Attachments` (certificates) are listed with the bill
    outputs in the window (`gui._work_bill`). Nothing of them is stored in the program.
-4. Tests: `tests/test_v15.py`; the expected bill file lists in `test_v6`, `test_cli` and `gui_smoke` now include the two Mushak PDFs.
+5. **Re-created copy under another prefix** (`monthly_bill.file_key`, used in `build_month_bill`): a Canceled package whose
+   number, without its letter prefix, belongs to a living package (PL-20261115112802097 Canceled -> HL-20261115112802097 created
+   again, live 20-11-2026) is left out like any Canceled copy; the excluded reason names the new number. Only numbers with the long
+   date-time digits (14+) are folded, so PL-0274 style numbers are compared as they are.
+6. Tests: `tests/test_v15.py`; the expected bill file lists in `test_v6`, `test_cli` and `gui_smoke` now include the two Mushak PDFs.
