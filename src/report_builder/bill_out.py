@@ -19,6 +19,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from . import theme as T
 from .monthly_bill import (ADDRESS, IN_NAME, ORG_TO, OUT_NAME, PAY_TO, PENALTY_MAX, PENALTY_PCT, SECTIONS, VAT_PCT, Bill, Item, MonthBill,
                            bill_ref, file_stem, in_words, month_name)
+from .mushak import mushak_stem, write_mushak_pdf
 from .signature import bundled_logo as logo_path
 from .summary import xml_safe
 
@@ -455,7 +456,7 @@ def _num(v) -> str:
     return str(int(v)) if v == int(v) else f"{v:.2f}".rstrip("0").rstrip(".")
 
 
-def write_month_bill(mb: MonthBill, out_dir: Path, excel: bool = True, pdf: bool = True) -> list[Path]:
+def write_month_bill(mb: MonthBill, out_dir: Path, excel: bool = True, pdf: bool = True, mushak: bool = True) -> list[Path]:
     paths: list[Path] = []
     for ft in ("Card", "Loan"):
         bill = mb.bills[ft]
@@ -463,9 +464,26 @@ def write_month_bill(mb: MonthBill, out_dir: Path, excel: bool = True, pdf: bool
             paths.append(write_bill_excel(mb, bill, out_dir / f"{file_stem(bill)}.xlsx"))
         if pdf:
             paths.append(write_bill_pdf(bill, out_dir / f"{file_stem(bill)}.pdf"))
+        if mushak:                                    # V15: the Mushak-6.3 of the same bill
+            paths.append(write_mushak_pdf(bill, out_dir / f"{mushak_stem(bill)}.pdf"))
     return paths
 
 
+ATTACH_DIR = "Bill Attachments"
+
+
+def bill_attachments(out_dir: Path) -> list[Path]:
+    """V15: files the user keeps in <output folder>/Bill Attachments (tax certificates etc.) go with every bill.
+    They stay on the PC only - nothing of them is in the program."""
+    folder = Path(out_dir) / ATTACH_DIR
+    if not folder.is_dir():
+        return []
+    return sorted(p for p in folder.iterdir() if p.is_file() and not p.name.startswith((".", "~$")))
+
+
 def pdf_from_excel(xlsx: Path, out_dir: Path | None = None) -> Path:
+    """PDF of an edited bill Excel. V15: the Mushak-6.3 is remade too, so its amounts follow the edits."""
     bill = read_bill_excel(xlsx)
-    return write_bill_pdf(bill, (out_dir or xlsx.parent) / f"{file_stem(bill)}.pdf")
+    out = out_dir or xlsx.parent
+    write_mushak_pdf(bill, out / f"{mushak_stem(bill)}.pdf")
+    return write_bill_pdf(bill, out / f"{file_stem(bill)}.pdf")

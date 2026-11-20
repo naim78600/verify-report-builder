@@ -24,7 +24,7 @@ from .file_history import HistoryConfig, collect_history, parse_ids_file, parse_
 from .history_excel import write_history_outputs, write_history_template
 from .reports import write_prime_outputs, write_recpv_workbook
 from .monthly_bill import build_month_bill, month_name, month_window
-from .bill_out import pdf_from_excel, write_month_bill
+from .bill_out import bill_attachments, pdf_from_excel, write_month_bill
 from .i18n import L, error_text, progress_text
 from .ui_kit import Button, Card, DateField, Entry, P, Progress, Segmented, Stepper, Tile
 
@@ -461,6 +461,7 @@ class ReportsPage(tk.Frame):
             self.q.put(("progress", "write", 0, 1, L("বিলের Excel / PDF তৈরি হচ্ছে…", "Making the bill Excel / PDF…")))
             mb = build_month_bill(d.all_rows, year, month, date.today(), d.files)
             paths = write_month_bill(mb, self.out_dir, excel=True, pdf=True)
+            paths += bill_attachments(self.out_dir)          # V15: certificates etc. kept in the "Bill Attachments" folder
             self.q.put(("bill_done", paths, mb, d))
         except Cancelled:
             self.q.put(("cancelled",))
@@ -649,6 +650,8 @@ class ReportsPage(tk.Frame):
                         txt += L(f"\nবিলের বাইরে {len(mb.excluded)} টি সারি (কারণসহ ‘Check’ শিটে)।", f"\n{len(mb.excluded)} rows outside the bill (with the reason on the ‘Check’ sheet).")
                     if mb.review:
                         txt += L(f"  একবার দেখে নিন: {len(mb.review)} টি সারি (‘Check’ শিটে)।", f"  Please look at: {len(mb.review)} rows (‘Check’ sheet).")
+                    txt += L("\nমূসক-৬.৩ তৈরি হয়েছে — চালানপত্র নম্বর, ইস্যুর সময়, স্বাক্ষর ও সীল ফাঁকা (Accounts পূরণ করবে)।",
+                             "\nMushak-6.3 made - challan no., issue time, signature and seal are left blank (Accounts fills them in).")
                     if d.failed:
                         txt += L(f"\n⚠ {len(d.failed)} টি ফাইল পড়া যায়নি — বিল অসম্পূর্ণ হতে পারে, আবার চালান।", f"\n⚠ {len(d.failed)} files could not be read - the bill may be incomplete, run it again.")
                     self.status.set(txt)

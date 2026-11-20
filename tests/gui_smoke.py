@@ -270,7 +270,9 @@ def main():
         fail(f"monthly bill did not finish; status: {app.status.get()!r}; boxes: {shown}")
     names = sorted(p.name for p in app.out_files)
     if names != ["Prime_Bank_PLC_Card_Invoice_October_2026.pdf", "Prime_Bank_PLC_Card_Invoice_October_2026.xlsx",
-                 "Prime_Bank_PLC_Loan_Invoice_October_2026.pdf", "Prime_Bank_PLC_Loan_Invoice_October_2026.xlsx"]:
+                 "Prime_Bank_PLC_Card_Mushak6.3_October_2026.pdf",
+                 "Prime_Bank_PLC_Loan_Invoice_October_2026.pdf", "Prime_Bank_PLC_Loan_Invoice_October_2026.xlsx",
+                 "Prime_Bank_PLC_Loan_Mushak6.3_October_2026.pdf"]:          # V15: + Mushak-6.3
         fail(f"monthly bill files: {names}; status: {app.status.get()!r}")
     from report_builder.bill_out import read_bill_excel
     loan = read_bill_excel(next(p for p in app.out_files if p.name.startswith("Prime_Bank_PLC_Loan") and p.suffix == ".xlsx"))

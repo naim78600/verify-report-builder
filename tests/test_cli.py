@@ -83,7 +83,9 @@ def test_cli_monthly_bill(tmp_path, capsys):
         assert "Card: 4 rows, subtotal 1020" in out and "Loan: 6 rows, subtotal 1860" in out and "10 billed + 0 left out" in out
         assert sorted(p.name for p in tmp_path.glob("Prime_Bank_PLC_*")) == [
             "Prime_Bank_PLC_Card_Invoice_October_2026.pdf", "Prime_Bank_PLC_Card_Invoice_October_2026.xlsx",
-            "Prime_Bank_PLC_Loan_Invoice_October_2026.pdf", "Prime_Bank_PLC_Loan_Invoice_October_2026.xlsx"]
+            "Prime_Bank_PLC_Card_Mushak6.3_October_2026.pdf",
+            "Prime_Bank_PLC_Loan_Invoice_October_2026.pdf", "Prime_Bank_PLC_Loan_Invoice_October_2026.xlsx",
+            "Prime_Bank_PLC_Loan_Mushak6.3_October_2026.pdf"]                 # V15: + Mushak-6.3
         with pytest.raises(SystemExit):
             run_app.cli(common + ["--bill", "2026-13"])
     finally:

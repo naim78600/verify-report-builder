@@ -164,7 +164,9 @@ def test_bill_totals_and_penalty_choices(october, tmp_path):
     f1.extra_tat, f1.pct = 0, 0
     paths = write_month_bill(mb, tmp_path)
     assert sorted(p.name for p in paths) == ["Prime_Bank_PLC_Card_Invoice_October_2026.pdf", "Prime_Bank_PLC_Card_Invoice_October_2026.xlsx",
-                                             "Prime_Bank_PLC_Loan_Invoice_October_2026.pdf", "Prime_Bank_PLC_Loan_Invoice_October_2026.xlsx"]
+                                             "Prime_Bank_PLC_Card_Mushak6.3_October_2026.pdf",
+                                             "Prime_Bank_PLC_Loan_Invoice_October_2026.pdf", "Prime_Bank_PLC_Loan_Invoice_October_2026.xlsx",
+                                             "Prime_Bank_PLC_Loan_Mushak6.3_October_2026.pdf"]          # V15: + the Mushak-6.3 of each bill
     assert all(p.stat().st_size > 3000 for p in paths)
     xlsx = tmp_path / "Prime_Bank_PLC_Loan_Invoice_October_2026.xlsx"
     wb = load_workbook(xlsx)
