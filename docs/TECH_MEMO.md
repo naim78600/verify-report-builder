@@ -457,3 +457,19 @@ TAT formula kept as `NETWORKDAYS.INTL` (no `_xlfn.` prefix): it is part of the I
 Search the code for `★ DONE/DUE LOGIC` (the Report Summary engine: summary.py, billing.refresh_summary / concern_info, report_text.summary_lines)
 and `◆ DASHBOARD-MATCH LOGIC` (other rules the dashboard tracker must copy: selection, folding, Pending Reason, SLA / TAT, Area, columns).
 summary.py starts with a reading-order index. Comments only - no behaviour changed.
+
+## 17. Version 15 (20 November 2026) - Mushak-6.3 with the monthly bill
+
+No billing rule changed. Added:
+
+1. **`mushak.py`** - `write_mushak_pdf(bill, path)`: one A4 page per bill, the fixed form `assets/mushak63_template.pdf`
+   (Bangla text and lines; source `devtools/mushak/template.html`, rendered once with Chromium so the Bangla is shaped) plus a
+   reportlab overlay merged with pypdf. Values (`mushak_values`): column (6) = `Bill.after_penalty`, (9) = `VAT_PCT`%,
+   (10) = `Bill.vat`, (11) = `Bill.grand_total`; the same three in the total row with "/-". Buyer constants `BUYER_NAME`,
+   `BUYER_BIN`, `BUYER_ADDRESS`; issue date = `bill.bill_date` ("Nov 20, 2026"); line "CPV service <Card|Loan> (for the month of <Month> <Year>)".
+   Left blank on purpose: challan number, issue time, responsible person's name / designation, signature, seal.
+2. **`bill_out.write_month_bill(..., mushak=True)`** also writes `Prime_Bank_PLC_<Card|Loan>_Mushak6.3_<Month>_<Year>.pdf`;
+   `pdf_from_excel` remakes the Mushak from the edited workbook, so its amounts follow the Penalty sheet's Apply choices.
+3. **`bill_out.bill_attachments(out_dir)`**: files in `<output folder>/Bill Attachments` (certificates) are listed with the bill
+   outputs in the window (`gui._work_bill`). Nothing of them is stored in the program.
+4. Tests: `tests/test_v15.py`; the expected bill file lists in `test_v6`, `test_cli` and `gui_smoke` now include the two Mushak PDFs.
