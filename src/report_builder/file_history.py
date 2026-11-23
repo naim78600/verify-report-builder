@@ -358,7 +358,7 @@ def _near_number(digits: str, file_digits: str) -> bool:
 
 
 def _name_hit(given: str, names: str, strict: bool = False) -> bool:
-    test = strict_names_match if strict else names_match
+    test = (lambda a, b: names_match(a, b) and strict_names_match(a, b)) if strict else names_match
     return bool(given) and any(test(given, n) for n in (names or "").split("|") if n.strip())
 
 
