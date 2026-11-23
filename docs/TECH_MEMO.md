@@ -271,6 +271,19 @@ Reference: `file_history.py`, `history_excel.py`.
 
 Input: an Excel with File No and Applicant Name. Each file is looked up by number; the output has a Summary (with a name check against the applicant and the guarantors), Timeline, Submission History, Trips with full remarks, Appointments, Re-CPV & Extra, Concerns, and a Not Found sheet.
 
+**v16 trip-wise page ("Design A")** — `history_trips.py` (data), `history_tripwise.py` (Excel sheet + A4 landscape PDF).
+The first sheet "File History" and the PDF `File_History_<date>.pdf` show one block per searched file, one line per trip.
+Nothing new is decided there; every value comes from the existing rules:
+1. Receive date, Package In / Out, SLA days, TAT, Extra TAT, SLA breach: the file's **Package** bill row (`billing.build_rows` + `compute_tat`, section 4 and 6).
+2. Extra trip count and dates: the file's other bill rows (Single "Extra Trip n", Re-CPV, Extra Document ...), not the split documents (`history_trips.file_block`).
+3. Report summary line (Done-... | Due-...): `summary.analyze` over every trip of the file, `submitted` = file status Submitted (section 3).
+4. Per trip (`history_trips._results_by_trip`, items matched by `Item.src` = trip id):
+   - **Due** + reason = an open / problem item of that trip (the bracket note; an appointment comes first);
+   - **Done** + **Negative** = the trip's item (or an item read out of its remark, e.g. a LOI in an office remark) is Done but has a problem note — the same item is repeated in Due by the Report Summary rule;
+   - **–** + dashboard status = a Canceled / Inactive / Withdrawn trip the summary leaves out.
+5. Trip names are the Report Summary's (App House, PG1 Office, LOI, BS1, Chamber ...); "Trip added" = created date + the bill row it belongs to; "Trip update" = the newest activity-log event of the trip.
+6. Fonts: PDF Fira Sans (OFL, embedded, `assets/fonts`), Excel Calibri. Colours from `theme.py` (no red, no yellow).
+
 ---
 
 ## 12. Version 7 against the manual September 2026 bill

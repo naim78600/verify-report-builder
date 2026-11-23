@@ -1,6 +1,13 @@
-# Verify Report Builder — Version 15 (v15.0.0)
+# Verify Report Builder — Version 16 (v16.0.0)
 
 Prime Bank PLC ও LankaBangla-র কাজের জন্য: দৈনিক সাবমিশন ট্র্যাকার, মাসিক বিল, ফাইল হিস্টরি, **BS**, **অফিস রিসিভ** ও **WhatsApp রিমাইন্ডার (ভয়েসসহ)**। Verify থেকে **শুধু তথ্য পড়ে (GET)**, কিছু বদলায় না; পাসওয়ার্ড কোথাও সংরক্ষণ হয় না।
+
+## Version 16-এ নতুন
+
+১) **ফাইল হিস্টরির নতুন প্রথম পাতা (Excel-এর প্রথম শিট “File History” + একই পাতা A4 PDF):** প্রতিটি ফাইল একটি ব্লকে, প্রতিটি ট্রিপ এক লাইনে — File no (শেষ অঙ্ক, নিচে পুরো নম্বর ও ফাইলের অবস্থা: Submitted / Partially submitted / Hold / Cancelled / On going), Applicant, Receive date, Package In/Out · SLA · TAT · SLA breach · Extra trip কয়টি ও কবে, Trip type, Trip added (তারিখ + Package / Extra Trip / Re-CPV), Trip update, Done / Due, Due-র কারণ বা Done-এ সমস্যা থাকলে এক শব্দে “Negative”; প্রতিটি ফাইলের নিচে Report summary (Done-… | Due-…)।
+২) সব হিসাব আগের নিয়মেই — SLA/TAT/In-Out বিলের Package সারি থেকে, Done/Due দৈনিক সাবমিশন ট্র্যাকারের Report Summary নিয়মে। নতুন কোনো নিয়ম নেই।
+৩) PDF-এ Fira Sans ফন্ট (PDF-এর ভেতরে থাকে), Excel-এ Calibri। বাকি শিট (Summary, Timeline …) আগের মতোই পরে আছে।
+বাকি সব নিয়ম (ট্র্যাকার, বিল, In/Out, জরিমানা, মূসক-৬.৩) v15.0.0-এর মতোই।
 
 ## Version 15-এ নতুন
 
@@ -473,6 +480,11 @@ Reference: `shell.py`, `pages.py`, `gui.ReportsPage`, `i18n.py`.
 
 ### Version 12.0.0 (১৮ নভেম্বর) — সহজ স্ক্রিন, ৫ বার রিমাইন্ডার + ভয়েস, এক-চাপে উত্তর, Online BS স্লিপ
 উপরের “Version 12-এ নতুন” টেবিল দেখুন। সব নিয়ম ফাংশন ধরে `docs/TECH_MEMO.md`-এর ১৫ নম্বর অংশে।
+
+### Version 16.0.0 (২৩ নভেম্বর) — ফাইল হিস্টরি: ট্রিপ-অনুযায়ী সহজ পাতা
+১) **ফাইল হিস্টরির নতুন প্রথম পাতা (Excel-এর প্রথম শিট “File History” + একই পাতা A4 PDF):** প্রতিটি ফাইল একটি ব্লকে, প্রতিটি ট্রিপ এক লাইনে — File no (শেষ অঙ্ক, নিচে পুরো নম্বর ও ফাইলের অবস্থা: Submitted / Partially submitted / Hold / Cancelled / On going), Applicant, Receive date, Package In/Out · SLA · TAT · SLA breach · Extra trip কয়টি ও কবে, Trip type, Trip added (তারিখ + Package / Extra Trip / Re-CPV), Trip update, Done / Due, Due-র কারণ বা Done-এ সমস্যা থাকলে এক শব্দে “Negative”; প্রতিটি ফাইলের নিচে Report summary (Done-… | Due-…)।
+২) সব হিসাব আগের নিয়মেই — SLA/TAT/In-Out বিলের Package সারি থেকে, Done/Due দৈনিক সাবমিশন ট্র্যাকারের Report Summary নিয়মে। নতুন কোনো নিয়ম নেই।
+৩) PDF-এ Fira Sans ফন্ট (PDF-এর ভেতরে থাকে), Excel-এ Calibri। বাকি শিট (Summary, Timeline …) আগের মতোই পরে আছে।
 
 ### Version 15.0.0 (২০ নভেম্বর) — মূসক-৬.৩ বিলের সাথে
 ১) **মূসক-৬.৩ (কর চালানপত্র)** — মাসিক বিল বানালে Card ও Loan দুটোর জন্য আলাদা মূসক-৬.৩ PDF নিজে তৈরি হয়: `Prime_Bank_PLC_Card_Mushak6.3_<মাস>_<বছর>.pdf`, `Prime_Bank_PLC_Loan_Mushak6.3_<মাস>_<বছর>.pdf`। ফরম Accounts-এর হাতে লেখা মূসক-৬.৩-এর মতোই; শুধু মাসের তথ্য বদলায়: ক্রেতা (Prime Bank PLC, BIN, ঠিকানা), ইস্যুর তারিখ (বিলের তারিখ), “CPV service Card/Loan (for the month of …)”, মোট মূল্য = জরিমানা বাদের পরের সাবটোটাল, ৫% VAT, VAT সহ মোট — সারিতে ও সর্বমোট-এ। এগুলো বিলের সাথে হুবহু মেলে।
