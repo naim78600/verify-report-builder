@@ -310,6 +310,8 @@ def main():
     hwb = load_workbook(hx[0])
     if "Not Found" not in hwb.sheetnames or "Applicant Name (given)" not in [c.value for c in hwb["Summary"][3]]:
         fail(f"file history workbook is incomplete: {hwb.sheetnames}")
+    if hwb.sheetnames[0] != "File History" or not [p for p in app.out_files if p.suffix == ".pdf"]:
+        fail(f"v16 trip-wise page missing: sheets {hwb.sheetnames}, outputs {[p.name for p in app.out_files]}")
 
     step("settings saved without the password")
     sf = config.SETTINGS_FILE

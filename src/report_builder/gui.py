@@ -232,11 +232,11 @@ class ReportsPage(tk.Frame):
         self.hist_ids: list = []
         pick = tk.Frame(b, bg=P["card"])
         pick.pack(fill="x")
-        Button(pick, L("📄  Excel / CSV বাছুন", "📄  Choose Excel / CSV"), self._pick_ids_file, kind="secondary", font=f.body, padx=12, pady=7).pack(side="left")
+        Button(pick, L("📄  Excel / CSV / ছবি / PDF বাছুন", "📄  Choose Excel / CSV / photo / PDF"), self._pick_ids_file, kind="secondary", font=f.body, padx=12, pady=7).pack(side="left")
         self.hist_file = tk.Label(pick, text=L("কোনো ফাইল বাছা হয়নি", "No file chosen"), bg=P["card"], fg=P["mute"], font=f.small, anchor="w", wraplength=210, justify="left")
         self.hist_file.pack(side="left", padx=10)
         Button(b, L("⬇  নমুনা Excel (File No + Applicant Name) সংরক্ষণ করুন", "⬇  Save the sample Excel (File No + Applicant Name)"), self._save_hist_template, kind="ghost", font=f.tiny, padx=0, pady=3).pack(anchor="w", pady=(2, 0))
-        tk.Label(b, text=L("অথবা নম্বরগুলো এখানে লিখুন বা পেস্ট করুন (প্রতি লাইনে একটি):", "Or type / paste the numbers here (one per line):"), bg=P["card"], fg=P["text"],
+        tk.Label(b, text=L("অথবা নম্বরগুলো এখানে লিখুন বা পেস্ট করুন (প্রতি লাইনে একটি; চাইলে  নম্বর | নাম | তারিখ):", "Or type / paste the numbers here (one per line; or  number | name | date):"), bg=P["card"], fg=P["text"],
                  font=f.small, anchor="w").pack(fill="x", pady=(10, 2))
         self.hist_text = tk.Text(b, width=46, height=5, font=f.body, relief="flat", highlightthickness=1, highlightbackground=P["line"])
         self.hist_text.pack(fill="x")
@@ -499,20 +499,57 @@ class ReportsPage(tk.Frame):
 
     # ---- file history input -------------------------------------------------------------------------
     def _pick_ids_file(self):
-        path = filedialog.askopenfilename(title=L("ফাইল নম্বরের Excel / CSV বাছুন", "Choose the Excel / CSV of file numbers"),
-                                          filetypes=[("Excel / CSV", "*.xlsx *.xlsm *.csv *.txt"), ("All", "*.*")])
-        if not path:
+        paths = filedialog.askopenfilenames(title=L("ফাইল নম্বরের তালিকা বাছুন (একাধিক ছবি চলবে)", "Choose the list of file numbers (several photos are fine)"),
+                                            filetypes=[("Excel / CSV / PDF / Photo", "*.xlsx *.xlsm *.csv *.txt *.pdf *.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff"),
+                                                       ("All", "*.*")])
+        if not paths:
             return
-        try:
-            self.hist_ids = parse_ids_file(Path(path))
-        except ValueError as exc:
-            self.hist_ids = []
-            messagebox.showwarning(L("ফাইল পড়া যায়নি", "Could not read the file"), str(exc))
-        except Exception as exc:                                  # noqa: BLE001
-            self.hist_ids = []
-            messagebox.showwarning(L("ফাইল পড়া যায়নি", "Could not read the file"), f"{type(exc).__name__}: {exc}")
-        self.hist_file.config(text=Path(path).name if self.hist_ids else L("কোনো ফাইল নম্বর পাওয়া যায়নি", "No file numbers found"), fg=P["text"] if self.hist_ids else P["warn"])
+        paths = [Path(p) for p in paths]
+        if len(paths) == 1 and paths[0].suffix.lower() in (".xlsx", ".xlsm", ".csv", ".txt"):
+            path = paths[0]
+            try:
+                self.hist_ids = parse_ids_file(path)
+            except ValueError as exc:
+                self.hist_ids = []
+                messagebox.showwarning(L("ফাইল পড়া যায়নি", "Could not read the file"), str(exc))
+            except Exception as exc:                                  # noqa: BLE001
+                self.hist_ids = []
+                messagebox.showwarning(L("ফাইল পড়া যায়নি", "Could not read the file"), f"{type(exc).__name__}: {exc}")
+            self.hist_file.config(text=path.name if self.hist_ids else L("কোনো ফাইল নম্বর পাওয়া যায়নি", "No file numbers found"), fg=P["text"] if self.hist_ids else P["warn"])
+            self._hist_count()
+            return
+        # v16: photos / PDFs (and several files at once): read them, then show the list as editable lines
+        self.hist_file.config(text=L("পড়া হচ্ছে… (ছবি প্রতি কয়েক সেকেন্ড)", "Reading… (a few seconds per photo)"), fg=P["mute"])
+        self.update_idletasks()
+
+        def work():
+            from .list_reader import read_rows, rows_to_text
+            try:
+                rows, problems = read_rows(paths)
+                self.after(0, lambda: self._list_read(paths, rows_to_text(rows), len(rows), problems))
+            except Exception as exc:                              # noqa: BLE001
+                self.after(0, lambda: self._list_read(paths, "", 0, [f"{type(exc).__name__}: {exc}"]))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _list_read(self, paths, text: str, n: int, problems: list):
+        self.hist_ids = []
+        if text:
+            self.hist_text.delete("1.0", "end")
+            self.hist_text.insert("1.0", text + "\n")
+            self.hist_text.config(height=min(18, max(5, n + 1)))
+        names = ", ".join(p.name for p in paths)
+        self.hist_file.config(text=(L(f"{len(paths)} টি ফাইল থেকে {n} সারি", f"{n} rows from {len(paths)} file(s)") + f" — {names}")[:160],
+                              fg=P["text"] if n else P["warn"])
         self._hist_count()
+        msg = L("তালিকাটি নিচের বক্সে আছে: প্রতি লাইনে  নম্বর | আবেদনকারীর নাম | তারিখ।\n"
+                "চালানোর আগে ছবির সাথে মিলিয়ে নিন — ভুল অঙ্ক বা নাম ঠিক করুন, অপ্রয়োজনীয় লাইন মুছে দিন।\n"
+                "নম্বর পড়া না গেলে “?” লেখা থাকে: তখন নাম দিয়ে খোঁজা হবে।",
+                "The list is in the box below: one line per row  number | applicant name | date.\n"
+                "Check it against the photo before running - fix wrong digits or names, delete lines that are not files.\n"
+                "“?” = the number could not be read: the file is then searched by the name.")
+        if problems:
+            msg += "\n\n" + "\n".join(problems[:8])
+        (messagebox.showinfo if n else messagebox.showwarning)(L("তালিকা পড়া হয়েছে", "List read"), msg)
 
     def _collect_ids(self) -> list:
         seen, out = set(), []

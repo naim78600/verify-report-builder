@@ -271,6 +271,38 @@ Reference: `file_history.py`, `history_excel.py`.
 
 Input: an Excel with File No and Applicant Name. Each file is looked up by number; the output has a Summary (with a name check against the applicant and the guarantors), Timeline, Submission History, Trips with full remarks, Appointments, Re-CPV & Extra, Concerns, and a Not Found sheet.
 
+**v16 trip-wise page ("Design A")** — `history_trips.py` (data), `history_tripwise.py` (Excel sheet + A4 landscape PDF).
+The first sheet "File History" and the PDF `File_History_<date>.pdf` show one block per searched file, one line per trip.
+Nothing new is decided there; every value comes from the existing rules:
+1. Receive date, Package In / Out, SLA days, TAT, Extra TAT, SLA breach: the file's **Package** bill row (`billing.build_rows` + `compute_tat`, section 4 and 6).
+2. Extra trip count and dates: the file's other bill rows (Single "Extra Trip n", Re-CPV, Extra Document ...), not the split documents (`history_trips.file_block`).
+3. Report summary line (Done-... | Due-...): `summary.analyze` over every trip of the file, `submitted` = file status Submitted (section 3).
+4. Per trip (`history_trips._results_by_trip`, items matched by `Item.src` = trip id):
+   - **Due** + reason = an open / problem item of that trip (the bracket note; an appointment comes first);
+   - **Done** + **Negative** = the trip's item (or an item read out of its remark, e.g. a LOI in an office remark) is Done but has a problem note — the same item is repeated in Due by the Report Summary rule;
+   - **–** + dashboard status = a Canceled / Inactive / Withdrawn trip the summary leaves out.
+5. Trip names are the Report Summary's (App House, PG1 Office, LOI, BS1, Chamber ...); "Trip added" = created date + the bill row it belongs to; "Trip update" = the newest activity-log event of the trip.
+6. Fonts: PDF Fira Sans (OFL, embedded, `assets/fonts`), Excel Calibri. Colours from `theme.py` (no red, no yellow).
+
+**v16 list from a photo / PDF** — `list_reader.py`.
+1. "Excel / CSV / ছবি / PDF বাছুন" takes several files at once. Excel / CSV as before (`parse_ids_file`).
+2. Photo: the computer's own OCR **with word positions** (Windows OCR via PowerShell `_WIN_OCR_BOXES`; Mac Vision `assets/bin/mac_ocr --boxes`; tesseract when installed). `rows_from_boxes`:
+   - file-number-like words (4-8 digits, full numbers such as `PL-2026…`, `CPV-0229-AL`; never phones `01xxxxxxxxx` or dates);
+   - the file-number column = the x-position most of them share (house numbers in addresses fall out);
+   - one row per number (a `CPV-…` and a `(610885)` stacked in one cell = one row); a "TAT 7+" marker with no number next to it = a row whose number the OCR missed ("?");
+   - the row reaches half way to the next row; name = the words right of the number column up to the first comma; the row's date; other file-number-like values in the row (e.g. `PEC-20261007071238531`) become extra numbers.
+3. PDF with text: `rows_from_text` (a row ends at the phone number). Scanned PDF: the pictures inside are read as photos.
+4. Overlapping photos: the same number only once; a "?" row whose name is already in the list is dropped.
+5. The result is written into the text box as editable lines `numbers | name | date` — the user checks it before running. `parse_ids_text` reads these lines back (`a / b` = several numbers of one row, `?` = no number → kind "name").
+
+**v16 search order** — `file_history.find_files` (Naim 23-11-2026: the bank's list had other / wrong numbers):
+1. The number as written. With a name and several files ending in it: only the files where applicant / co-applicant / guarantor name matches (`names_match`) are kept — if at least one does.
+2. Not found / no file with that name: the other numbers of the same row.
+3. Still nothing: the applicant name, but only together with either a number one digit off (5+ digits; then `names_match`) or a start date between 45 days before and 15 days after the row's date (no date in the row and no number: the last 120 days; then `names_match` AND the stricter `strict_names_match`: every distinctive word — not Md / Mia / Begum …, not an initial — has a twin both ways, one extra word only when 2+ words match). Live check 23-11-2026: "Md Sumen Miah" is not taken as "MD SHOPUN MIAH" (17-10-2026), nor "MOHAMMAD SUMON" / "MD SUMON" (one word missing), nor "MD. SUMON MIA" (2025).
+   Another number of the row with a different prefix (PEC-2026… for CC-2026…, 14+ digits) matches by its digits.
+4. The report note says how the file was found ("Found by CPV-0229-AL …", "Found by applicant name + a number one digit off …").
+5. Names come from the live list (`NameLookup`, one month per request, this run only) — the file index on disk still holds numbers and dates only.
+
 ---
 
 ## 12. Version 7 against the manual September 2026 bill

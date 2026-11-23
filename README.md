@@ -1,6 +1,6 @@
-# Verify Report Builder — Version 15 (ভেরিফাই রিপোর্ট বিল্ডার)
+# Verify Report Builder — Version 16 (ভেরিফাই রিপোর্ট বিল্ডার)
 
-**Version 15.0.0** · Prime Bank PLC · LankaBangla Finance · Barikoi Technologies Limited
+**Version 16.0.0** · Prime Bank PLC · LankaBangla Finance · Barikoi Technologies Limited
 
 Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্যার। Verify ড্যাশবোর্ড থেকে Prime Bank PLC-এর ফাইল সংগ্রহ করে **দৈনিক সাবমিশন ট্র্যাকার** (Complete + Incomplete, Excel + PDF) বানায় এবং **সরাসরি ব্যাংককে ইমেইল** পাঠায়।
 **Verify থেকে শুধু তথ্য পড়ে (GET); কোনো তথ্য বদলায় না।** লগইন পাসওয়ার্ড ও ইমেইলের App Password কোথাও সংরক্ষণ হয় না।
@@ -44,7 +44,7 @@ Chrome → `chrome://extensions` → **Developer mode** চালু → **Load 
 | Mac (Apple Silicon M1–M4) | `VerifyReportBuilder-Mac-AppleSilicon.dmg` | খুলে অ্যাপটি **Applications**-এ টেনে আনুন |
 | Mac (Intel) | `VerifyReportBuilder-Mac-Intel.dmg` | একই |
 
-ইনস্টলার না চাইলে `.zip` (portable) ফাইলও আছে। রিপোজিটরি **প্রাইভেট** — ডাউনলোডের জন্য GitHub-এ সাইন-ইন লাগবে (**Releases** পাতা; Release-এর নাম “Verify Report Builder Version 15 (v15.0.0)”)।
+ইনস্টলার না চাইলে `.zip` (portable) ফাইলও আছে। রিপোজিটরি **প্রাইভেট** — ডাউনলোডের জন্য GitHub-এ সাইন-ইন লাগবে (**Releases** পাতা; Release-এর নাম “Verify Report Builder Version 16 (v16.0.0)”)।
 প্রথমবার খুললে ডিজিটাল স্বাক্ষর নেই বলে সতর্কতা আসে: **Windows:** More info → Run anyway। **Mac:** System Settings → Privacy & Security → *Open Anyway* (অথবা `xattr -dr com.apple.quarantine /Applications/VerifyReportBuilder.app`)।
 
 ## প্রতিদিনের ওয়ার্কফ্লো (দিনে দুইবার)
@@ -171,6 +171,13 @@ Chrome → `chrome://extensions` → **Developer mode** চালু → **Load 
 - **লাইভ ৯০ দিনের ডেটায় ফল:** ১৫২৫ সারির মধ্যে ৫৯৪টিতে Appointment ও ২১৫টিতে নতুন ট্রিপের কারণে SLA restart; SLA Breach ৫১১ থেকে ১০২।
 
 ---
+
+### Version 16.0.0 (২৩ নভেম্বর) — ফাইল হিস্টরি: ট্রিপ-অনুযায়ী সহজ পাতা, ছবি / PDF থেকে তালিকা
+১) **ফাইল হিস্টরির নতুন প্রথম পাতা (Excel-এর প্রথম শিট “File History” + একই পাতা A4 PDF):** প্রতিটি ফাইল একটি ব্লকে, প্রতিটি ট্রিপ এক লাইনে — File no (শেষ অঙ্ক, নিচে পুরো নম্বর ও ফাইলের অবস্থা: Submitted / Partially submitted / Hold / Cancelled / On going), Applicant, Receive date, Package In/Out · SLA · TAT · SLA breach · Extra trip কয়টি ও কবে, Trip type, Trip added (তারিখ + Package / Extra Trip / Re-CPV), Trip update, Done / Due, Due-র কারণ বা Done-এ সমস্যা থাকলে এক শব্দে “Negative”; প্রতিটি ফাইলের নিচে Report summary (Done-… | Due-…)।
+২) সব হিসাব আগের নিয়মেই — SLA/TAT/In-Out বিলের Package সারি থেকে, Done/Due দৈনিক সাবমিশন ট্র্যাকারের Report Summary নিয়মে। নতুন কোনো নিয়ম নেই।
+৩) PDF-এ Fira Sans ফন্ট (PDF-এর ভেতরে থাকে), Excel-এ Calibri। বাকি শিট (Summary, Timeline …) আগের মতোই পরে আছে।
+৪) **ছবি / PDF থেকে তালিকা:** ফাইল হিস্টরিতে “Excel / CSV / ছবি / PDF বাছুন” — ব্যাংকের তালিকার ছবি (একাধিক ছবি একসাথে) বা PDF দিলে সফটওয়্যার নিজে পড়ে (Windows / Mac-এর নিজের OCR, বিনা খরচে) প্রতি সারির ফাইল নম্বর, আবেদনকারীর নাম ও তারিখ বের করে বক্সে দেখায় (`নম্বর | নাম | তারিখ`)। চালানোর আগে মিলিয়ে নিন; নম্বর পড়া না গেলে “?”।
+৫) **নম্বর না মিললে নাম দিয়ে খোঁজা:** ব্যাংকের নম্বর ভুল / অন্য রকম হলে (CPV-0229-AL, এক অঙ্ক ভুল, অন্য কলামে পুরো নম্বর) একই সারির অন্য নম্বর, তারপর আবেদনকারীর নাম দিয়ে খোঁজে — নাম মিলতে হবে এবং নম্বরে এক অঙ্কের পার্থক্য বা তালিকার তারিখের কাছাকাছি ফাইল হতে হবে। একই শেষ অঙ্কের কয়েকটি ফাইল থাকলে নাম মেলা ফাইলটিই রাখে। রিপোর্টে লেখা থাকে কীভাবে পাওয়া গেল।
 
 ### Version 15.0.0 (২০ নভেম্বর) — মূসক-৬.৩ বিলের সাথে
 ১) **মূসক-৬.৩ (কর চালানপত্র)** — মাসিক বিল বানালে Card ও Loan দুটোর জন্য আলাদা মূসক-৬.৩ PDF নিজে তৈরি হয়: `Prime_Bank_PLC_Card_Mushak6.3_<মাস>_<বছর>.pdf`, `Prime_Bank_PLC_Loan_Mushak6.3_<মাস>_<বছর>.pdf`। ফরম Accounts-এর হাতে লেখা মূসক-৬.৩-এর মতোই; শুধু মাসের তথ্য বদলায়: ক্রেতা (Prime Bank PLC, BIN, ঠিকানা), ইস্যুর তারিখ (বিলের তারিখ), “CPV service Card/Loan (for the month of …)”, মোট মূল্য = জরিমানা বাদের পরের সাবটোটাল, ৫% VAT, VAT সহ মোট — সারিতে ও সর্বমোট-এ। এগুলো বিলের সাথে হুবহু মেলে।

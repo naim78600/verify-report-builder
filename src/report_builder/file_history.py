@@ -41,6 +41,7 @@ WIDE_DAYS = 10              # ... and, if not found, date +- 10 days
 EARLIEST_FALLBACK = date(2023, 1, 1)
 HISTORY_SINCE = datetime(2000, 1, 1)
 
+_CPV_RE = re.compile(r"^CPV\s*[-_]?\s*(\d{3,8})(?:\s*[-_]?\s*[A-Za-z]{2})?$", re.I)
 _FULL_RE = re.compile(r"^([A-Za-z]{2,3})[-\s_]*(\d{8,})$")
 _BARE_RE = re.compile(r"^(?:[A-Za-z]{2,3}[-\s_]+)?(\d+)(?:\.0+)?$")
 _HEADER_STRONG = re.compile(r"tracking|file\s*(no|num)|application|app\.?\s*id|ফাইল|ট্রাকিং", re.I)
@@ -57,7 +58,9 @@ class IdEntry:
     digits: str
     prefix: str = ""
     day: date | None = None    # full numbers: the creation date written inside the number
-    name: str = ""             # applicant name written next to the number in the input sheet (optional; shown + checked, never searched)
+    name: str = ""             # applicant name written next to the number (shown + checked; searched only when the number fails, v16)
+    alts: list = field(default_factory=list)   # v16: other numbers of the same list row (IdEntry), tried when this one is not found
+    row_date: date | None = None               # v16: the date written in the list row (narrows a search by name)
 
     @property
     def uid(self) -> str:
@@ -88,6 +91,9 @@ def make_entry(value) -> IdEntry | None:
         s = value.replace("​", "").strip().strip("'\"`").strip()
     else:
         return None
+    m = _CPV_RE.match(s)
+    if m:                                                          # v16: the bank's reference "CPV-0229-AL" = file ...0229
+        return IdEntry(raw=s.upper().replace(" ", ""), kind="suffix", key=m.group(1), digits=m.group(1))
     m = _FULL_RE.match(s)
     if m:
         prefix, digits = m.group(1).upper(), m.group(2)
@@ -114,8 +120,38 @@ def _dedupe(entries) -> list[IdEntry]:
 
 
 def parse_ids_text(text: str) -> list[IdEntry]:
-    """Pasted text: numbers separated by new lines, spaces, commas or semicolons."""
-    return _dedupe(make_entry(tok) for tok in re.split(r"[\s,;|]+", text or "") if tok)
+    """Pasted text: numbers separated by new lines, spaces, commas or semicolons.
+    v16: a line "numbers | applicant name | date" (what a photo / PDF list is turned into) keeps the name and the date;
+    several numbers of one row are written "523659 / PEC-20261007071238531"; "?" = the number could not be read."""
+    out = []
+    for line in (text or "").splitlines():
+        if "|" not in line:
+            out += [make_entry(tok) for tok in re.split(r"[\s,;]+", line) if tok]
+            continue
+        parts = [p.strip() for p in line.split("|")]
+        nums = [make_entry(n.strip()) for n in re.split(r"\s*/\s*", parts[0]) if n.strip() and n.strip() != "?"]
+        nums = [n for n in nums if n is not None]
+        name = clean_name(parts[1]) if len(parts) > 1 else ""
+        day = _list_date(parts[2]) if len(parts) > 2 else None
+        if nums:
+            e = nums[0]
+            e.alts = nums[1:]
+        elif name:
+            e = IdEntry(raw=f"({name})", kind="name", key=_norm(name), digits="")
+        else:
+            continue
+        e.name, e.row_date = name, day
+        out.append(e)
+    return _dedupe(out)
+
+
+def _list_date(s: str) -> date | None:
+    for fmt in ("%d-%m-%Y", "%d/%m/%Y", "%d-%b-%Y", "%Y-%m-%d", "%d-%m-%y"):
+        try:
+            return datetime.strptime(s.strip(), fmt).date()
+        except ValueError:
+            continue
+    return None
 
 
 def _is_serial(ents: list) -> bool:
@@ -297,12 +333,141 @@ class FileIndex:
 def match_entry(table: list[tuple], e: IdEntry) -> list[tuple]:
     """-> [(file id, file no, start date)] newest first."""
     out = []
-    for fid, no, sd, nn, dg in table:
+    if e.kind == "name":
+        return out
+    for row in table:
+        fid, no, sd, nn, dg = row[:5]
         ok = (nn == e.key) if e.kind == "full" else dg.endswith(e.digits)
         if ok:
             out.append((fid, no, sd))
     out.sort(key=lambda x: (x[2], x[0]), reverse=True)
     return out
+
+
+NAME_DAYS_BEFORE = 45       # v16 search by name: the file was received up to 45 days before the list row's date ...
+NAME_DAYS_AFTER = 15        # ... or up to 15 days after it
+NAME_RECENT_DAYS = 120      # no date in the row: only files received in the last 120 days
+
+
+def _near_number(digits: str, file_digits: str) -> bool:
+    """The list's number and the end of the file number differ in one digit at most (a typo / OCR slip), 5+ digits."""
+    if len(digits) < 5 or len(file_digits) < len(digits):
+        return False
+    tail = file_digits[-len(digits):]
+    return sum(1 for a, b in zip(digits, tail) if a != b) <= 1
+
+
+def _name_hit(given: str, names: str, strict: bool = False) -> bool:
+    test = (lambda a, b: names_match(a, b) and strict_names_match(a, b)) if strict else names_match
+    return bool(given) and any(test(given, n) for n in (names or "").split("|") if n.strip())
+
+
+_COMMON_NAME = {"mohammad", "mosammat", "mia", "miah", "mst", "sk", "sheikh", "shaikh", "abu", "begum", "khatun", "akter", "akhter"}
+
+
+def strict_names_match(a: str, b: str) -> bool:
+    """For a search by name alone: every distinctive word (not Md / Mia / Begum ..., not an initial) of the shorter name
+    has a close twin in the other name (one letter off at most in a short word).  "Md Sumen Miah" is not "MD SHOPUN MIAH"."""
+    from difflib import SequenceMatcher
+    x = [t for t in _name_tokens(a) if len(t) > 1 and t not in _COMMON_NAME]
+    y = [t for t in _name_tokens(b) if len(t) > 1 and t not in _COMMON_NAME]
+    if not x or not y:
+        return False
+    def twin(t, others):
+        return any(t == u or SequenceMatcher(None, t, u).ratio() >= 0.8 for u in others)
+    short, long_ = (x, y) if len(x) <= len(y) else (y, x)
+    if not all(twin(t, long_) for t in short):
+        return False
+    extra = sum(1 for u in long_ if not twin(u, short))
+    return extra == 0 or (extra == 1 and len(short) >= 2)          # "Md Arif Mia" is not "Md Arif Hossain"
+
+
+class NameLookup:
+    """v16: applicant / co-applicant / guarantor names of the files received in a date range, read live from the
+    dashboard list (one calendar month at a time, kept for this run only - names are never written to disk)."""
+
+    def __init__(self, client, org_uuid: str, workers: int, cancel):
+        self.client, self.org, self.workers, self.cancel = client, org_uuid, workers, cancel
+        self.months: dict = {}
+        self.by_id: dict = {}
+
+    def _month(self, y: int, m: int) -> list:
+        if (y, m) not in self.months:
+            first = date(y, m, 1)
+            last = (date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1))
+            got, _t = _list_files(self.client, self.org, first, last, self.workers, self.cancel, lambda *_a: None, statuses=NO_STATUS)
+            rows = []
+            for it in got.values():
+                names = "|".join((c.get("name") or "").strip() for c in (it.get("concerns") or []) if isinstance(c, dict))
+                row = (int(it["id"]), str(it.get("application_id") or ""), str(it.get("start_date") or "")[:10], names)
+                rows.append(row)
+                self.by_id[row[0]] = row
+            self.months[(y, m)] = rows
+        return self.months[(y, m)]
+
+    def between(self, d_from: date, d_till: date) -> list:
+        out, y, m = [], d_from.year, d_from.month
+        while (y, m) <= (d_till.year, d_till.month):
+            out += [r for r in self._month(y, m) if d_from.isoformat() <= r[2] <= d_till.isoformat()]
+            y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+        return out
+
+    def names_of(self, fid: int, start: str) -> str:
+        if fid not in self.by_id and start:
+            try:
+                d = date.fromisoformat(start[:10])
+                self._month(d.year, d.month)
+            except ValueError:
+                pass
+        return (self.by_id.get(fid) or (0, "", "", ""))[3]
+
+
+def find_files(table: list[tuple], e: IdEntry, today: date, names: "NameLookup | None") -> tuple[list[tuple], str]:
+    """v16 search order (Naim 23-11-2026, after the bank's list had wrong / other numbers):
+    1. the number as written (full number or last digits).  With an applicant name and several files: only those
+       whose applicant / co-applicant / guarantor name matches are kept (when at least one matches).
+    2. not found, or no file with that name: the other numbers of the same list row (e.g. a full "PEC-2026..." number).
+    3. still nothing: the applicant name - a file whose names match AND either its number differs from the list's
+       number in one digit only, or it was received near the list row's date (-45 / +15 days), or (no date in the row)
+       in the last 120 days.  The note says how the file was found.
+    Without a name only step 1 (and 2) run, as before.
+    -> ([(file id, file no, start date)], note)"""
+    def by_names(found):
+        if not e.name or not found or names is None:
+            return found, False
+        ok = [f for f in found if _name_hit(e.name, names.names_of(f[0], f[2]))]
+        return (ok, True) if ok else (found, False)
+
+    found = match_entry(table, e)
+    found, named = by_names(found)
+    if found and (named or not e.name or names is None):
+        return found, ""
+    for alt in e.alts:
+        got = match_entry(table, alt)
+        if not got and alt.kind == "full" and len(alt.digits) >= 14:   # "PEC-2026…" for the file "CC-2026…": same digits
+            got = [(row[0], row[1], row[2]) for row in table if row[4] == alt.digits]
+        got, alt_named = by_names(got)
+        if got and (alt_named or not e.name):
+            return got, f"Found by {alt.raw} (the list's number {e.raw} did not match)"
+    if e.name and names is not None:
+        if e.row_date:
+            pool = names.between(e.row_date - timedelta(days=NAME_DAYS_BEFORE), e.row_date + timedelta(days=NAME_DAYS_AFTER))
+        else:
+            pool = names.between(today - timedelta(days=NAME_RECENT_DAYS), today)
+        cands = []
+        for fid, no, sd, nm in pool:
+            near_no = bool(e.digits) and _near_number(e.digits, _digits(no))
+            if not _name_hit(e.name, nm, strict=not near_no):
+                continue
+            if near_no or e.row_date or not e.digits:
+                cands.append((0 if near_no else 1, fid, no, sd))
+        if cands:
+            k = min(c[0] for c in cands)
+            best = sorted((c for c in cands if c[0] == k), key=lambda c: (c[3], c[1]), reverse=True)
+            what = "a number one digit off" if k == 0 else ("the date of the list" if e.row_date else "a recent file")
+            src = f"the list's number {e.raw} was not found" if e.kind != "name" else "no number in the list"
+            return [(fid, no, sd) for _k, fid, no, sd in best], f"Found by applicant name + {what} ({src})"
+    return found, ""
 
 
 # =============================================================================== config / data
@@ -501,7 +666,7 @@ def collect_history(cfg: HistoryConfig, progress: Progress = _noop, cancel: thre
         idx.reset()
     from_cache = bool(idx.swept_until)
     swept_now = False
-    if any(e.kind == "suffix" for e in entries):
+    if any(e.kind == "suffix" or any(a.kind == "suffix" for a in e.alts) for e in entries):
         swept_now = _sweep(client, org_uuid, idx, workers, cancel, progress, h.notes, today)
     for i, e in enumerate(entries, 1):
         if e.kind == "full" and e.day and not swept_now and not match_entry(idx.table(), e):
@@ -518,8 +683,10 @@ def collect_history(cfg: HistoryConfig, progress: Progress = _noop, cancel: thre
     table = idx.table()
 
     hits: dict[str, list] = {}
+    how: dict[str, str] = {}
+    lookup = NameLookup(client, org_uuid, workers, cancel) if any(e.name for e in entries) else None
     for e in entries:
-        found = match_entry(table, e)
+        found, how[e.uid] = find_files(table, e, today, lookup)
         cap = max(1, int(cfg.max_matches))
         hits[e.uid] = (found[:cap], len(found) > cap)
 
@@ -611,8 +778,8 @@ def collect_history(cfg: HistoryConfig, progress: Progress = _noop, cancel: thre
             continue
         multi = len(found) > 1 or capped
         for fid, no, _sd in found:
-            note = ""
-            if multi:
+            note = how.get(e.uid, "")
+            if multi and not note:
                 note = (f"Multiple files end with {e.digits}" if e.kind == "suffix" else f"Multiple files match {e.raw}")
                 if capped:
                     note += f" (showing the newest {len(found)})"
@@ -625,7 +792,7 @@ def collect_history(cfg: HistoryConfig, progress: Progress = _noop, cancel: thre
 
 # =============================================================================== applicant-name check
 _NAME_FIX = {"md": "mohammad", "mohd": "mohammad", "mohammed": "mohammad", "muhammad": "mohammad", "mohamad": "mohammad",
-             "mst": "mosammat", "mosammat": "mosammat"}
+             "mst": "mosammat", "mosammat": "mosammat", "chy": "chowdhury", "chowdhary": "chowdhury", "choudhury": "chowdhury"}
 
 
 def _name_tokens(s: str) -> list[str]:
