@@ -6,6 +6,7 @@ from urllib.parse import urlencode, urlparse
 import report_builder.client as C
 import report_builder.collect_prime as CP
 import report_builder.file_history as FH
+import report_builder.collect_prime as _CP2
 from report_builder.history_trips import blocks
 
 
@@ -47,8 +48,8 @@ def seq_pool(workers, cancel, fn, keys, progress=None, label=""):
 CP._pool_map = FH._pool_map = seq_pool
 FH.ReadOnlyClient = Shim
 P = PARAMS.to_py() if hasattr(PARAMS, "to_py") else PARAMS
-ents = []
-for no, name in P["ids"]:
+ents = list(FH.parse_ids_text(P["text"])) if P.get("text") else []
+for no, name in P.get("ids") or []:
     e = FH.make_entry(no)
     if e:
         e.name = name

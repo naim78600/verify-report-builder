@@ -101,6 +101,23 @@ jobs:
           echo "$out" | grep -q "20261001094920785" && echo "$out" | grep -qi "sonali"
           PYTHONPATH=src python -c "from report_builder import bs_tracker as B; t=B.ocr_image('ocr_test.png'); assert '20261001094920785' in t, t; print('program reads the photo: OK')"
 
+      - name: Mac list reader self-test (photo of the bank's list, v16)
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        run: |
+          python - <<'PY'
+          from PIL import Image, ImageDraw, ImageFont
+          im = Image.new("RGB", (1400, 420), "white"); d = ImageDraw.Draw(im)
+          f = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 34)
+          for i, (n, name) in enumerate([("523659", "Bijoy Talukder, NICU Incharge,"), ("348425", "Md Obaidur Rahman, Branch")]):
+              y = 60 + i * 170
+              d.text((30, y), "TAT 7+", fill="black", font=f); d.text((230, y), n, fill="black", font=f)
+              d.text((480, y - 30), name, fill="black", font=f); d.text((480, y + 20), "Dhaka- 01760878559", fill="black", font=f)
+              d.text((1100, y), "11-Oct-2026", fill="black", font=f)
+          im.save("list_test.png")
+          PY
+          PYTHONPATH=src python -c "from report_builder.list_reader import read_rows, rows_to_text; r,p=read_rows(['list_test.png']); t=rows_to_text(r); print(t, p); assert '523659 | Bijoy Talukder' in t and '348425 | Md Obaidur Rahman' in t"
+
       - name: Windows photo reader self-test (Windows' own OCR)
         if: runner.os == 'Windows'
         continue-on-error: true
@@ -109,6 +126,8 @@ jobs:
           $env:PYTHONPATH = "src"
           python -c "from PIL import Image, ImageDraw, ImageFont; im=Image.new('RGB',(900,260),'white'); d=ImageDraw.Draw(im); f=ImageFont.truetype('arial.ttf',52); d.text((30,30),'PL-20261001094920785',fill='black',font=f); d.text((30,130),'Rahim Uddin  Sonali Bank',fill='black',font=f); im.save('ocr_test.png')"
           python -c "from report_builder import bs_tracker as B; t=B.ocr_image('ocr_test.png'); print(t); assert '20261001094920785' in t.replace(' ','')"
+          python -c "from PIL import Image, ImageDraw, ImageFont; im=Image.new('RGB',(1400,420),'white'); d=ImageDraw.Draw(im); f=ImageFont.truetype('arial.ttf',34); rows=[('523659','Bijoy Talukder, NICU Incharge,'),('348425','Md Obaidur Rahman, Branch')]; [ (d.text((30,60+i*170),'TAT 7+',fill='black',font=f), d.text((230,60+i*170),n,fill='black',font=f), d.text((480,30+i*170),nm,fill='black',font=f), d.text((480,80+i*170),'Dhaka- 01760878559',fill='black',font=f), d.text((1100,60+i*170),'11-Oct-2026',fill='black',font=f)) for i,(n,nm) in enumerate(rows)]; im.save('list_test.png')"
+          python -c "from report_builder.list_reader import read_rows, rows_to_text; r,p=read_rows(['list_test.png']); t=rows_to_text(r); print(t, p); assert '523659 | Bijoy Talukder' in t and '348425 | Md Obaidur Rahman' in t"
 
       - name: Build (Mac .app)
         if: runner.os == 'macOS'
