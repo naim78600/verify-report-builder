@@ -220,9 +220,11 @@ def test_timeline_submission_history_and_last_update(run):
 def test_excel_sheets_and_cells(run, tmp_path):
     h, *_ = run
     paths = write_history_outputs(h, tmp_path / "out")
-    assert len(paths) == 1 and re.fullmatch(r"File_History_\d{4}-\d\d-\d\d_\d{4}\.xlsx", paths[0].name)
+    # v16: Excel (trip-wise "File History" sheet first) + the same page as an A4 PDF
+    assert len(paths) == 2 and re.fullmatch(r"File_History_\d{4}-\d\d-\d\d_\d{4}\.xlsx", paths[0].name)
+    assert paths[1].suffix == ".pdf" and paths[1].read_bytes()[:5] == b"%PDF-" and b"FiraSans" in paths[1].read_bytes()
     wb = load_workbook(paths[0])
-    assert wb.sheetnames == SHEETS
+    assert wb.sheetnames == ["File History"] + SHEETS
     ws = wb["Summary"]
     rows = {ws.cell(r, 1).value: [ws.cell(r, c).value for c in range(1, 12)] for r in range(4, ws.max_row + 1)}
     assert rows["9999"][1] == "File not found" and rows["PL-20269999999999"][1] == "File not found"

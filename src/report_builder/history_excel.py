@@ -19,6 +19,8 @@ from openpyxl.worksheet.filters import FilterColumn
 from . import theme as T
 from .billing import concern_info
 from .excel import _clean
+from .history_trips import blocks
+from .history_tripwise import add_sheet as add_tripwise_sheet, build_pdf as build_tripwise_pdf
 from .file_history import FileData, HistoryData, name_check, overview, submission_history, timeline, trip_label
 
 FONT = "Calibri"
@@ -370,6 +372,9 @@ def build_history_excel(h: HistoryData, path) -> Path:
         _sheet(wb, "Notes", "File History - Notes", "Things that could not be read completely.",
                [S("Note", 120, "note")], [{"note": n} for n in h.notes], file_key="note")
     from .pagesetup import a4
+    # v16 (Naim 23-11-2026): the trip-wise page ("Design A") is the first sheet; the detail sheets follow it
+    add_tripwise_sheet(wb, blocks(h), h.org_name, when, 0)
+    wb.active = 0
     a4(wb)
     wb.save(path)
     return path
@@ -379,7 +384,9 @@ def write_history_outputs(h: HistoryData, out_dir) -> list[Path]:
     out_dir = Path(out_dir)
     when = h.generated_at or datetime.now()
     stem = re.sub(r"[^A-Za-z0-9_.-]+", "_", f"File_History_{when:%Y-%m-%d_%H%M}")
-    return [build_history_excel(h, out_dir / f"{stem}.xlsx")]
+    xlsx = build_history_excel(h, out_dir / f"{stem}.xlsx")
+    pdf = build_tripwise_pdf(blocks(h), out_dir / f"{stem}.pdf", h.org_name, when)
+    return [xlsx, pdf]
 
 
 # ------------------------------------------------------------------------------ input template
@@ -414,7 +421,7 @@ def write_history_template(path) -> Path:
         ("2. Column B (Applicant Name): the applicant's name. It is optional - the file is found by the File No; the name is shown in the report and checked against the dashboard.", False),
         ("3. One file per row. Do not leave the header row out and do not add other columns in front of these two.", False),
         ("4. Open the software > Report type: File History > choose this Excel > Create history.", False),
-        ("5. The result is one Excel: Summary (with Applicant Name (given) + Name Check), Timeline, Submission History, Trips, Appointments, Re-CPV & Extra, Concerns, Not Found.", False),
+        ("5. The result is one Excel + the same first page as an A4 PDF: File History (trip-wise: Done / Due, SLA, TAT, extra trips), Summary (with Applicant Name (given) + Name Check), Timeline, Submission History, Trips, Appointments, Re-CPV & Extra, Concerns, Not Found.", False),
         ("6. Name Check: Matches = the same person; Matches Guarantor / Co-Applicant = the name belongs to another concern of the file; Different = the file's applicant is another name (shown beside it).", False),
         ("7. If the number matches nothing the row is shown as File not found - the other files are not affected.", False),
     ]
