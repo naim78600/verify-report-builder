@@ -18,7 +18,7 @@ from datetime import date, datetime
 
 from .billing import concern_info, file_type_of
 from .file_history import FileData, HistoryData, _views_at, name_check, timeline, trip_label
-from .summary import _sorted, analyze, info_notes
+from .summary import _doc_name, _sorted, analyze, info_notes
 
 FILE_DONE = {"Submitted"}
 FAR = datetime(9999, 12, 31)
@@ -137,7 +137,14 @@ def file_block(fd: FileData, given_name: str = "", match_note: str = "") -> dict
             upd = updates.get(t["id"])
             st = t.get("status", "")
             base = trip_label(t)
-            plain = f"{who_of.get(c['id'], '')} {base}".strip() if base in ("House", "Office") else base
+            if base in ("House", "Office"):
+                plain = f"{who_of.get(c['id'], '')} {base}".strip()
+            elif t.get("type_code") == "BANK":
+                plain = "BS"
+            else:
+                plain = _doc_name(t) or base                  # the Report Summary's own name: LOI, Chamber, Rental ...
+                if plain == "Sign":
+                    plain = f"{who_of.get(c['id'], '')} Sign".strip()
             if res and res["result"]:
                 result, note, name = res["result"], res["note"], res["label"] or plain
                 if result == "Due" and not note:
