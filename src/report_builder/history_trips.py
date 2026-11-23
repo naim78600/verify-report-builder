@@ -225,8 +225,12 @@ def sla_text(b: dict) -> tuple[str, str]:
     if b.get("tat") is None:
         return "TAT –", "none"
     if b.get("sla_breach"):
-        return f"TAT {b['tat']} days · SLA breach +{b.get('extra_tat') or 0}", "breach"
-    return f"TAT {b['tat']} days · Within SLA", "ok"
+        return f"TAT {_n_days(b['tat'])} · SLA breach +{b.get('extra_tat') or 0}", "breach"
+    return f"TAT {_n_days(b['tat'])} · Within SLA", "ok"
+
+
+def _n_days(n) -> str:
+    return f"{n} day" if n == 1 else f"{n} days"
 
 
 def extra_text(b: dict) -> str:

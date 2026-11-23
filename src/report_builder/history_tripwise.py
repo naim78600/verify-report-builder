@@ -34,6 +34,10 @@ STATUS = {"Submitted": (T.POS, T.POS_BG), "Partially submitted": (T.NEG, T.NEG_B
 EXTRA_TX = T.KIND_TX.get("Extra", "6D28D9")
 
 
+def _days(n) -> str:
+    return "-" if n is None else f"{n} day" if n == 1 else f"{n} days"
+
+
 def status_colours(s: str) -> tuple[str, str]:
     return STATUS.get(s, (T.OUT, T.OUT_BG))                     # On going / Created / Finished: indigo
 
@@ -140,7 +144,7 @@ def add_sheet(wb, bl: list[dict], org: str, when: datetime, index: int = 0):
                     ac = T.IN if b.get("area") == "In" else T.OUT
                     ws.cell(r, 5).value = CellRichText(
                         TextBlock(_if(10), "Package: "), TextBlock(_if(10, True, ac), b.get("area") or "-"),
-                        TextBlock(_if(10), f"  ·  SLA {b.get('sla_days') or '-'} days\n"), TextBlock(_if(10, True, tc), tat + "\n"),
+                        TextBlock(_if(10), f"  ·  SLA {_days(b.get('sla_days'))}\n"), TextBlock(_if(10, True, tc), tat + "\n"),
                         TextBlock(_if(10), extra_text(b)))
                 else:
                     ws.cell(r, 5, b.get("match_note", "")).font = _f(9, color=T.MUTED)
@@ -151,7 +155,7 @@ def add_sheet(wb, bl: list[dict], org: str, when: datetime, index: int = 0):
                 ws.cell(r, 8, t["update"]).font = _f(10)
                 rc = T.POS if t["result"] == "Done" else T.NEG if t["result"] == "Due" else T.MUTED
                 ws.cell(r, 9, t["result"]).font = _f(10, True, rc)
-                ws.cell(r, 10, t["note"] or "–").font = _f(10, t["note"] == "Negative", T.NEG if t["note"] else T.MUTED)
+                ws.cell(r, 10, t["note"] or "–").font = _f(10, t["note"] == "Negative", T.NEG if t["note"] and t["result"] != "–" else T.MUTED)
             ws.row_dimensions[r].height = 30 if not t or len(t["note"]) < 34 else 15 * (len(t["note"]) // 30 + 1)
             r += 1
         if not b.get("missing"):
@@ -279,7 +283,7 @@ def build_pdf(bl: list[dict], path, org: str = "", when: datetime | None = None)
                     tc = {"breach": T.NEG, "ok": T.POS}.get(key, T.MUTED)
                     area = b.get("area") or "-"
                     afg, abg = (T.IN, T.IN_BG) if area == "In" else (T.OUT, T.OUT_BG)
-                    cells[4] = [P(f'Package: {chip(area, afg, abg)} &nbsp;SLA {b.get("sla_days") or "-"} days', S(8)),
+                    cells[4] = [P(f'Package: {chip(area, afg, abg)} &nbsp;SLA {_days(b.get("sla_days"))}', S(8)),
                                 P(_x(tat), S(8, "Fira-M", tc)), P(_x(extra_text(b)), S(8))]
                 else:
                     cells[4] = P(_x(b.get("match_note")), S(7.5, color=T.MUTED))
@@ -289,7 +293,7 @@ def build_pdf(bl: list[dict], path, org: str = "", when: datetime | None = None)
                 cells[7] = P(_x(t["update"]), S(8))
                 rc = T.POS if t["result"] == "Done" else T.NEG if t["result"] == "Due" else T.MUTED
                 cells[8] = P(_x(t["result"]), S(8, "Fira-SB", rc))
-                cells[9] = P(_x(t["note"] or "–"), S(8, "Fira-M" if t["note"] == "Negative" else "Fira", T.NEG if t["note"] else T.MUTED))
+                cells[9] = P(_x(t["note"] or "–"), S(8, "Fira-M" if t["note"] == "Negative" else "Fira", T.NEG if t["note"] and t["result"] != "–" else T.MUTED))
             rows.append(cells)
             r += 1
         if not b.get("missing"):
