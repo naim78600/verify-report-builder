@@ -71,10 +71,12 @@ TABLE = [(1, "PL-0229", "2026-09-24", "PL0229", "0229"),
          (3, "CC-20261007071238531", "2026-10-07", "CC20261007071238531", "20261007071238531"),
          (4, "CC-20260300266", "2026-03-03", "CC20260300266", "20260300266"),
          (5, "PL-0266", "2026-10-11", "PL0266", "0266"),
-         (6, "PL-010164", "2025-05-13", "PL010164", "010164")]
+         (6, "PL-010164", "2025-05-13", "PL010164", "010164"),
+         (7, "PL-20261017054248294", "2026-10-17", "PL20261017054248294", "20261017054248294")]
 NAMES = FakeNames([(1, "PL-0229", "2026-09-24", "MOHAMMAD TANVIR MIZAN|SHAMIMA AKHTER"), (2, "PL-20261111070745532", "2026-11-11", "Shriti Rani Bala"),
                    (3, "CC-20261007071238531", "2026-10-07", "SABIT AL MUJAHID"), (4, "CC-20260300266", "2026-03-03", "MD SHAHNAWAZ"),
-                   (5, "PL-0266", "2026-10-11", "ABU TAHER KHAN|ZAKIA SULTANA"), (6, "PL-010164", "2025-05-13", "MD. SUMON MIA")])
+                   (5, "PL-0266", "2026-10-11", "ABU TAHER KHAN|ZAKIA SULTANA"), (6, "PL-010164", "2025-05-13", "MD. SUMON MIA"),
+                   (7, "PL-20261017054248294", "2026-10-17", "MD SHOPUN MIAH|ALOMGIR HOSSAIN")])
 
 
 def _e(line):
@@ -95,7 +97,10 @@ def test_search_order_number_alt_name():
     # a different number, same name, received near the list's date
     got, note = find_files(TABLE, _e("813507 | Sabit Al Mujahid | 10-11-2026"), today, NAMES)
     assert [g[0] for g in got] == [3] and "date of the list" in note
-    # a similar name long ago is NOT taken (Md Sumen Miah, 15-Oct-2026 vs MD. SUMON MIA, 2025)
+    # the full number in another column with another prefix (PEC- for CC-): same digits
+    got, note = find_files(TABLE, _e("813507 / PEC-20261007071238531 | Sabit Al Mujahid | 10-11-2026"), today, NAMES)
+    assert [g[0] for g in got] == [3] and note.startswith("Found by PEC-20261007071238531")
+    # a similar name long ago is NOT taken (MD. SUMON MIA, 2025), nor a look-alike name at the same time (MD SHOPUN MIAH)
     got, note = find_files(TABLE, _e("948905 | Md Sumen Miah | 15-10-2026"), today, NAMES)
     assert got == [] and note == ""
     # no name: exactly as before

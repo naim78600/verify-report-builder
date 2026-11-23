@@ -357,8 +357,29 @@ def _near_number(digits: str, file_digits: str) -> bool:
     return sum(1 for a, b in zip(digits, tail) if a != b) <= 1
 
 
-def _name_hit(given: str, names: str) -> bool:
-    return bool(given) and any(names_match(given, n) for n in (names or "").split("|") if n.strip())
+def _name_hit(given: str, names: str, strict: bool = False) -> bool:
+    test = strict_names_match if strict else names_match
+    return bool(given) and any(test(given, n) for n in (names or "").split("|") if n.strip())
+
+
+_COMMON_NAME = {"mohammad", "mosammat", "mia", "miah", "mst", "sk", "sheikh", "shaikh", "abu", "begum", "khatun", "akter", "akhter"}
+
+
+def strict_names_match(a: str, b: str) -> bool:
+    """For a search by name alone: every distinctive word (not Md / Mia / Begum ..., not an initial) of the shorter name
+    has a close twin in the other name (one letter off at most in a short word).  "Md Sumen Miah" is not "MD SHOPUN MIAH"."""
+    from difflib import SequenceMatcher
+    x = [t for t in _name_tokens(a) if len(t) > 1 and t not in _COMMON_NAME]
+    y = [t for t in _name_tokens(b) if len(t) > 1 and t not in _COMMON_NAME]
+    if not x or not y:
+        return False
+    def twin(t, others):
+        return any(t == u or SequenceMatcher(None, t, u).ratio() >= 0.8 for u in others)
+    short, long_ = (x, y) if len(x) <= len(y) else (y, x)
+    if not all(twin(t, long_) for t in short):
+        return False
+    extra = sum(1 for u in long_ if not twin(u, short))
+    return extra == 0 or (extra == 1 and len(short) >= 2)          # "Md Arif Mia" is not "Md Arif Hossain"
 
 
 class NameLookup:
@@ -422,7 +443,10 @@ def find_files(table: list[tuple], e: IdEntry, today: date, names: "NameLookup |
     if found and (named or not e.name or names is None):
         return found, ""
     for alt in e.alts:
-        got, alt_named = by_names(match_entry(table, alt))
+        got = match_entry(table, alt)
+        if not got and alt.kind == "full" and len(alt.digits) >= 14:   # "PEC-2026…" for the file "CC-2026…": same digits
+            got = [(row[0], row[1], row[2]) for row in table if row[4] == alt.digits]
+        got, alt_named = by_names(got)
         if got and (alt_named or not e.name):
             return got, f"Found by {alt.raw} (the list's number {e.raw} did not match)"
     if e.name and names is not None:
@@ -432,9 +456,9 @@ def find_files(table: list[tuple], e: IdEntry, today: date, names: "NameLookup |
             pool = names.between(today - timedelta(days=NAME_RECENT_DAYS), today)
         cands = []
         for fid, no, sd, nm in pool:
-            if not _name_hit(e.name, nm):
-                continue
             near_no = bool(e.digits) and _near_number(e.digits, _digits(no))
+            if not _name_hit(e.name, nm, strict=not near_no):
+                continue
             if near_no or e.row_date or not e.digits:
                 cands.append((0 if near_no else 1, fid, no, sd))
         if cands:
@@ -768,7 +792,7 @@ def collect_history(cfg: HistoryConfig, progress: Progress = _noop, cancel: thre
 
 # =============================================================================== applicant-name check
 _NAME_FIX = {"md": "mohammad", "mohd": "mohammad", "mohammed": "mohammad", "muhammad": "mohammad", "mohamad": "mohammad",
-             "mst": "mosammat", "mosammat": "mosammat"}
+             "mst": "mosammat", "mosammat": "mosammat", "chy": "chowdhury", "chowdhary": "chowdhury", "choudhury": "chowdhury"}
 
 
 def _name_tokens(s: str) -> list[str]:

@@ -298,7 +298,8 @@ Nothing new is decided there; every value comes from the existing rules:
 **v16 search order** — `file_history.find_files` (Naim 23-11-2026: the bank's list had other / wrong numbers):
 1. The number as written. With a name and several files ending in it: only the files where applicant / co-applicant / guarantor name matches (`names_match`) are kept — if at least one does.
 2. Not found / no file with that name: the other numbers of the same row.
-3. Still nothing: the applicant name, but only together with either a number one digit off (5+ digits) or a start date between 45 days before and 15 days after the row's date (no date in the row and no number: the last 120 days). A similar name from another period is never taken (Md Sumen Miah 15-10-2026 ≠ MD. SUMON MIA 2025).
+3. Still nothing: the applicant name, but only together with either a number one digit off (5+ digits; then `names_match`) or a start date between 45 days before and 15 days after the row's date (no date in the row and no number: the last 120 days; then the stricter `strict_names_match`: every distinctive word — not Md / Mia / Begum …, not an initial — has a twin both ways, one extra word only when 2+ words match). Live check 23-11-2026: "Md Sumen Miah" is not taken as "MD SHOPUN MIAH" (17-10-2026), nor as "MD. SUMON MIA" (2025).
+   Another number of the row with a different prefix (PEC-2026… for CC-2026…, 14+ digits) matches by its digits.
 4. The report note says how the file was found ("Found by CPV-0229-AL …", "Found by applicant name + a number one digit off …").
 5. Names come from the live list (`NameLookup`, one month per request, this run only) — the file index on disk still holds numbers and dates only.
 
