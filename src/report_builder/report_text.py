@@ -104,8 +104,12 @@ def shown_appointments(r) -> list:
     if getattr(r, "kind", "Package") in ("ReCpv", "Extra", "Re-CPV"):
         # v18.0.4: its own trips + the rows folded into it + the file's other Re-CPV / Extra rows (a document trip added
         # later - live CC-20261104095224032, trip 510318) - only the package's own trips are left out
-        rows = [r] + list(getattr(r, "folded_rows", None) or []) + \
-               [x for x in (getattr(r, "file_rows", None) or []) if getattr(x, "kind", "Package") in ("ReCpv", "Extra", "Re-CPV")]
+        # v18.0.5: only the file's Re-CPV / Extra rows made on or after this row (an older Re-CPV / Extra LOI trip's
+        # appointment belongs to that older row - live PL-20261104113123122, CC-20260910075957434)
+        mine = getattr(r, "receive_dt", None)
+        later = lambda x: mine is None or getattr(x, "receive_dt", None) is None or x.receive_dt >= mine
+        rows = [r] + [x for x in (getattr(r, "folded_rows", None) or []) if later(x)] + \
+               [x for x in (getattr(r, "file_rows", None) or []) if getattr(x, "kind", "Package") in ("ReCpv", "Extra", "Re-CPV") and later(x)]
         out, seen = [], set()
         for x in rows:
             for a in getattr(x, "appointments", None) or []:

@@ -548,6 +548,6 @@ No report or billing rule changed. Added:
    punctuation tidied; a label left empty ("Address:") or a Bangla-only line becomes "(written in Bangla on the dashboard)".
    (v18.0.2 had embedded a Bangla font instead - removed in v18.0.3.)
 2. **Appointment History** - `report_text.shown_appointments`: Package / Single rows - every trip of the file (v10.0.6);
-   ReCpv / Extra rows - the row's own trips + its folded rows + the file's other ReCpv / Extra rows (v18.0.4), never the
+   ReCpv / Extra rows - the row's own trips + its folded rows + the file's other ReCpv / Extra rows (v18.0.4) made on or after this row's Receive date (v18.0.5), never the
    package's trips. `english_only` also drops a comma left before " | " (v18.0.4). Found by comparing with the system report of
    24-11-2026 (PL-20261104113123122 showed the package trip's 11/11 appointment on its 22/11 Re-CPV row).
