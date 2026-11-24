@@ -1,4 +1,10 @@
 function vrbMakeComponent(DATA) {
+// The live loader does not read bills or the FAQ: use the built-in ones so the page never breaks.
+const VRB_FALLBACK = {"bill": {"oct": {"card": "৳79,827.30", "cardRows": 196, "loan": "৳120,737.40", "loanRows": 338, "total": "৳200,564.70", "note": "Final · sent to Prime Bank", "c3": "on"}, "nov": {"card": "৳65,700.60", "cardRows": 158, "loan": "৳84,287.70", "loanRows": 210, "total": "৳149,988.30", "note": "Rough · 1–19 Nov, not sent", "c3": ""}}, "faq": [{"org": "Prime Bank", "items": [{"q": "Which areas are In station?", "a": "Inside Dhaka City Corporation (DNCC + DSCC) or Chattogram City Corporation. Everything else is Out. A package is Out if any one of its visits is Out."}, {"q": "Which trips are billed?", "a": "Billed by dashboard create date. A canceled trip is billed only if it had started. Inactive trips (for example after a Re-CPV) are billed. Withdrawn trips and test files are not billed."}, {"q": "What is the late penalty?", "a": "Extra TAT 1 day = 20%, 2 days = 30%, 3 or more days = 50% off that row."}, {"q": "How are documents and extra trips billed?", "a": "Every document created with the package (LOI, salary certificate, rental, quotation) is its own row, In/Out by its own address. Extra trips 1–3 days after the file are billed at the single / document / PG rate."}, {"q": "Where is LOI verified?", "a": "Some LOIs are verified only from the head office; the Re-CPV comment says so."}]}, {"org": "BRAC Bank", "items": [{"q": "Verification conditions", "a": "[Add the BRAC Bank rules here: In/Out areas, documents to collect, TAT, billing notes.]"}, {"q": "Contact person at the bank", "a": "[Add name and channel.]"}]}, {"org": "City Bank", "items": [{"q": "Verification conditions", "a": "[Add the City Bank rules here: In/Out areas, documents to collect, TAT, billing notes.]"}, {"q": "Contact person at the bank", "a": "[Add name and channel.]"}]}, {"org": "LankaBangla", "items": [{"q": "Verification conditions", "a": "[Add the LankaBangla rules here: In/Out areas, documents to collect, TAT, billing notes.]"}, {"q": "Contact person at the bank", "a": "[Add name and channel.]"}]}, {"org": "Bank Asia", "items": [{"q": "Verification conditions", "a": "[Add the Bank Asia rules here: In/Out areas, documents to collect, TAT, billing notes.]"}, {"q": "Contact person at the bank", "a": "[Add name and channel.]"}]}, {"org": "Southeast Bank", "items": [{"q": "Verification conditions", "a": "[Add the Southeast Bank rules here: In/Out areas, documents to collect, TAT, billing notes.]"}, {"q": "Contact person at the bank", "a": "[Add name and channel.]"}]}, {"org": "IPDC", "items": [{"q": "Verification conditions", "a": "[Add the IPDC rules here: In/Out areas, documents to collect, TAT, billing notes.]"}, {"q": "Contact person at the bank", "a": "[Add name and channel.]"}]}, {"org": "Biniyog", "items": [{"q": "Verification conditions", "a": "[Add the Biniyog rules here: In/Out areas, documents to collect, TAT, billing notes.]"}, {"q": "Contact person at the bank", "a": "[Add name and channel.]"}]}]};
+if (!DATA.bill) DATA.bill = VRB_FALLBACK.bill;
+if (!DATA.faq || !DATA.faq.length) DATA.faq = VRB_FALLBACK.faq;
+if (!DATA.ver) DATA.ver = [];
+
 const MON = DATA.monName || 'Nov', YEAR = DATA.year || 2026, MONTH = DATA.mon || 11, TODAY = DATA.today || 23;
 const DIM = new Date(Date.UTC(YEAR, MONTH, 0)).getUTCDate(), PDIM = new Date(Date.UTC(YEAR, MONTH - 1, 0)).getUTCDate();
 const MONS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -342,7 +348,7 @@ class Component extends DCLogic {
     // ---------- verifier profile ----------
     const pq = S.profQ.trim().toLowerCase();
     const pl = DATA.ver.filter((v) => !pq || (v.a + ' ' + v.home + ' ' + v.sup.join(' ')).toLowerCase().includes(pq)).slice().sort((a, b) => b.tasks - a.tasks);
-    const pSel = VER[S.prof] || pl[0] || DATA.ver[0];
+    const pSel = VER[S.prof] || pl[0] || DATA.ver[0] || { id: -1, a: 'No verifier yet', ph: '', phOk: 0, seen: NOW, home: '', sup: [], orgs: [], dl: [], avgFirst: '—', avgLast: '—', late: 0, tasks: 0, fin: 0 };
     out.profQ = S.profQ; out.onProfQ = (e) => self.setState({ profQ: e.target.value });
     out.profList = pl.slice(0, 60).map((v) => ({ a: v.a, ini: ini(v.a), sub: v.home || '—', n: fmt(OPEN.filter((t) => t.ag === v.id).length), cls: v.id === pSel.id ? 'on' : '', pick: set({ prof: v.id }) }));
     const pOpen = OPEN.filter((t) => t.ag === pSel.id).sort((a, b) => b.ageH - a.ageH);
@@ -367,7 +373,7 @@ class Component extends DCLogic {
     out.areaIn = areas.filter((a) => a.st === 'In').slice(0, 14).map(amap); out.areaOut = areas.filter((a) => a.st !== 'In').slice(0, 14).map(amap);
 
     // ---------- billing + faq ----------
-    out.bill = D.bill[S.billMonth]; out.billGen = S.billGen; out.genBill = set({ billGen: true });
+    out.bill = D.bill[S.billMonth] || D.bill.nov || {}; out.billGen = S.billGen; out.genBill = set({ billGen: true });
     out.bmOct = set({ billMonth: 'oct', billGen: false }); out.bmNov = set({ billMonth: 'nov', billGen: false });
     out.bmOctCls = S.billMonth === 'oct' ? 'on' : ''; out.bmNovCls = S.billMonth === 'nov' ? 'on' : '';
     out.faqOrgs = D.faq.map((f) => ({ n: f.org, cls: f.org === S.faq ? 'on' : '', pick: set({ faq: f.org }) }));

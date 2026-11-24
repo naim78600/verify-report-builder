@@ -35,6 +35,13 @@
   sw.innerHTML = Object.keys(TITLES).map((k) => '<a class="' + (k === pick ? 'on' : '') + '" href="' + PATH + '#' + k.slice(-1) + '" title="' + TITLES[k] + '">' + k.slice(-1).toUpperCase() + '</a>').join('');
   sw.addEventListener('click', (e) => { const a = e.target.closest('a'); if (a) { e.preventDefault(); history.replaceState(null, '', a.getAttribute('href')); location.reload(); } });
   const root = document.getElementById('vrb-root');
+  // The site's own app can re-draw the page after we take over: hide whatever it adds and put our page back.
+  const keep = document.createElement('style'); keep.textContent = 'body>:not(#vrb-root):not(.vrb-switch){display:none!important}'; document.head.appendChild(keep);
+  new MutationObserver(() => {
+    if (!root.isConnected) document.body.prepend(root);
+    if (!keep.isConnected) document.head.appendChild(keep);
+    if (!st.isConnected) document.head.appendChild(st);
+  }).observe(document.documentElement, { childList: true, subtree: true });
 
   let comp = null, busy = false, stateTxt = '', lastAt = 0;
   const hhmm = (t) => new Date(t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Dhaka' });
@@ -43,7 +50,12 @@
     const Comp = vrbMakeComponent(D);
     const old = comp && comp.state;
     root.innerHTML = '';
-    comp = dcMount(TPLS[pick], Comp, { designName: 'Verify · ' + TITLES[pick] }, root);
+    try { comp = dcMount(TPLS[pick], Comp, { designName: 'Verify · ' + TITLES[pick] }, root); }
+    catch (e) {   // never leave a white page: say what happened and offer the old dashboard
+      console.error('[VRB new dashboard]', e);
+      root.innerHTML = '<div class="vrb-load"><div class="vrb-box"><h1>The new dashboard could not open</h1><p>' + String(e && e.message || e).replace(/[<>&]/g, '') + '</p><p><a href="/dashboard">Open the old dashboard</a> · <a href="' + PATH + '">Try again</a></p></div></div>';
+      comp = null; return;
+    }
     if (old) { Object.assign(comp.state, old); comp.forceUpdate(); }
     if (typeof pullDir === 'function' && !old) setTimeout(pullDir, 500);
   }
@@ -66,7 +78,7 @@
         localStorage.setItem(CACHE_KEY, JSON.stringify({ D: window.__vrbLastD, day: store.day, monthKey: store.monthKey }));
       } catch (e) { /* storage full: fine */ }
     } catch (e) {
-      stateTxt = 'update failed, will retry';
+      stateTxt = 'update failed, will retry'; console.error('[VRB new dashboard]', e);
     } finally { busy = false; }
   }
   const _mount = mount; mount = function (D) { window.__vrbLastD = D; _mount(D); };
