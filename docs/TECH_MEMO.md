@@ -551,3 +551,9 @@ No report or billing rule changed. Added:
    ReCpv / Extra rows - the row's own trips + its folded rows + the file's other ReCpv / Extra rows (v18.0.4) made on or after this row's Receive date (v18.0.5), never the
    package's trips. `english_only` also drops a comma left before " | " (v18.0.4). Found by comparing with the system report of
    24-11-2026 (PL-20261104113123122 showed the package trip's 11/11 appointment on its 22/11 Re-CPV row).
+
+## 20. v18.1.0 - new look for the new dashboard (extension 18.1.0)
+- Assets in `src/report_builder/assets/new_dashboard/` (app.js, logic.js, manifest 18.1.0); built from the v6 design build. No tracker, bill or helper rule changed.
+- `logic.js`: new first tab `home` (state `tab:'home'`, `done:[]`). `out.todo` lists today's jobs from the existing alerts (SLA at risk, On Going / Hold without update 3+ days, Finished / Partial waiting for submit, ...), sorted by priority; each has a button that opens the right page with the list filter set; a tick toggles `S.done`. `hello` / `todayTxt` / ring show progress.
+- `app.js`: Home section before Overview, a short hint under every menu item, barikoi.com look (white, green #16a34a, blue CTA #2563eb, Inter). Filter bar and alerts are hidden on Home only.
+- Still GET only; the fallback / error message and re-attach observer from 18.0.1 are kept.

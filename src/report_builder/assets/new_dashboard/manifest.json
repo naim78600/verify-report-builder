@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Verify New Dashboard (VRB)",
-  "version": "18.0.1",
+  "version": "18.1.0",
   "description": "New Verify dashboard with live data from verify.bmapsbd.com (read-only); shares the verifier WhatsApp list with VRB on this computer.",
   "host_permissions": [
     "http://127.0.0.1:47321/*"
