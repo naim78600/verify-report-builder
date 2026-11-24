@@ -78,10 +78,23 @@ def test_recpv_row_lists_appointments_of_later_document_trip_too():
     """v18.0.4 (live CC-20261104095224032): the Re-CPV row lost the appointments of the LOI document trip (another
     Re-CPV / Extra row of the file) - they come back; the package's own trips stay out."""
     pkg, doc, own = _appt(500745, 5), _appt(510318, 18), _appt(505455, 12)
-    package = SimpleNamespace(kind="Package", appointments=[pkg])
-    extra = SimpleNamespace(kind="Extra", appointments=[doc])
-    r = SimpleNamespace(kind="ReCpv", appointments=[own], folded_rows=[], file_rows=[package, extra], file_appointments=[pkg, own, doc])
+    package = SimpleNamespace(kind="Package", appointments=[pkg], receive_dt=D(2026, 11, 4))
+    extra = SimpleNamespace(kind="Extra", appointments=[doc], receive_dt=D(2026, 11, 16))
+    r = SimpleNamespace(kind="ReCpv", appointments=[own], folded_rows=[], file_rows=[package, extra], file_appointments=[pkg, own, doc],
+                        receive_dt=D(2026, 11, 11))
     assert shown_appointments(r) == [own, doc]
+
+
+def test_recpv_row_leaves_out_older_recpv_and_extra_rows():
+    """v18.0.5 (live PL-20261104113123122): the 22/11 Re-CPV row showed the 11/11 appointment of the 10/11 Extra LOI trip;
+    (CC-20260910075957434): the 12/11 Re-CPV row showed the 07/10 appointment of the 04/10 Re-CPV.  Older rows stay out."""
+    old_extra = SimpleNamespace(kind="Extra", appointments=[_appt(504505, 11)], receive_dt=D(2026, 11, 10, 13, 57))
+    r = SimpleNamespace(kind="ReCpv", appointments=[], folded_rows=[], file_rows=[old_extra], receive_dt=D(2026, 11, 22, 16, 14))
+    assert shown_appointments(r) == [] and plain(appointment_lines(r)) == "NO"
+    old_recpv = SimpleNamespace(kind="ReCpv", appointments=[_appt(480051, 7)], receive_dt=D(2026, 10, 4))
+    new_trip = _appt(506489, 16)
+    r = SimpleNamespace(kind="ReCpv", appointments=[new_trip], folded_rows=[old_recpv], file_rows=[old_recpv], receive_dt=D(2026, 11, 12))
+    assert shown_appointments(r) == [new_trip]
 
 
 def test_no_stray_comma_where_bangla_was_removed():
