@@ -7,6 +7,8 @@ The Excel, PDF and e-mail writers turn the same lines into their own formatting,
 """
 from __future__ import annotations
 
+import re
+
 from .billing import BillRow
 
 
@@ -123,3 +125,37 @@ def appointment_lines(r: BillRow) -> list:
 
 def plain(lines: list) -> str:
     return "\n".join("".join(t for t, _s in ln) for ln in lines)
+
+
+# ==============================================================================================================
+# v18.0.3: English only in the bank's tracker (PDF + Excel) - banks do not take Bangla text in the report.
+# ==============================================================================================================
+_BN = "\u0980-\u09FF\u200C\u200D"
+_BN_RUN = re.compile(rf"[{_BN}]+(?:[ ,.\-/:;।]+[{_BN}]+)*")
+_BN_THEN_EN = re.compile(rf"[{_BN}]+(?:[ ,.\-/:;।]+[{_BN}]+)*\s*\(([^(){_BN}]*[A-Za-z][^(){_BN}]*)\)")
+BANGLA_NOTE = "(written in Bangla on the dashboard)"
+
+
+def english_only(text):
+    """Drop Bangla words from a text for the bank's tracker.  A Bangla run followed by its English in brackets keeps the
+    English ("ব্যাংক এশিয়া টাওয়ার (Bank Asia Tower)" -> "Bank Asia Tower"); other Bangla runs are removed and the left-over
+    commas / brackets tidied.  A line left with nothing after a label ("Address:") says it was written in Bangla."""
+    if text is None or not isinstance(text, str) or not re.search(f"[{_BN}]", text):
+        return text
+    out = []
+    for line in text.split("\n"):
+        if not re.search(f"[{_BN}]", line):
+            out.append(line)
+            continue
+        t = _BN_THEN_EN.sub(lambda m: m.group(1).strip(), line)
+        t = _BN_RUN.sub(" ", t)
+        t = re.sub(r"\(\s*[,.;:\-]*\s*\)", " ", t)                 # empty brackets
+        t = re.sub(r"\s+([,.;:)])", r"\1", t)
+        t = re.sub(r"([(])\s+", r"\1", t)
+        t = re.sub(r"(?:,\s*){2,}", ", ", t)
+        t = re.sub(r"([:(])\s*,\s*", r"\1 ", t)
+        t = re.sub(r"[ \t]{2,}", " ", t).strip()
+        t = re.sub(r"^[,;.\s]+|[,;\s]+$", "", t)
+        t = re.sub(r"(:)\s*(?=$|[.;]\s|[.;]$)", r"\1 " + BANGLA_NOTE, t)  # "Address:" left empty
+        out.append(t if t else BANGLA_NOTE)
+    return "\n".join(out)

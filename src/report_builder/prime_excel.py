@@ -38,6 +38,7 @@ from .billing import SLA_APPT, SLA_IN, SLA_OUT, before_after
 from .collect_prime import PrimeData, title_for
 from .excel import _clean
 from .summary import xml_safe
+from .report_text import english_only
 from .report_text import (appointment_lines, bill_slab_lines, has_due, last_update_date, last_update_lines, plain,
                           sla_restart_lines, summary_lines)
 
@@ -96,7 +97,7 @@ def _rich(lines, kind_color: str | None = None):
             if st == "k" and kind_color:
                 color, bold = kind_color, True
             tail = "\n" if (j == len(ln) - 1 and i < len(lines) - 1) else ""
-            parts.append(TextBlock(InlineFont(rFont=FONT, b=bold, color="FF" + color, sz=size), xml_safe(text) + tail))
+            parts.append(TextBlock(InlineFont(rFont=FONT, b=bold, color="FF" + color, sz=size), xml_safe(english_only(text)) + tail))
     return CellRichText(*parts) if parts else ""
 
 
@@ -109,7 +110,7 @@ def _lines(text: str, width: float) -> int:
 def _put(ws, r, c, v, formula=False, **kw):
     cell = ws.cell(row=r, column=c)
     v = _clean(v)
-    v = xml_safe(v)
+    v = xml_safe(english_only(v))               # v18.0.3: no Bangla in the bank's tracker
     cell.value = v
     if isinstance(v, str) and not formula:
         cell.data_type = "s"
@@ -309,7 +310,7 @@ def _write_rows(ws, r0: int, rows, checks: list, section: str, cols: list) -> in
         if row.canceled:
             ws.cell(r, col["Bill Slab"]).fill = CHECK
         if "Pending Reason" in col and row.reason:
-            ws.cell(r, col["Pending Reason"]).value = xml_safe(row.reason)
+            ws.cell(r, col["Pending Reason"]).value = xml_safe(english_only(row.reason))
         texts = {"Concerns": concerns, "Re-CPV / Extra Trip (ID)": history, "Bill Slab": plain(slab_l),
                  "Report Summary": plain(sum_l), "Last Update Details": plain(upd_l), "Appointment": plain(app_l),
                  "Report Status": base["Report Status"], "Pending Reason": row.reason}
