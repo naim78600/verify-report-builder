@@ -96,7 +96,10 @@ def sla_restart_lines(r: BillRow) -> list:
 
 
 def shown_appointments(r) -> list:
-    """What the Appointment History cell shows: every trip of the file (v10.0.6), else the row's own."""
+    """What the Appointment History cell shows: a Package row - every trip of the file (v10.0.6); a Re-CPV / Extra row -
+    only its own trips (v18.0.2: a Re-CPV made on 22/11 no longer shows the package trip's 11/11 appointment)."""
+    if getattr(r, "kind", "Package") in ("ReCpv", "Extra", "Re-CPV"):
+        return getattr(r, "appointments", None) or []
     return getattr(r, "file_appointments", None) or getattr(r, "appointments", None) or []
 
 

@@ -52,7 +52,7 @@ Rules:
    together (two Re-CPVs submitted together -> "Done-App Office, Sign, LOI"; a pending file -> every open trip is Due). A later trip that
    finishes the same item still wins (`summary._merge`). Before, the other rows were summarised apart and matched by label, so "BS1" of
    one row could close "BS1" of another.
-3. **Appointment History** and **Last Update Details** show every trip of the file (`BillRow.file_appointments`, `last_update_for(..., flat)`),
+3. **Appointment History** and **Last Update Details** show every trip of the file (v18.0.2: Appointment History of a Re-CPV / Extra row shows only that row's trips - `report_text.shown_appointments`) (`BillRow.file_appointments`, `last_update_for(..., flat)`),
    as the dashboard's file does. The SLA rule itself is unchanged (it already used the whole file). Appointment type reads "Visit Place".
 4. **Remark keywords**: "LOI Signed Dhaka Head Office" -> Signed from head office; "LOI not signed in front of me ... signed by <name>"
    -> LOI done, note "Not signed in front of me" (Done only); "LOI not signed because LOI sign will be head office" -> one reason.
@@ -538,3 +538,15 @@ No report or billing rule changed. Added:
 6. Tests: `tests/test_v18.py` (verifiers only, status and re-check rules, CSV + Excel import, photos in 4 formats, export,
    every helper route incl. refusing a web page's origin).
 
+
+
+## 19. v18.0.2 - tracker PDF Bangla text, Re-CPV appointment history
+
+1. **Bangla in the tracker PDF** - `prime_pdf._mark`: Bangla runs (U+0980-09FF) go into the embedded font `VRB-Bangla`
+   (`assets/fonts/FreeSans-Bengali.ttf`, a Bengali-only subset of GNU FreeSans, GPL with font exception -
+   `FreeSans-LICENSE.txt`); everything else stays Carlito. With `uharfbuzz` installed (the build installs it) the paragraphs are
+   shaped (`_shaped`: style.shaping = 1) so vowel signs and conjuncts join; without it the letters still print (unshaped) instead
+   of the old "??????". Canvas titles keep `_safe`.
+2. **Appointment History** - `report_text.shown_appointments`: Package / Single rows - every trip of the file (v10.0.6);
+   ReCpv / Extra rows - only the row's own trips (`BillRow.appointments`). Found by comparing with the system report of
+   24-11-2026 (PL-20261104113123122 showed the package trip's 11/11 appointment on its 22/11 Re-CPV row).
