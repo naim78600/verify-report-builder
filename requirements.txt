@@ -4,4 +4,3 @@ reportlab>=4.0
 pypdf>=4.0
 pillow>=10.0
 edge-tts>=6.1  # v12: the Pradeep voice of each reminder (made on the PC, free, needs internet)
-# optional (installed by the build): uharfbuzz>=0.37 - joins Bangla letters correctly in the tracker PDF (v18.0.2)

@@ -540,13 +540,13 @@ No report or billing rule changed. Added:
 
 
 
-## 19. v18.0.2 - tracker PDF Bangla text, Re-CPV appointment history
+## 19. v18.0.2 / v18.0.3 - English-only tracker, Re-CPV appointment history
 
-1. **Bangla in the tracker PDF** - `prime_pdf._mark`: Bangla runs (U+0980-09FF) go into the embedded font `VRB-Bangla`
-   (`assets/fonts/FreeSans-Bengali.ttf`, a Bengali-only subset of GNU FreeSans, GPL with font exception -
-   `FreeSans-LICENSE.txt`); everything else stays Carlito. With `uharfbuzz` installed (the build installs it) the paragraphs are
-   shaped (`_shaped`: style.shaping = 1) so vowel signs and conjuncts join; without it the letters still print (unshaped) instead
-   of the old "??????". Canvas titles keep `_safe`.
+1. **English only in the tracker (v18.0.3)** - `report_text.english_only`, used by `prime_pdf._safe` and by
+   `prime_excel._put` / `_rich` / the Pending Reason cell: banks do not take Bangla in the report. A Bangla run followed by its
+   English in brackets keeps the English ("... (Bank Asia Tower)" -> "Bank Asia Tower"); other Bangla runs are dropped and the
+   punctuation tidied; a label left empty ("Address:") or a Bangla-only line becomes "(written in Bangla on the dashboard)".
+   (v18.0.2 had embedded a Bangla font instead - removed in v18.0.3.)
 2. **Appointment History** - `report_text.shown_appointments`: Package / Single rows - every trip of the file (v10.0.6);
    ReCpv / Extra rows - only the row's own trips (`BillRow.appointments`). Found by comparing with the system report of
    24-11-2026 (PL-20261104113123122 showed the package trip's 11/11 appointment on its 22/11 Re-CPV row).

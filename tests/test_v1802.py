@@ -1,4 +1,5 @@
-"""v18.0.2: Bangla text in the tracker PDF (was "??????"); Re-CPV / Extra rows show only their own appointments."""
+"""v18.0.2 / v18.0.3: no Bangla in the tracker (English only, never "??????"); Re-CPV / Extra rows show only their own appointments."""
+import re
 import sys
 import threading
 from datetime import date, datetime as D
@@ -15,9 +16,8 @@ from pypdf import PdfReader  # noqa: E402
 
 from report_builder import prime_pdf  # noqa: E402
 from report_builder.collect_prime import PrimeConfig, collect_prime  # noqa: E402
-from report_builder.report_text import appointment_lines, plain, shown_appointments  # noqa: E402
+from report_builder.report_text import BANGLA_NOTE, appointment_lines, english_only, plain, shown_appointments  # noqa: E402
 
-BANGLA = "ব্যাংক এশিয়া টাওয়ার"
 
 
 @pytest.fixture()
@@ -31,22 +31,28 @@ def d():
     srv.shutdown()
 
 
-def test_bangla_runs_go_to_the_bangla_font():
-    prime_pdf._fonts()
-    m = prime_pdf._mark(f"Hold: Loi sign will be head office. Address: {BANGLA} (Bank Asia Tower) <b>")
-    assert f'<font name="{prime_pdf.BN}">{BANGLA}</font>' in m
-    assert "(Bank Asia Tower)" in m and "&lt;b&gt;" in m and "?" not in m
+ADDR = "Hold: Loi sign will be head office. Address: ব্যাংক এশিয়া টাওয়ার (Bank Asia Tower), ৩২ ও ৩৪ কাজী নজরুল ইসলাম এভিনিউ"
 
 
-def test_tracker_pdf_embeds_the_bangla_font_and_no_question_marks(d, tmp_path):
-    d.incomplete[0].reason, d.incomplete[0].reason_kind = f"Hold: Loi sign will be head office. Address: {BANGLA}", "hold"
-    out = prime_pdf.build_prime_pdf(d, tmp_path / "bn.pdf")
-    fonts = set()
-    for page in PdfReader(str(out)).pages:
-        for f in (page.get("/Resources", {}).get("/Font", {}) or {}).values():
-            fonts.add(str(f.get_object().get("/BaseFont")))
-    assert any("FreeSans" in f for f in fonts), fonts       # the embedded Bangla font
-    assert "??????" not in "".join(p.extract_text() or "" for p in PdfReader(str(out)).pages)
+def test_english_only_keeps_the_english_and_drops_bangla():
+    """v18.0.3 (Naim): banks do not take Bangla in the report - English only, never "??????"."""
+    assert english_only(ADDR) == "Hold: Loi sign will be head office. Address: Bank Asia Tower"
+    assert english_only("Address: মিরপুর ১০, ঢাকা") == "Address: " + BANGLA_NOTE
+    assert english_only("House 12, Road 5 (পুরাতন ঠিকানা), Dhanmondi") == "House 12, Road 5, Dhanmondi"
+    assert english_only("ঠিকানা পাওয়া যায়নি") == BANGLA_NOTE
+    assert english_only("Line one\nAll English") == "Line one\nAll English" and english_only(None) is None and english_only(5) == 5
+
+
+def test_tracker_pdf_and_excel_have_no_bangla_and_no_question_marks(d, tmp_path):
+    import openpyxl
+    from report_builder.prime_excel import build_prime_excel
+    d.incomplete[0].reason, d.incomplete[0].reason_kind = ADDR, "hold"
+    pdf = prime_pdf.build_prime_pdf(d, tmp_path / "t.pdf")
+    txt = " ".join(" ".join((p.extract_text() or "").split()) for p in PdfReader(str(pdf)).pages)
+    assert "Bank Asia Tower" in txt and "??" not in txt and not re.search("[\u0980-\u09FF]", txt)
+    wb = openpyxl.load_workbook(build_prime_excel(d, tmp_path / "t.xlsx"))
+    cells = " ".join(str(c.value) for ws in wb for row in ws.iter_rows() for c in row if c.value is not None)
+    assert "Bank Asia Tower" in cells and not re.search("[\u0980-\u09FF]", cells)
 
 
 def _appt(tid, day):

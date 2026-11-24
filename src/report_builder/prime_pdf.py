@@ -10,7 +10,6 @@ soft peach marker.  Internal copy: light sky-blue cells = "please check".
 from __future__ import annotations
 
 import os
-import re
 
 from html import escape
 from pathlib import Path
@@ -31,7 +30,7 @@ from . import theme as T
 from .assets_path import asset
 from .billing import SLA_IN, SLA_OUT, before_after
 from .collect_prime import PrimeData, title_for
-from .report_text import _dt, appointment_lines, bill_slab_lines, shown_appointments, has_due, last_update_lines, sla_restart_lines, summary_lines
+from .report_text import english_only, _dt, appointment_lines, bill_slab_lines, shown_appointments, has_due, last_update_lines, sla_restart_lines, summary_lines
 
 HIST_MAX = 6              # history lines shown per row in the PDF (newest); the Excel has them all
 LINES = {"concerns": 6, "history": 6, "slab": 6, "summary": 8, "last": 6, "appt": 6, "reason": 6}   # printed lines per cell (A4)
@@ -48,10 +47,6 @@ KIND_BG = {k: "#" + v for k, v in T.KIND_BG.items()}
 
 _FONT_READY = False
 _CMAP: set[int] = set()
-BN = "VRB-Bangla"         # v18.0.2: Bangla text (addresses, remarks) in its own embedded font - was printed as "??????"
-_BN_OK = False            # the Bangla font is registered
-SHAPING = False           # uharfbuzz present: Bangla letters are joined correctly (vowel signs, conjuncts)
-_BN_RUN = re.compile(r"[\u0980-\u09FF\u200C\u200D]+(?:[ ,.\-/()]+[\u0980-\u09FF\u200C\u200D]+)*")
 
 
 def _fonts():
@@ -64,17 +59,6 @@ def _fonts():
     pdfmetrics.registerFont(TTFont(FONT_I, str(d / "Carlito-Italic.ttf")))
     pdfmetrics.registerFontFamily(FONT, normal=FONT, bold=FONT_B, italic=FONT_I, boldItalic=FONT_B)
     _CMAP = set(pdfmetrics.getFont(FONT).face.charToGlyph.keys())
-    global _BN_OK, SHAPING
-    try:
-        import uharfbuzz  # noqa: F401  - only to know whether reportlab can shape Bangla
-        SHAPING = True
-    except ImportError:
-        SHAPING = False
-    try:
-        pdfmetrics.registerFont(TTFont(BN, str(d / "FreeSans-Bengali.ttf"), shapable=SHAPING))
-        _BN_OK = True
-    except Exception:          # font missing: fall back to the old "?" (never stop the report)
-        _BN_OK = False
     v = os.path.join(os.path.dirname(reportlab.__file__), "fonts")          # Vera: still used by the bill PDF (bill_out.py)
     pdfmetrics.registerFont(TTFont("Vera", os.path.join(v, "Vera.ttf")))
     pdfmetrics.registerFont(TTFont("Vera-Bold", os.path.join(v, "VeraBd.ttf")))
@@ -86,33 +70,13 @@ def _fonts():
 def _safe(text) -> str:
     """Keep only characters the embedded font has (Bengali etc. would show as boxes)."""
     out = []
-    for ch in ("" if text is None else str(text)):
+    for ch in english_only("" if text is None else str(text)):        # v18.0.3: no Bangla in the bank's PDF
         out.append(ch if (ord(ch) in _CMAP or ch in "\n") else "?")
     return "".join(out)
 
 
-def _mark(text) -> str:
-    """Escaped paragraph markup; Bangla runs go into the embedded Bangla font (everything else stays Carlito)."""
-    s = "" if text is None else str(text)
-    if not _BN_OK:
-        return escape(_safe(s))
-    out, pos = [], 0
-    for m in _BN_RUN.finditer(s):
-        out.append(escape(_safe(s[pos:m.start()])))
-        out.append(f'<font name="{BN}">{escape(m.group())}</font>')
-        pos = m.end()
-    out.append(escape(_safe(s[pos:])))
-    return "".join(out)
-
-
-def _shaped(style: ParagraphStyle) -> ParagraphStyle:
-    if SHAPING:
-        style.shaping = 1
-    return style
-
-
 def _p(text, style, color: str | None = None) -> Paragraph:
-    t = _mark(text).replace("\n", "<br/>")
+    t = escape(_safe(text)).replace("\n", "<br/>")
     if color:
         t = f'<font color="{color}">{t}</font>'
     return Paragraph(t, style)
@@ -199,7 +163,7 @@ def _markup(lines, kind_color: str | None = None) -> str:
             bold, color = _FONT_TAGS.get(st, _FONT_TAGS["n"])
             if st == "k" and kind_color:
                 bold, color = True, kind_color
-            t = _mark(text.replace("\u25ba", "\u00bb"))
+            t = escape(_safe(text.replace("\u25ba", "\u00bb")))
             if st == "h":
                 t = f'<font size="5.6">{t}</font>'
             if bold:
@@ -218,7 +182,7 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
     page = landscape(A4)
     left = right = 8 * mm
     usable = page[0] - left - right
-    base = _shaped(ParagraphStyle("b", fontName=FONT, fontSize=7.2, leading=8.8, textColor=_c(T.TEXT)))
+    base = ParagraphStyle("b", fontName=FONT, fontSize=7.2, leading=8.8, textColor=_c(T.TEXT))
     center = ParagraphStyle("c", parent=base, alignment=1)
     head = ParagraphStyle("h", parent=base, fontName=FONT_B, textColor=colors.white, alignment=1, fontSize=7.2, leading=8.6)
     small = ParagraphStyle("s", parent=base, fontSize=6.6, leading=8, textColor=GREY)
@@ -298,7 +262,7 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
                 start_cell = _p(f"{start:%d/%m/%Y}" if start else "", center)
             cells = {
                 "SL": _p(r.sl, center),
-                "File No": Paragraph(f"<b><font color='#{T.NAVY}'>{_mark(r.file_no)}</font></b><br/><font color='#{T.MUTED}'>{escape(r.file_type)}</font>", base),
+                "File No": Paragraph(f"<b><font color='#{T.NAVY}'>{escape(_safe(r.file_no))}</font></b><br/><font color='#{T.MUTED}'>{escape(r.file_type)}</font>", base),
                 "Applicant Name": _p(getattr(r, "applicant", "") or "", base),
                 "Concerns": cap(_p("\n".join(r.file_concern_lines or r.concern_lines), base), ix["Concerns"], LINES["concerns"]),
                 "Re-CPV / Extra Trip (ID)": cap(_p(hist, base), ix["Re-CPV / Extra Trip (ID)"], LINES["history"]),
@@ -356,7 +320,7 @@ def build_prime_pdf(d: PrimeData, path: Path, internal: bool = False) -> Path:
                 return Paragraph(f"<font color='#{T.NEG}'><b>On Going - SLA breached</b></font>", base)
             return Paragraph(f"<font color='#{T.MUTED}'>-</font>", base)
         colour = {"hold": T.NEG, "finished": T.NAVY, "partial": T.NEG, "appointment": T.NAVY, "ongoing": T.POS}.get(r.reason_kind, T.TEXT)
-        lines = [_mark(x) for x in r.reason.split(" | ")]
+        lines = [escape(_safe(x)) for x in r.reason.split(" | ")]
         lines[0] = f"<b><font color='#{colour}'>{lines[0]}</font></b>"
         return Paragraph("<br/>".join(lines), base)
 

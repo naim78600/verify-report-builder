@@ -1,6 +1,6 @@
 # Verify Report Builder — Version 18 (ভেরিফাই রিপোর্ট বিল্ডার)
 
-**Version 18.0.2** · Prime Bank PLC · LankaBangla Finance · Barikoi Technologies Limited
+**Version 18.0.3** · Prime Bank PLC · LankaBangla Finance · Barikoi Technologies Limited
 
 Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্যার। Verify ড্যাশবোর্ড থেকে Prime Bank PLC-এর ফাইল সংগ্রহ করে **দৈনিক সাবমিশন ট্র্যাকার** (Complete + Incomplete, Excel + PDF) বানায় এবং **সরাসরি ব্যাংককে ইমেইল** পাঠায়।
 **Verify থেকে শুধু তথ্য পড়ে (GET); কোনো তথ্য বদলায় না।** লগইন পাসওয়ার্ড ও ইমেইলের App Password কোথাও সংরক্ষণ হয় না।
@@ -171,6 +171,9 @@ Chrome → `chrome://extensions` → **Developer mode** চালু → **Load 
 - **লাইভ ৯০ দিনের ডেটায় ফল:** ১৫২৫ সারির মধ্যে ৫৯৪টিতে Appointment ও ২১৫টিতে নতুন ট্রিপের কারণে SLA restart; SLA Breach ৫১১ থেকে ১০২।
 
 ---
+
+### Version 18.0.3 (২৪ নভেম্বর) — ট্র্যাকারে শুধু ইংরেজি
+ব্যাংক কর্পোরেট রিপোর্টে বাংলা নেয় না: ট্র্যাকার PDF ও Excel-এ বাংলা শব্দ বাদ, ব্র্যাকেটের ইংরেজি থাকে; লেবেলের পরে কিছু না থাকলে “(written in Bangla on the dashboard)”। v18.0.2-এর বাংলা ফন্ট সরানো হয়েছে। Re-CPV সারির অ্যাপয়েন্টমেন্ট (v18.0.2) আগের মতোই।
 
 ### Version 18.0.2 (২৪ নভেম্বর) — PDF-এ বাংলা, Re-CPV সারির অ্যাপয়েন্টমেন্ট
 সিস্টেমের ২৪-১১-২০২৬ ২য় ফেজের রিপোর্টের সাথে মিলিয়ে: (১) ট্র্যাকার PDF-এ বাংলা ঠিকানা / মন্তব্য বাংলাতেই (ফন্ট FreeSans-Bengali, PDF-এর ভেতরে), আগে "??????"; (২) Re-CPV / Extra সারির Appointment History-তে শুধু সেই সারির ট্রিপের অ্যাপয়েন্টমেন্ট। বাকি সব নিয়ম আগের মতোই।
