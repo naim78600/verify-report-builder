@@ -72,3 +72,18 @@ def test_package_row_still_shows_every_trip_of_the_file():
     a, b = _appt(1, 11), _appt(2, 16)
     r = SimpleNamespace(kind="Package", appointments=[a], file_appointments=[a, b])
     assert shown_appointments(r) == [a, b]                                   # v10.0.6 rule unchanged for the package
+
+
+def test_recpv_row_lists_appointments_of_later_document_trip_too():
+    """v18.0.4 (live CC-20261104095224032): the Re-CPV row lost the appointments of the LOI document trip (another
+    Re-CPV / Extra row of the file) - they come back; the package's own trips stay out."""
+    pkg, doc, own = _appt(500745, 5), _appt(510318, 18), _appt(505455, 12)
+    package = SimpleNamespace(kind="Package", appointments=[pkg])
+    extra = SimpleNamespace(kind="Extra", appointments=[doc])
+    r = SimpleNamespace(kind="ReCpv", appointments=[own], folded_rows=[], file_rows=[package, extra], file_appointments=[pkg, own, doc])
+    assert shown_appointments(r) == [own, doc]
+
+
+def test_no_stray_comma_where_bangla_was_removed():
+    assert english_only(ADDR + " | Appointment 25/11/2026 03:00 AM") == \
+        "Hold: Loi sign will be head office. Address: Bank Asia Tower | Appointment 25/11/2026 03:00 AM"
