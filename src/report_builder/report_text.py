@@ -8,6 +8,7 @@ The Excel, PDF and e-mail writers turn the same lines into their own formatting,
 from __future__ import annotations
 
 import re
+from datetime import datetime
 
 from .billing import BillRow
 
@@ -101,7 +102,17 @@ def shown_appointments(r) -> list:
     """What the Appointment History cell shows: a Package row - every trip of the file (v10.0.6); a Re-CPV / Extra row -
     only its own trips (v18.0.2: a Re-CPV made on 22/11 no longer shows the package trip's 11/11 appointment)."""
     if getattr(r, "kind", "Package") in ("ReCpv", "Extra", "Re-CPV"):
-        return getattr(r, "appointments", None) or []
+        # v18.0.4: its own trips + the rows folded into it + the file's other Re-CPV / Extra rows (a document trip added
+        # later - live CC-20261104095224032, trip 510318) - only the package's own trips are left out
+        rows = [r] + list(getattr(r, "folded_rows", None) or []) + \
+               [x for x in (getattr(r, "file_rows", None) or []) if getattr(x, "kind", "Package") in ("ReCpv", "Extra", "Re-CPV")]
+        out, seen = [], set()
+        for x in rows:
+            for a in getattr(x, "appointments", None) or []:
+                k = (a.get("trip_id"), a.get("time"), a.get("type"))
+                if k not in seen:
+                    seen.add(k); out.append(a)
+        return sorted(out, key=lambda a: (a.get("created_at") or a.get("time") or datetime.min, a.get("trip_id") or 0))
     return getattr(r, "file_appointments", None) or getattr(r, "appointments", None) or []
 
 
@@ -156,6 +167,8 @@ def english_only(text):
         t = re.sub(r"([:(])\s*,\s*", r"\1 ", t)
         t = re.sub(r"[ \t]{2,}", " ", t).strip()
         t = re.sub(r"^[,;.\s]+|[,;\s]+$", "", t)
+        t = re.sub(r"[,;]\s*(?=\|)", " ", t)                        # v18.0.4: "Bank Asia Tower, | Appointment" -> no comma
+        t = re.sub(r"[ \t]{2,}", " ", t)
         t = re.sub(r"(:)\s*(?=$|[.;]\s|[.;]$)", r"\1 " + BANGLA_NOTE, t)  # "Address:" left empty
         out.append(t if t else BANGLA_NOTE)
     return "\n".join(out)
