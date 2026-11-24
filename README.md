@@ -1,6 +1,6 @@
-# Verify Report Builder — Version 16 (ভেরিফাই রিপোর্ট বিল্ডার)
+# Verify Report Builder — Version 18 (ভেরিফাই রিপোর্ট বিল্ডার)
 
-**Version 16.0.0** · Prime Bank PLC · LankaBangla Finance · Barikoi Technologies Limited
+**Version 18.0.0** · Prime Bank PLC · LankaBangla Finance · Barikoi Technologies Limited
 
 Windows ও Mac এর জন্য ডেস্কটপ সফটওয়্যার। Verify ড্যাশবোর্ড থেকে Prime Bank PLC-এর ফাইল সংগ্রহ করে **দৈনিক সাবমিশন ট্র্যাকার** (Complete + Incomplete, Excel + PDF) বানায় এবং **সরাসরি ব্যাংককে ইমেইল** পাঠায়।
 **Verify থেকে শুধু তথ্য পড়ে (GET); কোনো তথ্য বদলায় না।** লগইন পাসওয়ার্ড ও ইমেইলের App Password কোথাও সংরক্ষণ হয় না।
@@ -44,7 +44,7 @@ Chrome → `chrome://extensions` → **Developer mode** চালু → **Load 
 | Mac (Apple Silicon M1–M4) | `VerifyReportBuilder-Mac-AppleSilicon.dmg` | খুলে অ্যাপটি **Applications**-এ টেনে আনুন |
 | Mac (Intel) | `VerifyReportBuilder-Mac-Intel.dmg` | একই |
 
-ইনস্টলার না চাইলে `.zip` (portable) ফাইলও আছে। রিপোজিটরি **প্রাইভেট** — ডাউনলোডের জন্য GitHub-এ সাইন-ইন লাগবে (**Releases** পাতা; Release-এর নাম “Verify Report Builder Version 16 (v16.0.0)”)।
+ইনস্টলার না চাইলে `.zip` (portable) ফাইলও আছে। রিপোজিটরি **প্রাইভেট** — ডাউনলোডের জন্য GitHub-এ সাইন-ইন লাগবে (**Releases** পাতা; Release-এর নাম “Verify Report Builder Version 18 (v18.0.0)”)।
 প্রথমবার খুললে ডিজিটাল স্বাক্ষর নেই বলে সতর্কতা আসে: **Windows:** More info → Run anyway। **Mac:** System Settings → Privacy & Security → *Open Anyway* (অথবা `xattr -dr com.apple.quarantine /Applications/VerifyReportBuilder.app`)।
 
 ## প্রতিদিনের ওয়ার্কফ্লো (দিনে দুইবার)
@@ -171,6 +171,15 @@ Chrome → `chrome://extensions` → **Developer mode** চালু → **Load 
 - **লাইভ ৯০ দিনের ডেটায় ফল:** ১৫২৫ সারির মধ্যে ৫৯৪টিতে Appointment ও ২১৫টিতে নতুন ট্রিপের কারণে SLA restart; SLA Breach ৫১১ থেকে ১০২।
 
 ---
+
+### Version 18.0.0 (২৪ নভেম্বর) — ভেরিফায়ার WhatsApp ও ছবি, WhatsApp নম্বর নিজে চেক, নতুন ড্যাশবোর্ড
+১) **ভেরিফায়ার · WhatsApp ও ছবি** (আগের “ভেরিফায়ার” পাতা): শুধু ড্যাশবোর্ডের ভেরিফায়াররা (role 4, active) — অন্য কাউকে যোগ করা যায় না। প্রতিজনের নম্বর, WhatsApp অবস্থা (🟢 আছে · 🟠 চেক হয়নি · 🔴 নেই / নম্বর ভুল / নম্বর নেই), ছবি, চলমান ট্রিপ; ফিল্টার: সবাই · WhatsApp নেই · চেক হয়নি · WhatsApp আছে · ছবি নেই; নাম / ID / নম্বর দিয়ে খোঁজা।
+২) **একজন একজন করে** নম্বর ও ছবি দেওয়া, “WhatsApp নেই” চিহ্ন, ড্যাশবোর্ডের নম্বরে ফেরত — আগের মতোই, এখন ছবিসহ।
+৩) **Excel / CSV দিয়ে অনেক নম্বর একসাথে:** কলাম Verifier ID (বা Name) ও WhatsApp — সেভের আগে প্রতিটি সারি দেখায় (সেভ হবে / ভেরিফায়ার নয় / নম্বর ভুল / একই নামে দুজন → ID দিন)।
+৪) **অনেক ছবি একসাথে:** ফাইলের নাম = ভেরিফায়ারের নাম বা ID; JPG, PNG, WEBP, GIF, BMP, TIFF (HEIC — pillow-heif থাকলে); ৩২০×৩২০ ছবি হিসেবে এই PC-তেই থাকে।
+৫) **WhatsApp নম্বর নিজে চেক:** Chrome-এর WhatsApp Web হেল্পার প্রতিটি নম্বরের চ্যাট খুলে দেখে (কিছু লেখা বা পাঠানো হয় না) — চ্যাট খুললে “আছে”, WhatsApp “নেই” বললে “নেই”। প্রতিদিন ড্যাশবোর্ড পড়ার পর নিজে চলে (শুধু যখন WhatsApp Web ব্যবহার হচ্ছে না; ক্লিক / টাইপ করলেই থামে), “WhatsApp চেক করুন” বাটনেও। “আছে” নম্বর ৩০ দিন পর আবার চেক হয়।
+৬) **নতুন ড্যাশবোর্ড (Chrome):** verify.bmapsbd.com/vrb-dashboard — ড্যাশবোর্ডের সব পাতা নতুন চেহারায়, লাইভ তথ্য (শুধু GET), “Verifier WhatsApp & Photos” পাতাসহ। এই প্রোগ্রাম খোলা থাকলে নম্বর, ছবি ও চেকের ফল দুই জায়গায় একসাথে বদলায়। ভেরিফায়ার পাতার “নতুন ড্যাশবোর্ড (Chrome)” বাটন ফোল্ডার খোলে।
+৭) রিমাইন্ডারের ৫টি রাউন্ড এই নম্বরেই যায়। v16-এর ফাইল হিস্টরি (ট্রিপ-অনুযায়ী পাতা, ছবি / PDF থেকে তালিকা) এবং বাকি সব নিয়ম আগের মতোই।
 
 ### Version 16.0.0 (২৩ নভেম্বর) — ফাইল হিস্টরি: ট্রিপ-অনুযায়ী সহজ পাতা, ছবি / PDF থেকে তালিকা
 ১) **ফাইল হিস্টরির নতুন প্রথম পাতা (Excel-এর প্রথম শিট “File History” + একই পাতা A4 PDF):** প্রতিটি ফাইল একটি ব্লকে, প্রতিটি ট্রিপ এক লাইনে — File no (শেষ অঙ্ক, নিচে পুরো নম্বর ও ফাইলের অবস্থা: Submitted / Partially submitted / Hold / Cancelled / On going), Applicant, Receive date, Package In/Out · SLA · TAT · SLA breach · Extra trip কয়টি ও কবে, Trip type, Trip added (তারিখ + Package / Extra Trip / Re-CPV), Trip update, Done / Due, Due-র কারণ বা Done-এ সমস্যা থাকলে এক শব্দে “Negative”; প্রতিটি ফাইলের নিচে Report summary (Done-… | Due-…)।

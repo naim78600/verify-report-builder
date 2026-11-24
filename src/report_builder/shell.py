@@ -73,6 +73,8 @@ class Shell(tk.Tk):
         self.signed_in = False
         self.helper = HelperServer(lambda k, e: self.q.put(("helper", k, e)))
         self.helper.slips_dir = self.out_dir / "BS Slips"
+        self.helper.dir_source = lambda: (self.data["phones"], self.phone_overrides())       # V18: verifier directory
+        self.helper.set_number = self.set_verifier_number
         self.helper_running = self.helper.start() if start_helper else False
         self.helper_dir = helper_folder()            # fixed folder for Chrome's "Load unpacked", always the newest files
         st = R.load_state()
@@ -380,6 +382,27 @@ class Shell(tk.Tk):
     def phone_overrides(self) -> dict:
         return dict(self.settings.get("phone_overrides") or {})
 
+    def set_verifier_number(self, vid: int, phone: str) -> None:
+        """V18: one verifier's WhatsApp number (from the Verifiers page or the new dashboard).  Verifiers only."""
+        if int(vid) not in self.data["phones"]:
+            return
+        ov = self.phone_overrides()
+        ov[str(int(vid))] = phone
+        config.save_settings({"phone_overrides": ov})
+        self.settings["phone_overrides"] = ov
+
+    def _daily_wa_check(self) -> None:
+        """V18: once a day, after the dashboard is read, the helper checks the numbers not checked yet (only while
+        the WhatsApp tab is not in use)."""
+        from . import verifier_dir as VD
+        today = datetime.now().date().isoformat()
+        if not self.helper_running or self.settings.get("wa_check_day") == today:
+            return
+        if VD.to_check(self.data["phones"], self.phone_overrides(), R.load_state()):
+            self.helper.request_check(auto=True)
+            config.save_settings({"wa_check_day": today})
+            self.settings["wa_check_day"] = today
+
     # ================================================================== reminders round
     def prepare_round(self, round_key: str, notify: bool = True) -> int:
         bs = pending_bs(self.bs_all())
@@ -464,6 +487,8 @@ class Shell(tk.Tk):
                 elif kind == "data":
                     _, files, phones, failed, reason, then = msg
                     self.data.update(files=files, phones=phones, at=datetime.now())
+                    if phones:
+                        self._daily_wa_check()
                     self.jobs.discard("refresh")
                     self._status()
                     for p in self.pages.values():
@@ -485,6 +510,8 @@ class Shell(tk.Tk):
                     self._status()
                     if k == "reply" and e.get("kind") == "no_whatsapp":
                         R.NO_WA_CACHE.add(e.get("phone", ""))
+                    if k in ("wa_check", "directory") and "verifiers" in self.pages:   # V18
+                        self.pages["verifiers"].refresh()
                     if k == "media" and e.get("files"):
                         self.toast(L(f"📷 স্লিপের ছবি জমা হলো ({len(e['files'])} টি) · BS ফোল্ডারে রাখা হয়েছে",
                                      f"📷 Slip photo saved ({len(e['files'])}) · in the BS folder"))

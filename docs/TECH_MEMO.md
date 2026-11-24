@@ -509,3 +509,32 @@ No billing rule changed. Added:
    again, live 20-11-2026) is left out like any Canceled copy; the excluded reason names the new number. Only numbers with the long
    date-time digits (14+) are folded, so PL-0274 style numbers are compared as they are.
 6. Tests: `tests/test_v15.py`; the expected bill file lists in `test_v6`, `test_cli` and `gui_smoke` now include the two Mushak PDFs.
+
+## 18. Version 18 (24 November 2026) - verifier directory, WhatsApp check, new dashboard
+
+No report or billing rule changed. Added:
+
+1. **Verifiers only** - `client.verifier_phones` keeps a /api/v2/verifiers entry only when `user_role` is 4 (or absent) and
+   `status` is 1. Every directory action checks the id is in this list (`helper_server.directory_update`, `save_photo`,
+   `verifier_dir.parse_import`): nobody else can be added.
+2. **`verifier_dir.py`** - `number_of` (number Naim set in settings `phone_overrides`, else the dashboard number - the same list
+   the reminder rounds use); `wa_status` -> none | bad | no | ok | unchecked from the reminders state (`no_whatsapp`, new
+   `wa_ok` {8801...: date}); `to_check` (valid numbers never checked, "ok" ones after `RECHECK_DAYS` = 30; "no" ones are not
+   checked again); `read_rows` / `parse_import` / `apply_import` (Excel .xlsx or CSV; match by ID, else by an exact name that
+   only one verifier has); `save_photo` (any Pillow format, HEIC with pillow-heif; 320 x 320 JPEG in
+   `~/.verify_report_builder/verifier_photos/<id>.jpg`), `match_photo_files`, `export_csv`, `directory`.
+3. **WhatsApp check** - helper `content.js` (v18.0.0): `maybeStartCheck` polls GET `/wa_check`; with a token it claims it
+   (`/wa_check_claim`), then for each number opens `web.whatsapp.com/send?phone=<n>` with no text and posts `/wa_check`
+   {phone, ok}: ok = the message box appears, not ok = WhatsApp's invalid-number dialog; 6 s between numbers. The token comes from
+   the button (`request_check(auto=False)`) or once a day after the dashboard is read (`shell._daily_wa_check`, auto=True): an
+   automatic check starts only after 90 s without a click / key in the WhatsApp tab and stops on the next one.
+4. **Helper server** - new routes `/wa_check`, `/wa_check_claim`, `/directory` (GET list; POST {id, num | noWa}),
+   `/directory_check`, `/photo/<id>`, `/photo`. Same rules as before: 127.0.0.1 only, extension origins only; the new dashboard
+   sends `X-VRB-Dashboard: 1` so it is not counted as the WhatsApp helper being connected.
+5. **New dashboard extension** - `assets/new_dashboard` (copied to `~/.verify_report_builder/new_dashboard` by
+   `new_dashboard_folder`): on verify.bmapsbd.com/vrb-dashboard it reads the dashboard API with the user's own session (GET only:
+   status-counts, org/summery, sla-breaches, verifiers, first-last-task, re-cpv/tracker, trips/completed, manager/applications and
+   details) and shows every dashboard page plus the new ones; `bg.js` talks to the helper server for the directory every 20 s.
+6. Tests: `tests/test_v18.py` (verifiers only, status and re-check rules, CSV + Excel import, photos in 4 formats, export,
+   every helper route incl. refusing a web page's origin).
+

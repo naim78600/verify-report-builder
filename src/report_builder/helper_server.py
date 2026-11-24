@@ -9,6 +9,11 @@ that carries a web page's Origin (any https://... site) is refused, so no websit
   POST /sent   {phone}    -> marks that verifier's message as sent (Naim pressed Send)
   POST /reply  {phone, text, at}   -> a reply read from WhatsApp Web; understood by reminders.parse_reply
   POST /contact {name, phone}      -> the chat name WhatsApp shows for that number (to read replies from the chat list)
+  V18 - WhatsApp check and the verifier directory (verifiers only):
+  GET  /wa_check           -> {items: numbers to check, start: token, auto: bool}
+  POST /wa_check_claim {token}, POST /wa_check {phone, ok}  -> one result (the chat opened / "not on WhatsApp")
+  GET  /directory          -> every verifier: number, WhatsApp status, photo version (for the new dashboard extension)
+  POST /directory {id, num | noWa}, POST /directory_check, GET /photo/<id>, POST /photo {id, b64}
   GET  /asks               -> V12 follow-ups: messages to send ("send the slip photo", "write the problem") and photo waits
   POST /ask_sent {phone}   -> Naim pressed Send on a follow-up
   POST /media {phone, b64, type, msg}  -> a photo the verifier sent after "জমা দিয়েছি": saved in
@@ -42,6 +47,12 @@ class HelperServer:
         self.start_until = 0.0
         self.httpd: ThreadingHTTPServer | None = None
         self.slips_dir: Path | None = None   # <reports folder>/BS Slips (the program sets it; default: the default reports folder)
+        # V18: the verifier directory.  dir_source() -> (phones, overrides); set_number(vid, phone) saves a number.
+        self.dir_source: Callable[[], tuple] = lambda: ({}, {})
+        self.set_number: Callable[[int, str], None] = lambda vid, phone: None
+        self.check_token: str | None = None
+        self.check_until = 0.0
+        self.check_auto = False
 
     # ------------------------------------------------------------------ the Chrome helper
     @property
@@ -64,6 +75,95 @@ class HelperServer:
                 self.start_token = None
                 return True
             return False
+
+    # ------------------------------------------------------------------ V18: WhatsApp check + verifier directory
+    def request_check(self, auto: bool = False) -> str:
+        """'Check WhatsApp numbers' (button) or the daily automatic check: the helper takes it once (valid 1 hour)."""
+        self.check_token = f"c{time.time():.3f}"
+        self.check_until = time.time() + 3600
+        self.check_auto = auto
+        return self.check_token
+
+    def pending_check(self) -> str | None:
+        return self.check_token if self.check_token and time.time() < self.check_until else None
+
+    def claim_check(self, token: str) -> bool:
+        with self.lock:
+            if token and token == self.pending_check():
+                self.check_token = None
+                return True
+            return False
+
+    def check_items(self) -> list[dict]:
+        from . import verifier_dir as VD
+        phones, ov = self.dir_source()
+        return VD.to_check(phones, ov, R.load_state())
+
+    def check_result(self, phone: str, ok: bool) -> bool:
+        from . import verifier_dir as VD
+        phones, ov = self.dir_source()
+        known = {VD.number_of(v, phones, ov) for v in set(phones) | {int(k) for k in ov if str(k).isdigit()}}
+        if phone not in known:
+            return False
+        with self.lock:
+            st = R.load_state()
+            VD.record_check(st, phone, bool(ok))
+            R.save_state(st)
+        (R.NO_WA_CACHE.discard if ok else R.NO_WA_CACHE.add)(phone)
+        self.on_event("wa_check", {"phone": phone, "ok": bool(ok)})
+        return True
+
+    def directory(self) -> list[dict]:
+        from . import verifier_dir as VD
+        phones, ov = self.dir_source()
+        return VD.directory(phones, ov, R.load_state())
+
+    def directory_update(self, body: dict) -> dict:
+        """From the new dashboard: a WhatsApp number or "not on WhatsApp" for ONE verifier (nobody else can be added)."""
+        from . import verifier_dir as VD
+        from .client import is_bd_mobile, normalize_phone
+        phones, ov = self.dir_source()
+        try:
+            vid = int(body.get("id"))
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "no verifier"}
+        if vid not in phones:
+            return {"ok": False, "error": "not a verifier"}
+        if body.get("noWa"):
+            ph = VD.number_of(vid, phones, ov)
+            if not ph:
+                return {"ok": False, "error": "no number"}
+            with self.lock:
+                st = R.load_state()
+                VD.mark_not_on_whatsapp(st, ph)
+                R.save_state(st)
+            R.NO_WA_CACHE.add(ph)
+            self.on_event("directory", {"id": vid})
+            return {"ok": True}
+        ph = normalize_phone(body.get("num"))
+        if not is_bd_mobile(ph):
+            return {"ok": False, "error": "number not valid"}
+        self.set_number(vid, ph)
+        R.NO_WA_CACHE.discard(ph)
+        self.on_event("directory", {"id": vid})
+        return {"ok": True, "num": ph}
+
+    def save_photo(self, body: dict) -> dict:
+        import base64
+        from . import verifier_dir as VD
+        phones, _ov = self.dir_source()
+        try:
+            vid = int(body.get("id"))
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "no verifier"}
+        if vid not in phones:
+            return {"ok": False, "error": "not a verifier"}
+        try:
+            VD.save_photo(vid, base64.b64decode(str(body.get("b64", "")).split(",", 1)[-1]))
+        except Exception as exc:                                   # noqa: BLE001 - a picture the computer cannot open
+            return {"ok": False, "error": f"cannot open this picture ({type(exc).__name__})"}
+        self.on_event("directory", {"id": vid})
+        return {"ok": True}
 
     # ------------------------------------------------------------------ data
     def current_items(self) -> list[dict]:
@@ -200,7 +300,8 @@ class HelperServer:
                 if self.client_address[0] not in ("127.0.0.1", "::1"):
                     return False
                 origin = self.headers.get("Origin") or ""
-                if origin.startswith("chrome-extension://") or origin.startswith("moz-extension://") or (origin == "" and "v=" in self.path):
+                dash = bool(self.headers.get("X-VRB-Dashboard"))  # V18: the new dashboard extension is not the WhatsApp helper
+                if not dash and (origin.startswith("chrome-extension://") or origin.startswith("moz-extension://") or (origin == "" and "v=" in self.path)):
                     was = srv.extension_connected
                     srv.ext_seen = time.time()
                     if "v=" in self.path:
@@ -220,7 +321,7 @@ class HelperServer:
                 self.wfile.write(data)
 
             def _json(self) -> dict:
-                cap = 20_000_000 if self.path == "/media" else 100_000          # a slip photo can be a few MB
+                cap = 20_000_000 if self.path in ("/media", "/photo") else 100_000   # a slip photo can be a few MB
                 n = min(int(self.headers.get("Content-Length") or 0), cap)
                 try:
                     return json.loads(self.rfile.read(n) or b"{}")
@@ -237,6 +338,16 @@ class HelperServer:
                     return self._send(200, {"items": srv.current_items(), "contacts": srv.contacts(), "start": srv.pending_start()})
                 if self.path == "/asks":
                     return self._send(200, {"asks": srv.asks()})
+                if self.path == "/wa_check":
+                    tok = srv.pending_check()
+                    return self._send(200, {"items": srv.check_items() if tok else [], "start": tok, "auto": srv.check_auto})
+                if self.path == "/directory":
+                    return self._send(200, {"items": srv.directory(), "checking": bool(srv.pending_check())})
+                if self.path.startswith("/photo/"):
+                    from . import verifier_dir as VD
+                    vid = self.path.split("/photo/", 1)[1]
+                    p = VD.photo_path(vid) if vid.isdigit() else None
+                    return self._send(200, p.read_bytes(), "image/jpeg") if p else self._send(404, {"error": "no photo"})
                 if self.path.startswith("/voice/"):
                     name = self.path.split("/voice/", 1)[1].split("?")[0]
                     if not name.replace("_", "").isalnum():
@@ -266,6 +377,16 @@ class HelperServer:
                 if self.path == "/media":
                     return self._send(200, srv.save_media(str(body.get("phone", "")), str(body.get("b64", "")),
                                                           str(body.get("type", "")), str(body.get("msg", ""))))
+                if self.path == "/wa_check_claim":
+                    return self._send(200, {"ok": srv.claim_check(str(body.get("token", "")))})
+                if self.path == "/wa_check":
+                    return self._send(200, {"ok": srv.check_result(str(body.get("phone", "")), bool(body.get("ok")))})
+                if self.path == "/directory":
+                    return self._send(200, srv.directory_update(body))
+                if self.path == "/directory_check":
+                    return self._send(200, {"ok": True, "token": srv.request_check(auto=False)})
+                if self.path == "/photo":
+                    return self._send(200, srv.save_photo(body))
                 if self.path == "/contact":
                     srv.add_contact(str(body.get("name", "")), str(body.get("phone", "")))
                     return self._send(200, {"ok": True})
@@ -292,6 +413,22 @@ def helper_folder() -> Path:
     import shutil
     from . import config
     src, dst = asset("whatsapp_helper"), config.SETTINGS_DIR / "whatsapp_helper"
+    try:
+        dst.mkdir(parents=True, exist_ok=True)
+        for f in src.iterdir():
+            if f.is_file() and (not (dst / f.name).exists() or (dst / f.name).read_bytes() != f.read_bytes()):
+                shutil.copyfile(f, dst / f.name)
+    except OSError:
+        return src
+    return dst
+
+
+def new_dashboard_folder() -> Path:
+    """V18: the new dashboard Chrome extension (live screens on verify.bmapsbd.com/vrb-dashboard), in a folder that does
+    not move (~/.verify_report_builder/new_dashboard) for Chrome's "Load unpacked"."""
+    import shutil
+    from . import config
+    src, dst = asset("new_dashboard"), config.SETTINGS_DIR / "new_dashboard"
     try:
         dst.mkdir(parents=True, exist_ok=True)
         for f in src.iterdir():

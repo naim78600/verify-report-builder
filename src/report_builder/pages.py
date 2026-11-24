@@ -899,65 +899,146 @@ class RemindersPage(Page):
 
 # ============================================================================================ Verifiers
 class VerifiersPage(Page):
-    title_bn, title_en = "ভেরিফায়ার", "Verifiers"
+    """V18: verifiers only - WhatsApp number, the automatic WhatsApp check, photos, Excel / CSV import."""
+    title_bn, title_en = "ভেরিফায়ার · WhatsApp ও ছবি", "Verifiers · WhatsApp & photos"
+    FILTERS = (("all", "সবাই", "All"), ("missing", "WhatsApp নেই", "No WhatsApp"), ("unchecked", "চেক হয়নি", "Not checked"),
+               ("ok", "WhatsApp আছে", "Connected"), ("nophoto", "ছবি নেই", "No photo"))
 
     def __init__(self, master, shell):
         super().__init__(master, shell)
         self.action(L("↻  নম্বর আবার আনুন", "↻  Read numbers again"), lambda: shell.refresh_data("manual"))
-        edit = self.card(self.body, fill="x")
-        row = tk.Frame(edit, bg=P["card"], padx=18, pady=14)
+        self.action(L("CSV রাখুন", "Save CSV"), self.export)
+        self.action(L("Excel / CSV দিন", "Import Excel / CSV"), self.import_file)
+        self.action(L("ছবি দিন (অনেকগুলো)", "Add photos (many)"), self.add_photos)
+        self.action(L("নতুন ড্যাশবোর্ড (Chrome)", "New dashboard (Chrome)"), self.new_dashboard)
+        self.action(L("WhatsApp চেক করুন", "Check WhatsApp"), self.check_now, kind="primary")
+        top = tk.Frame(self.body, bg=P["bg"])
+        top.pack(fill="x")
+        self.k_all = self.kpi(top, L("ভেরিফায়ার", "Verifiers"))
+        self.k_ok = self.kpi(top, L("WhatsApp আছে", "WhatsApp connected"), color=P["ok"])
+        self.k_un = self.kpi(top, L("চেক হয়নি", "Not checked yet"), color=P["warn"])
+        self.k_no = self.kpi(top, L("WhatsApp নেই", "No WhatsApp"), color=P["bad"], hint=L("নম্বর নেই / ভুল / WhatsApp নেই", "no / wrong number or not on WhatsApp"))
+        self.k_ph = self.kpi(top, L("ছবি নেই", "No photo"))
+        for i, k in enumerate((self.k_all, self.k_ok, self.k_un, self.k_no, self.k_ph)):
+            k.pack(side="left", fill="x", expand=True, padx=(0 if i == 0 else 10, 0))
+        edit = self.card(self.body, fill="x", pady=(12, 0))
+        row = tk.Frame(edit, bg=P["card"], padx=18, pady=12)
         row.pack(fill="x")
-        self.sel_name = tk.Label(row, text=L("তালিকা থেকে একজনকে বাছুন", "Choose someone in the list"), bg=P["card"], fg=P["text"], font=self.f.h3)
-        self.sel_name.pack(side="left")
+        self.photo_lbl = tk.Label(row, text="", bg=P["line"], width=8, height=4, cursor="hand2")
+        self.photo_lbl.pack(side="left", padx=(0, 14))
+        self.photo_lbl.bind("<Button-1>", lambda _e: self.add_photo_one())
+        mid = tk.Frame(row, bg=P["card"])
+        mid.pack(side="left", fill="x", expand=True)
+        self.sel_name = tk.Label(mid, text=L("তালিকা থেকে একজনকে বাছুন", "Choose someone in the list"), bg=P["card"], fg=P["text"], font=self.f.h3)
+        self.sel_name.pack(anchor="w")
+        self.sel_info = tk.Label(mid, text="", bg=P["card"], fg=P["mute"], font=self.f.small)
+        self.sel_info.pack(anchor="w")
+        line = tk.Frame(mid, bg=P["card"])
+        line.pack(anchor="w", pady=(6, 0))
         self.phone = tk.StringVar()
-        tk.Label(row, text=L("WhatsApp নম্বর", "WhatsApp number"), bg=P["card"], fg=P["mute"], font=self.f.small).pack(side="left", padx=(24, 6))
-        Entry(row, self.f, self.phone, width=18).pack(side="left", ipady=4)
-        Button(row, L("সেভ", "Save"), self.save, kind="primary", font=self.f.small, padx=14, pady=6).pack(side="left", padx=8)
-        Button(row, L("ড্যাশবোর্ডের নম্বরে ফেরত", "Back to the dashboard number"), self.reset, font=self.f.small, padx=10, pady=6).pack(side="left")
-        tbl = self.card(self.body, fill="both", expand=True, pady=(12, 0))
-        box, self.tv = self.table(tbl, [("name", L("নাম", "Name"), 200, "w"), ("phone", L("নম্বর", "Number"), 150, "w"),
-                                        ("src", L("কোথা থেকে", "From"), 140, "w"), ("wa", "WhatsApp", 160, "w"),
-                                        ("open", L("চলমান ট্রিপ", "Open trips"), 100, "w")], height=16)
+        tk.Label(line, text=L("WhatsApp নম্বর", "WhatsApp number"), bg=P["card"], fg=P["mute"], font=self.f.small).pack(side="left", padx=(0, 6))
+        Entry(line, self.f, self.phone, width=18).pack(side="left", ipady=4)
+        Button(line, L("সেভ", "Save"), self.save, kind="primary", font=self.f.small, padx=14, pady=6).pack(side="left", padx=8)
+        Button(line, L("WhatsApp নেই", "Not on WhatsApp"), self.mark_no, font=self.f.small, padx=10, pady=6).pack(side="left")
+        Button(line, L("ড্যাশবোর্ডের নম্বরে ফেরত", "Back to the dashboard number"), self.reset, font=self.f.small, padx=10, pady=6).pack(side="left", padx=8)
+        Button(line, L("ছবি দিন", "Add photo"), self.add_photo_one, font=self.f.small, padx=10, pady=6).pack(side="left")
+        fl = tk.Frame(self.body, bg=P["bg"])
+        fl.pack(fill="x", pady=(12, 6))
+        self.flt = tk.StringVar(value="all")
+        Segmented(fl, self.f, [(k, L(bn, en)) for k, bn, en in self.FILTERS], self.flt, command=lambda *_: self.refresh()).pack(side="left")
+        self.q = tk.StringVar()
+        self.q.trace_add("write", lambda *_: self.refresh())
+        tk.Label(fl, text=L("খুঁজুন", "Search"), bg=P["bg"], fg=P["mute"], font=self.f.small).pack(side="left", padx=(16, 6))
+        Entry(fl, self.f, self.q, width=24).pack(side="left", ipady=3)
+        tbl = self.card(self.body, fill="both", expand=True)
+        box, self.tv = self.table(tbl, [("name", L("নাম", "Name"), 200, "w"), ("id", "ID", 70, "w"), ("wa", "WhatsApp", 170, "w"),
+                                        ("phone", L("নম্বর", "Number"), 150, "w"), ("src", L("কোথা থেকে", "From"), 130, "w"),
+                                        ("photo", L("ছবি", "Photo"), 60, "w"), ("checked", L("চেক", "Checked"), 100, "w"),
+                                        ("open", L("চলমান ট্রিপ", "On Going trips"), 110, "w")], height=14)
         box.pack(fill="both", expand=True, padx=1, pady=1)
         self.tv.bind("<<TreeviewSelect>>", lambda _e: self.pick())
         self.sel = None
+        self._img = None
 
     def on_data(self):
         self.refresh()
 
-    def refresh(self):
-        phones = self.shell.data["phones"]
-        ov = self.shell.phone_overrides()
-        open_trips: dict = {}
+    def _open_trips(self) -> dict:
+        out: dict = {}
         for fl in self.shell.data["files"].values():
             for f in fl:
                 if f.get("status_code") in R.OPEN_FILE:
                     for c in f.get("concerns") or []:
                         for t in c.get("trips") or []:
                             if t.get("status_code") in R.OPEN_TRIP and t.get("agent_id") is not None:
-                                open_trips[t["agent_id"]] = open_trips.get(t["agent_id"], 0) + 1
-        ids = sorted(set(phones) | {int(k) for k in ov if str(k).isdigit()}, key=lambda i: (-(open_trips.get(i, 0)), (phones.get(i) or {}).get("name", "")))
+                                out[t["agent_id"]] = out.get(t["agent_id"], 0) + 1
+        return out
+
+    def refresh(self):
+        from . import verifier_dir as VD
+        phones = self.shell.data["phones"]
+        ov = self.shell.phone_overrides()
+        st = R.load_state()
+        open_trips = self._open_trips()
+        rank = {"none": 0, "bad": 0, "no": 0, "unchecked": 1, "ok": 2}
+        rows = []
+        for vid, p in phones.items():
+            ph = VD.number_of(vid, phones, ov)
+            ws = VD.wa_status(ph, st)
+            rows.append((vid, p.get("name", ""), ph, ws, VD.photo_path(vid) is not None))
+        cnt = lambda f: sum(1 for r in rows if f(r))                                   # noqa: E731
+        self.k_all.value.config(text=num(len(rows)))
+        self.k_ok.value.config(text=num(cnt(lambda r: r[3] == "ok")))
+        self.k_un.value.config(text=num(cnt(lambda r: r[3] == "unchecked")))
+        self.k_no.value.config(text=num(cnt(lambda r: r[3] in ("none", "bad", "no"))))
+        self.k_ph.value.config(text=num(cnt(lambda r: not r[4])))
+        f, q = self.flt.get(), self.q.get().strip().lower()
+        keep = {"all": lambda r: True, "missing": lambda r: r[3] in ("none", "bad", "no"), "unchecked": lambda r: r[3] == "unchecked",
+                "ok": lambda r: r[3] == "ok", "nophoto": lambda r: not r[4]}[f]
+        rows = [r for r in rows if keep(r) and (not q or q in f"{r[1]} {r[0]} {r[2]}".lower())]
+        rows.sort(key=lambda r: (rank[r[3]], -open_trips.get(r[0], 0), r[1].lower()))
         self.tv.delete(*self.tv.get_children())
-        red = 0
-        for vid in ids:
-            ph = ov.get(str(vid)) or (phones.get(vid) or {}).get("phone", "")
-            bad = not is_bd_mobile(ph) or ph in R.NO_WA_CACHE
-            red += bad
-            wa = (L("🔴 WhatsApp নেই", "🔴 not on WhatsApp") if ph in R.NO_WA_CACHE else
-                  (L("🔴 নম্বর ঠিক নেই", "🔴 number not valid") if not is_bd_mobile(ph) else L("✓ আছে", "✓ ok")))
-            self.tv.insert("", "end", iid=str(vid), values=((phones.get(vid) or {}).get("name", str(vid)), ph or "—",
-                                                            L("আপনি বদলেছেন", "changed by you") if str(vid) in ov else L("ড্যাশবোর্ড", "dashboard"),
-                                                            wa, num(open_trips.get(vid, 0))), tags=("bad",) if bad else ())
-        self.sub.config(text=L(f"মোট {num(len(ids))} জন · লাল {num(red)} জন", f"{len(ids)} people · red {red}"))
+        for vid, name, ph, ws, has_photo in rows:
+            dot = {"ok": "🟢 ", "unchecked": "🟠 ", "no": "🔴 ", "bad": "🔴 ", "none": "🔴 "}[ws]
+            checked = (st.get("wa_ok") or {}).get(ph) or (st.get("no_whatsapp") or {}).get(ph) or "—"
+            self.tv.insert("", "end", iid=str(vid), values=(name, vid, dot + L(*VD.STATUS_TEXT[ws]), ph or "—",
+                                                            L("আপনি দিয়েছেন", "added by you") if str(vid) in ov else L("ড্যাশবোর্ড", "dashboard"),
+                                                            "✓" if has_photo else "—", checked, num(open_trips.get(vid, 0))),
+                           tags=("bad",) if ws in ("none", "bad", "no") else ("warn",) if ws == "unchecked" else ())
+        self.sub.config(text=L(f"শুধু ভেরিফায়ার · দেখানো {num(len(rows))} জন", f"Verifiers only · showing {len(rows)}"))
+        if self.sel and self.tv.exists(self.sel):
+            self.tv.selection_set(self.sel)
 
     def pick(self):
+        from . import verifier_dir as VD
         s = self.tv.selection()
         if not s:
             return
         self.sel = s[0]
         vals = self.tv.item(s[0], "values")
         self.sel_name.config(text=vals[0])
-        self.phone.set("" if vals[1] == "—" else vals[1])
+        self.sel_info.config(text=f"ID {vals[1]} · {vals[2]} · {L('চলমান ট্রিপ', 'On Going trips')} {vals[7]}")
+        self.phone.set("" if vals[3] == "—" else vals[3])
+        self._show_photo(VD.photo_path(self.sel))
+
+    def _show_photo(self, path):
+        self._img = None
+        try:
+            if path:
+                from PIL import Image, ImageTk
+                im = Image.open(path)
+                im.thumbnail((72, 72))
+                self._img = ImageTk.PhotoImage(im)
+        except Exception:                                    # noqa: BLE001 - no Pillow Tk support: show text instead
+            self._img = None
+        if self._img:
+            self.photo_lbl.config(image=self._img, text="", width=72, height=72)
+        else:
+            self.photo_lbl.config(image="", text=L("ছবি\nদিন", "Add\nphoto"), width=8, height=4)
+
+    def _set_number(self, vid: str, ph: str):
+        self.shell.set_verifier_number(int(vid), ph)
+        R.NO_WA_CACHE.discard(ph)
 
     def save(self):
         if not self.sel:
@@ -967,11 +1048,20 @@ class VerifiersPage(Page):
             messagebox.showwarning(L("নম্বর ঠিক নেই", "Number not valid"), L("বাংলাদেশের মোবাইল নম্বর দিন (01XXXXXXXXX)।",
                                                                            "Give a Bangladesh mobile number (01XXXXXXXXX)."))
             return
-        ov = self.shell.phone_overrides()
-        ov[self.sel] = ph
-        config.save_settings({"phone_overrides": ov})
-        self.shell.settings["phone_overrides"] = ov
-        R.NO_WA_CACHE.discard(ph)
+        self._set_number(self.sel, ph)
+        self.refresh()
+
+    def mark_no(self):
+        from . import verifier_dir as VD
+        if not self.sel:
+            return
+        ph = VD.number_of(self.sel, self.shell.data["phones"], self.shell.phone_overrides())
+        if not ph:
+            return
+        st = R.load_state()
+        VD.mark_not_on_whatsapp(st, ph)
+        R.save_state(st)
+        R.NO_WA_CACHE.add(ph)
         self.refresh()
 
     def reset(self):
@@ -982,6 +1072,133 @@ class VerifiersPage(Page):
         config.save_settings({"phone_overrides": ov})
         self.shell.settings["phone_overrides"] = ov
         self.refresh()
+
+    def add_photo_one(self):
+        from . import verifier_dir as VD
+        if not self.sel:
+            messagebox.showinfo(L("একজনকে বাছুন", "Choose someone"), L("আগে তালিকা থেকে একজন ভেরিফায়ার বাছুন।", "Choose a verifier in the list first."))
+            return
+        path = filedialog.askopenfilename(title=L("ভেরিফায়ারের ছবি", "Verifier photo"),
+                                          filetypes=[(L("ছবি", "Pictures"), "*.jpg *.jpeg *.png *.webp *.gif *.bmp *.tif *.tiff *.heic *.heif"), ("*", "*.*")])
+        if not path:
+            return
+        try:
+            VD.save_photo(self.sel, path)
+        except Exception as exc:                             # noqa: BLE001
+            messagebox.showwarning(L("ছবি খোলা যায়নি", "Could not open the picture"), f"{Path(path).name}: {type(exc).__name__}")
+            return
+        self.refresh()
+        self.pick()
+
+    def add_photos(self):
+        from . import verifier_dir as VD
+        paths = filedialog.askopenfilenames(title=L("অনেক ছবি একসাথে (ফাইলের নাম = নাম বা ID)", "Many photos (file name = name or ID)"),
+                                            filetypes=[(L("ছবি", "Pictures"), "*.jpg *.jpeg *.png *.webp *.gif *.bmp *.tif *.tiff *.heic *.heif"), ("*", "*.*")])
+        if not paths:
+            return
+        found, missed = VD.match_photo_files(list(paths), self.shell.data["phones"])
+        bad = []
+        for vid, p in found:
+            try:
+                VD.save_photo(vid, p)
+            except Exception:                                # noqa: BLE001
+                bad.append(p.name)
+        msg = L(f"{num(len(found) - len(bad))}টি ছবি সেভ হয়েছে।", f"{len(found) - len(bad)} photos saved.")
+        if missed:
+            msg += "\n" + L("নাম / ID মেলেনি: ", "No matching name / ID: ") + ", ".join(p.name for p in missed[:8])
+        if bad:
+            msg += "\n" + L("খোলা যায়নি: ", "Could not open: ") + ", ".join(bad[:8])
+        messagebox.showinfo(L("ছবি", "Photos"), msg)
+        self.refresh()
+
+    def import_file(self):
+        from . import verifier_dir as VD
+        if not self.need_data():
+            return
+        path = filedialog.askopenfilename(title=L("WhatsApp নম্বরের তালিকা (Excel / CSV)", "WhatsApp numbers (Excel / CSV)"),
+                                          filetypes=[("Excel / CSV", "*.xlsx *.xlsm *.csv *.txt"), ("*", "*.*")])
+        if not path:
+            return
+        try:
+            items = VD.parse_import(VD.read_rows(Path(path)), self.shell.data["phones"])
+        except Exception as exc:                             # noqa: BLE001
+            messagebox.showwarning(L("ফাইল পড়া যায়নি", "Could not read the file"), f"{Path(path).name}: {type(exc).__name__}")
+            return
+        ImportDialog(self, items, Path(path).name)
+
+    def apply_import(self, items):
+        from . import verifier_dir as VD
+        ov = self.shell.phone_overrides()
+        n = VD.apply_import(items, ov)
+        config.save_settings({"phone_overrides": ov})
+        self.shell.settings["phone_overrides"] = ov
+        for it in items:
+            if it.get("ok"):
+                R.NO_WA_CACHE.discard(it["phone"])
+        self.shell.toast(L(f"{num(n)}টি WhatsApp নম্বর সেভ হয়েছে", f"{n} WhatsApp numbers saved"))
+        self.refresh()
+
+    def export(self):
+        from . import verifier_dir as VD
+        path = filedialog.asksaveasfilename(defaultextension=".csv", initialfile="Verifier WhatsApp.csv", filetypes=[("CSV", "*.csv")])
+        if path:
+            VD.export_csv(Path(path), self.shell.data["phones"], self.shell.phone_overrides(), R.load_state())
+            open_path(Path(path).parent)
+
+    def check_now(self):
+        if not self.shell.helper_running:
+            messagebox.showinfo("WhatsApp", L("হেল্পার চালু নেই। প্রোগ্রাম একবার বন্ধ করে আবার খুলুন।", "The helper is not running. Close and open the program again."))
+            return
+        self.shell.helper.request_check(auto=False)
+        msg = L("WhatsApp Web-এ হেল্পার এখন একে একে নম্বরগুলো খুলে দেখবে (কিছু লেখা বা পাঠানো হয় না)।",
+                "The helper on WhatsApp Web now opens each number to see if it is on WhatsApp (nothing is typed or sent).")
+        if not self.shell.helper.extension_connected:
+            msg += "\n\n" + L("Chrome-এ web.whatsapp.com খুলুন — হেল্পার যুক্ত হলেই চেক শুরু হবে।", "Open web.whatsapp.com in Chrome; the check starts when the helper connects.")
+        messagebox.showinfo("WhatsApp", msg)
+
+
+    def new_dashboard(self):
+        """V18: set up the new dashboard extension (live screens + this verifier list) in Chrome."""
+        from .helper_server import new_dashboard_folder
+        folder = new_dashboard_folder()
+        open_path(folder)
+        open_chrome_extensions()
+        messagebox.showinfo(L("নতুন ড্যাশবোর্ড", "New dashboard"), L(
+            "Chrome-এ: Developer mode চালু → Load unpacked → যে ফোল্ডার খুলেছে সেটি বাছুন।\n"
+            "তারপর verify.bmapsbd.com-এ ডানদিকে নিচে “New dashboard (VRB)” চাপুন, বা খুলুন: https://verify.bmapsbd.com/vrb-dashboard\n"
+            "এই প্রোগ্রাম খোলা থাকলে নম্বর, ছবি ও WhatsApp চেক দুই জায়গায় একসাথে দেখাবে।",
+            "In Chrome: Developer mode on → Load unpacked → choose the folder that just opened.\n"
+            "Then press “New dashboard (VRB)” at the bottom right of verify.bmapsbd.com, or open https://verify.bmapsbd.com/vrb-dashboard\n"
+            "While this program is open, numbers, photos and the WhatsApp check show in both places."))
+
+
+class ImportDialog(tk.Toplevel):
+    """V18: every row of the Excel / CSV before anything is saved; rows that are not a verifier are skipped."""
+
+    def __init__(self, page: VerifiersPage, items: list, name: str):
+        super().__init__(page)
+        self.page, self.items = page, items
+        f = page.f
+        self.title(L("দেখে নিন, তারপর সেভ", "Check, then save"))
+        self.configure(bg=P["bg"])
+        self.geometry("820x520")
+        good = sum(1 for i in items if i["ok"])
+        tk.Label(self, text=f"{name} · " + L(f"সেভ হবে {num(good)} · বাদ {num(len(items) - good)}", f"will be saved {good} · skipped {len(items) - good}"),
+                 bg=P["bg"], fg=P["text"], font=f.h3).pack(anchor="w", padx=18, pady=(14, 6))
+        box, tv = page.table(self, [("row", L("সারি", "Row"), 60, "w"), ("key", L("ফাইলে", "In the file"), 220, "w"),
+                                    ("who", L("ভেরিফায়ার", "Verifier"), 200, "w"), ("phone", "WhatsApp", 150, "w"), ("res", L("ফল", "Result"), 160, "w")], height=14)
+        box.pack(fill="both", expand=True, padx=18)
+        for it in items:
+            tv.insert("", "end", values=(it["row"], it["key"], it["name"] or "—", it["phone"] or "—",
+                                         L("সেভ হবে", "will be saved") if it["ok"] else it["why"]), tags=("ok",) if it["ok"] else ("bad",))
+        bar = tk.Frame(self, bg=P["bg"])
+        bar.pack(fill="x", padx=18, pady=12)
+        Button(bar, L(f"{num(good)}টি সেভ করুন", f"Save {good}"), self.ok, kind="primary", font=f.small, padx=14, pady=8).pack(side="right")
+        Button(bar, L("বাতিল", "Cancel"), self.destroy, font=f.small, padx=14, pady=8).pack(side="right", padx=8)
+
+    def ok(self):
+        self.page.apply_import(self.items)
+        self.destroy()
 
 
 # ============================================================================================ Settings

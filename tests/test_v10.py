@@ -338,7 +338,7 @@ def test_helper_folder_is_fixed_and_fresh(tmp_path, monkeypatch):
     (d / "content.js").write_text("old", encoding="utf-8")
     assert "lastIsMine" in (HS.helper_folder() / "content.js").read_text(encoding="utf-8")   # an old copy is replaced
     js = (d / "content.js").read_text(encoding="utf-8")
-    assert "wds-ic-read" in js and ".click()" not in js and HS.helper_version() == "12.0.0"
+    assert "wds-ic-read" in js and ".click()" not in js and HS.helper_version() == "18.0.0"
 
 
 def test_verifier_list_shapes_live_server_answers_taskers():
