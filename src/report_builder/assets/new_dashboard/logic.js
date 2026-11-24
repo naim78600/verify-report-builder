@@ -125,7 +125,7 @@ function saveDir(d) { try { localStorage.setItem(WA_KEY, JSON.stringify(d)); } c
 class Component extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = { tab: 'overview', orgs: [], from: 1, to: TODAY, q: '', drawer: null, wlq: '', wlF: 'all', wlSort: 'count',
+    this.state = { tab: 'home', done: [], orgs: [], from: 1, to: TODAY, q: '', drawer: null, wlq: '', wlF: 'all', wlSort: 'count',
       cancOrg: null, cancStage: 'all', cancReason: null, slaWin: 'upcoming', slaFocus: null, slaSt: 'all', slaSort: 'count', apv: 'overdue',
       qcF: 'wait', qcChecks: {}, qcDone: {}, dir: loadDir(), waF: 'all', waQ: '', waEdit: null, waDraft: '', waErr: '', imp: null, impMsg: '', prof: null, profQ: '', sent: {}, billMonth: 'nov', billGen: false, faq: 'Prime Bank', navOpen: false,
       menu: null, toast: '', rSt: '', rVer: '', rSort: 'start', rQ: '', apQ: '', tmQ: '', uaUser: '', uQ: '', perms: {}, permUser: '', billTab: 'regular', billOrg: 'Prime', cfTab: 'dash', agSort: 'tasks', rcQ: '' };
@@ -140,7 +140,7 @@ class Component extends DCLogic {
     const out = { asOf: tTxt(NOW), design: this.props.designName || '', live: !!DATA.live, snap: !DATA.live, liveTxt: DATA.live ? 'Live' : 'Snapshot', refresh: () => { if (window.vrbRefresh) window.vrbRefresh(); }, liveState: (window.vrbState && window.vrbState()) || '' };
 
     // ---------- navigation ----------
-    const TABS = [['overview', 'Dashboard'], ['createfile', 'Create File'], ['reports', 'Reports'], ['appt', 'Appointments'], ['taskmap', 'Task Map'], ['recpv', 'ReCPV'], ['issues', 'Issue Management'], ['sla', 'SLA Breaches'],
+    const TABS = [['home', 'Home'], ['overview', 'Dashboard'], ['createfile', 'Create File'], ['reports', 'Reports'], ['appt', 'Appointments'], ['taskmap', 'Task Map'], ['recpv', 'ReCPV'], ['issues', 'Issue Management'], ['sla', 'SLA Breaches'],
       ['analytics', 'Analytics'], ['adminpanel', 'Admin Panel'], ['uanalytics', 'Users Analytics'], ['travel', 'Travel Expenses'], ['zones', 'Zones Manage'], ['documents', 'Documents'], ['company', 'Company Profile'],
       ['route', 'Route Statistics'], ['perms', 'Permissions'], ['requested', 'Requested Trips'], ['billcalc', 'Bill Calculation'], ['register', 'Register'], ['users', 'Users'],
       ['workload', 'Verifier Tasks'], ['wadir', 'Verifier WhatsApp & Photos'], ['cancel', 'Cancellations'], ['profile', 'Verifier Profile'], ['area', 'In / Out Area'], ['faq', 'FAQ']];
@@ -207,6 +207,35 @@ class Component extends DCLogic {
       { n: qcQueue.length, t: 'Finished / Partially Submitted files waiting to be submitted', s: 'Check the report and submit', cls: 'acc', go: () => self.setState({ tab: 'reports', rSt: '4', drawer: null }) },
       { n: OPEN.filter((t) => !t.ag && inO(t.os)).length, t: 'Created trips not accepted by any verifier', s: 'Assign a verifier', cls: 'warn', go: () => self.setState({ tab: 'workload', wlF: 'unassigned', drawer: null }) },
     ].filter((a) => a.n > 0).map((a) => ({ ...a, nF: fmt(a.n) }));
+
+    // ---------- v6 Home: the day's jobs as a to-do list ----------
+    const TODO_LOOK = [
+      ['appointments are past', 'i-phone', 'amber', 'Follow up', 'Today', 'ca'],
+      ['breach SLA', 'i-clock', 'red', 'See who to push', 'Urgent', 'cr'],
+      ['no update for 3+ days', 'i-wa', 'green', 'Send reminders', 'Today', 'ca'],
+      ['waiting to be submitted', 'i-check', 'blue', 'Check & submit', 'Today', 'ca'],
+      ['not accepted', 'i-user', 'violet', 'Assign now', 'Soon', 'cs']];
+    const doneSet = S.done || [];
+    const look = (t) => TODO_LOOK.find((x) => t.includes(x[0])) || ['', 'i-check', 'blue', 'Open', 'Today', 'ca'];
+    const priRank = { Urgent: 0, Today: 1, Soon: 2 };
+    out.todo = out.alerts.map((a) => { const L6 = look(a.t); return { ...a, ic: 'ico ' + L6[1] + ' ' + L6[2], numCls: 'num ' + L6[2], btn: L6[3], pri: L6[4], priCls: 'pri ' + L6[5],
+        btnCls: L6[2] === 'blue' ? 'btn primary' : 'btn wa', key: L6[1] }; })
+      .sort((x, y) => priRank[x.pri] - priRank[y.pri] || y.n - x.n)
+      .map((a) => { const on = doneSet.includes(a.key); return { ...a, doneCls: on ? 'task done' : 'task', tick: () => self.setState({ done: on ? doneSet.filter((k) => k !== a.key) : doneSet.concat([a.key]) }) }; });
+    const nDone = out.todo.filter((a) => doneSet.includes(a.key)).length, nAll = out.todo.length;
+    out.noTodo = nAll === 0; out.doneTxt = nDone + '/' + nAll;
+    out.ringStyle = 'stroke-dashoffset:' + (389.6 * (1 - (nAll ? nDone / nAll : 1))).toFixed(1);
+    const hr = new Date().getHours();
+    out.hello = (hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening') + (nAll ? ', ' + (nAll - nDone) + ' job' + (nAll - nDone === 1 ? '' : 's') + ' left today' : ' — nothing urgent right now');
+    out.hello2 = nAll ? 'Start with the first one. Every button opens the right page with the right list already picked.' : 'All lists are clear. Open the full dashboard to look around.';
+    try { out.todayTxt = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }); } catch (e) { out.todayTxt = ''; }
+    out.startFirst = () => { const f = out.todo.find((a) => !doneSet.includes(a.key)) || out.todo[0]; if (f) f.go(); else self.setState({ tab: 'overview' }); };
+    out.homeCls = S.tab === 'home' ? 'is-home' : '';
+    const ringC = (p) => (p >= 90 ? '#16a34a' : p >= 80 ? '#d97706' : '#dc2626');
+    out.homeBanks = orgAgg.filter((x) => x.trips || x.apps).sort((a, b) => b.trips - a.trips).map((x, i) => { const p = pct(x.fin, x.trips);
+      return { n: x.n, ab: (x.o || x.n).slice(0, 2).toUpperCase(), trips: fmt(x.trips), apps: fmt(x.apps), canc: fmt(x.canc), hold: fmt(x.hold), p: Math.round(p) + '%',
+        lgCls: 'hlg c' + (i % 8), ringS: 'stroke:' + ringC(p) + ';stroke-dashoffset:' + (113.1 * (1 - p / 100)).toFixed(1), pS: 'color:' + ringC(p),
+        pick: () => self.setState({ orgs: [x.o], tab: 'overview' }) }; });
 
     // ---------- verifier tasks ----------
     const wq = S.wlq.trim().toLowerCase();
