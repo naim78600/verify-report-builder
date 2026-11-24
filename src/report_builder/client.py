@@ -168,7 +168,8 @@ PHONE_FIELDS = ("id", "name", "phone")
 
 def verifier_phones(client: "ReadOnlyClient") -> dict[int, dict]:
     """{verifier id: {"name", "phone"}} from /api/v2/verifiers.  The server's reply also carries other fields (among them
-    an access token); everything except id, name and phone is dropped right here and never stored or logged."""
+    an access token); everything except id, name and phone is dropped right here and never stored or logged.
+    V18: only verifiers (user_role 4) that are active (status 1)."""
     raw = client.get("/api/v2/verifiers")
     items = _verifier_list(raw)
     out: dict[int, dict] = {}
@@ -179,6 +180,11 @@ def verifier_phones(client: "ReadOnlyClient") -> dict[int, dict]:
             vid = int(v.get("id"))
         except (TypeError, ValueError):
             continue
+        role = v.get("user_role")                     # V18: verifiers only (role 4); a list without the field is kept as is
+        if role not in (None, "") and str(role) != "4":
+            continue
+        if str(v.get("status", "1")) not in ("1", "True", "true"):
+            continue                                  # V18: a removed / disabled verifier is not listed
         out[vid] = {"name": str(v.get("name") or "").strip(), "phone": normalize_phone(v.get("phone"))}
     del raw, items
     return out

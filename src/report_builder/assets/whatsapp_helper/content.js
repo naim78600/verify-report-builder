@@ -247,6 +247,53 @@
     }
   }
 
+  // ---------------------------------------------------------------- V18: WhatsApp check (which verifier numbers are on WhatsApp)
+  // Opens each number's chat WITHOUT any text: the chat opens = connected, WhatsApp's "not on WhatsApp" box = not connected.
+  // Nothing is typed or sent.  A check asked by the program's button starts at once; the daily automatic one waits until
+  // this tab has not been used for 90 seconds, and stops as soon as you click or type.
+  const CHECK_GAP_MS = 6000;
+  let lastUse = Date.now();
+  ["mousedown", "keydown", "wheel", "touchstart"].forEach((ev) => document.addEventListener(ev, (e) => { if (e.isTrusted && !box.contains(e.target)) lastUse = Date.now(); }, true));
+  async function openNextCheck() {
+    const c = await store.get("bk_check");
+    if (!c || c.i >= c.items.length) { await store.set("bk_check", null); say("WhatsApp চেক শেষ ✓"); return; }
+    c.at = Date.now(); await store.set("bk_check", c);
+    location.href = `https://web.whatsapp.com/send?phone=${c.items[c.i].phone}`;
+  }
+  async function continueCheck() {
+    const c = await store.get("bk_check");
+    if (!c || Date.now() - c.at > 5 * 60 * 1000) return false;
+    const it = c.items[c.i];
+    if (!it) { await store.set("bk_check", null); return false; }
+    $("bk-now").style.display = "block";
+    $("bk-now").innerHTML = `<div class="bk-muted">WhatsApp চেক ${c.i + 1} / ${c.items.length}</div><b>${escapeHtml(it.verifier)}</b> · +${escapeHtml(it.phone)}`;
+    let ok = null;
+    for (let i = 0; i < 60 && ok === null; i++) {
+      if (invalidNumberPopup()) ok = false; else if (composer()) ok = true; else await sleep(500);
+    }
+    if (ok !== null) await post("/wa_check", { phone: it.phone, ok });
+    say(ok === null ? `${it.verifier}: উত্তর পাওয়া যায়নি, পরে আবার চেক হবে।` : ok ? `${it.verifier}: WhatsApp আছে ✓` : `${it.verifier}: এই নম্বরে WhatsApp নেই`);
+    c.i += 1; await store.set("bk_check", c);
+    for (let s = CHECK_GAP_MS / 1000; s > 0; s--) {
+      await sleep(1000);
+      if (c.auto && Date.now() - lastUse < 3000) { await store.set("bk_check", null); say("আপনি WhatsApp ব্যবহার করছেন, চেক থামানো হলো। পরে আবার চলবে।"); return true; }
+      if (!(await store.get("bk_check"))) { say("চেক থামানো হয়েছে।"); return true; }
+    }
+    await openNextCheck();
+    return true;
+  }
+  async function maybeStartCheck() {
+    if ((await store.get("bk_run")) || (await store.get("bk_fu")) || (await store.get("bk_check"))) return;
+    const r = await get("/wa_check");
+    if (!r.ok || !r.data.start || !(r.data.items || []).length) return;
+    if (r.data.auto && Date.now() - lastUse < 90000) return;          // automatic check: only while the tab is not in use
+    const c = await post("/wa_check_claim", { token: r.data.start });
+    if (!(c.ok && c.data && c.data.ok)) return;
+    await store.set("bk_check", { items: r.data.items, i: 0, at: Date.now(), auto: !!r.data.auto });
+    say(`WhatsApp চেক শুরু: ${r.data.items.length}টি নম্বর (কিছু লেখা বা পাঠানো হয় না)`);
+    openNextCheck();
+  }
+
   // ---------------------------------------------------------------- replies (read only)
   const seen = new Map();
   function phoneForTitle(title) {
@@ -310,7 +357,7 @@
   function escapeHtml(s) { return String(s || "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
   $("bk-start").onclick = async () => { await store.set("bk_skip", []); openNext(); };
-  $("bk-stop").onclick = async () => { await store.set("bk_run", null); say("থামানো হয়েছে। আবার ‘শুরু করুন’ চাপলে যেখানে থেমেছিল সেখান থেকে চলবে।"); };
+  $("bk-stop").onclick = async () => { await store.set("bk_run", null); await store.set("bk_check", null); say("থামানো হয়েছে। আবার ‘শুরু করুন’ চাপলে যেখানে থেমেছিল সেখান থেকে চলবে।"); };
   $("bk-skip").onclick = async () => {
     const run = await store.get("bk_run");
     if (run) { const sk = (await store.get("bk_skip")) || []; sk.push(run.phone); await store.set("bk_skip", sk); }
@@ -332,7 +379,8 @@
       if (c.ok && c.data && c.data.ok) { await store.set("bk_skip", []); openNext(); }
     }, 4000);
     setInterval(readReplies, READ_EVERY_MS);
+    setInterval(maybeStartCheck, 5000);
     await refreshAsks();
-    if (!(await continueAsk())) continueRun();
+    if (!(await continueAsk()) && !(await continueCheck())) continueRun();
   })();
 })();
